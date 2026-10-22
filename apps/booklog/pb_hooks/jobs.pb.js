@@ -97,4 +97,21 @@ if (String(process.env.APP_ENV || '').trim() === 'production') {
         )
     }
   })
+
+  // 전날 대출 집계가 끝난 뒤인 한국 시간 05:10에 받아서, 사용자가 첫 조회를 기다리지 않게 합니다.
+  cronAdd('booklog-popular-books', '10 20 * * *', function () {
+    try {
+      const popularBooksJob = require(__hooks + '/jobs/popular-books-job.js')
+
+      popularBooksJob.run()
+    } catch (exception) {
+      $app
+        .logger()
+        .error(
+          'jobs/popular-books:failed',
+          'error',
+          String(exception && exception.message ? exception.message : exception)
+        )
+    }
+  })
 }

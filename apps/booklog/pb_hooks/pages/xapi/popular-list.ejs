@@ -1,0 +1,76 @@
+<script server>
+  const popularBooksData = resolve('popular-books-data')
+
+  if (request.method !== 'GET') {
+    dbg('xapi/popular-list:redirect', {
+      status: 303,
+      redirectTo: '/popular',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/popular', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/popular-list:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const tab = popularBooksData.normalizeTab(String(request.url.query.tab || ''))
+  const fromPath = '/popular?tab=' + tab
+  let books = []
+  let shelfBookIds = {}
+  let errorMessage = ''
+
+  dbg('xapi/popular-list:start', {
+    userId: userId,
+    tab: tab,
+  })
+
+  try {
+    books = popularBooksData.loadPopularList(
+      {
+        data4libraryService: resolve('data4library-service'),
+        config: { apiKey: env('DATA4LIBRARY_APIKEY'), timeout: 30 },
+      },
+      tab,
+      new Date()
+    )
+    shelfBookIds = popularBooksData.findShelfBookIds(userId, books)
+  } catch (exception) {
+    errorMessage = String(exception && exception.message ? exception.message : exception)
+    error('xapi/popular-list:failed', {
+      userId: userId,
+      tab: tab,
+      error: errorMessage,
+    })
+  }
+</script>
+
+<% if (errorMessage) { %>
+<p
+  id="popular-list"
+  class="m-0 rounded-[1.25rem] bg-[#f7f2e8] px-4 py-6 text-center text-sm text-stone-600">
+  지금은 목록을 불러오지 못했어요. 잠시 뒤 다시 열어 주세요.
+</p>
+<% } else if (!books.length) { %>
+<p
+  id="popular-list"
+  class="m-0 rounded-[1.25rem] bg-[#f7f2e8] px-4 py-6 text-center text-sm text-stone-600">
+  보여 드릴 책이 아직 없어요.
+</p>
+<% } else { %>
+<%- include('popular-book-list.ejs', { books, shelfBookIds, fromPath }) %>
+<% } %>

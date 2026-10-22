@@ -1,4 +1,4 @@
-/* global onBootstrap, $app, $os, __hooks, Record */
+/* global onBootstrap, routerAdd, require, $app, $os, __hooks, Record */
 onBootstrap(function (event) {
   event.next()
   $app.importCollectionsByMarshaledJSON($os.readFile(__hooks + '/test-schema.json'), false)
@@ -45,10 +45,21 @@ onBootstrap(function (event) {
   const finishedBook = new Record($app.findCollectionByNameOrId('books'))
   finishedBook.set('id', 'finishedbook001')
   finishedBook.set('title', '완독한 책')
+  finishedBook.set('isbn13', '9791100000001')
   $app.save(finishedBook)
+
+  const otherBook = new Record($app.findCollectionByNameOrId('books'))
+  otherBook.set('id', 'notonshelf00001')
+  otherBook.set('title', '도서함에 없는 책')
+  otherBook.set('isbn13', '9791100000002')
+  $app.save(otherBook)
   const finishedShelf = new Record($app.findCollectionByNameOrId('book_shelves'))
   finishedShelf.set('user_id', user.id)
   finishedShelf.set('book_id', finishedBook.id)
   finishedShelf.set('status', 'finished')
   $app.save(finishedShelf)
+})
+
+routerAdd('POST', '/_test/popular-books-job', function (event) {
+  return event.json(200, require(__hooks + '/jobs/popular-books-job.js').run())
 })

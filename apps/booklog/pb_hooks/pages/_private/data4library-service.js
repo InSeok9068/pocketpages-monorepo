@@ -192,7 +192,58 @@ function getBookDetail(config, input) {
   }
 }
 
+/**
+ * 공공도서관 인기대출도서 목록을 조회한다.
+ * @param {{ apiKey: string, baseUrl?: string, timeout?: number }} config 호출 설정
+ * @param {{ startDt: string, endDt: string, age?: string, addCode?: string, pageSize?: number }} input 대출 기간과 대상 조건
+ * @returns {{ numFound: number, docs: Array<any> }} 인기대출도서 목록
+ */
+function getPopularLoanBooks(config, input) {
+  const payload = requestData4LibraryJson(config, '/loanItemSrch', {
+    startDt: input.startDt,
+    endDt: input.endDt,
+    age: input.age || '',
+    addCode: input.addCode || '',
+    pageNo: 1,
+    pageSize: input.pageSize || 50,
+  })
+  const response = payload.response
+
+  return {
+    numFound: Number(response.numFound || 0),
+    docs: normalizeSearchDocs(response.docs),
+  }
+}
+
+/**
+ * 검색일 기준 최근 3일의 대출 급상승 도서를 조회한다.
+ * @param {{ apiKey: string, baseUrl?: string, timeout?: number }} config 호출 설정
+ * @param {{ searchDt: string }} input 검색일자
+ * @returns {Array<{ date: string, docs: Array<any> }>} 최근 날짜부터 정렬된 일자별 목록
+ */
+function getHotTrendBooks(config, input) {
+  const payload = requestData4LibraryJson(config, '/hotTrend', {
+    searchDt: input.searchDt,
+  })
+  const results = Array.isArray(payload.response.results) ? payload.response.results : []
+
+  return results
+    .map(function (item) {
+      const result = item && item.result ? item.result : {}
+
+      return {
+        date: String(result.date || ''),
+        docs: normalizeSearchDocs(result.docs),
+      }
+    })
+    .sort(function (left, right) {
+      return left.date < right.date ? 1 : left.date > right.date ? -1 : 0
+    })
+}
+
 module.exports = {
   searchBooks,
   getBookDetail,
+  getPopularLoanBooks,
+  getHotTrendBooks,
 }

@@ -1,0 +1,210 @@
+<script server>
+  const popularBooksData = resolve('popular-books-data')
+  meta('title', '북로그 인기 도서')
+  meta('description', '전국 공공도서관 대출 기준 인기 도서')
+
+  if (!request.auth) {
+    dbg('page/popular:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const tab = popularBooksData.normalizeTab(String(request.url.query.tab || ''))
+  const fromPath = '/popular?tab=' + tab
+  const now = new Date()
+  const tabs = Object.keys(popularBooksData.POPULAR_TABS).map(function (key) {
+    return {
+      key: key,
+      label: popularBooksData.POPULAR_TABS[key].label,
+      href: '/popular?tab=' + key,
+      active: key === tab,
+    }
+  })
+  const listBooks = popularBooksData.readCachedPopularList(tab, now) || null
+  let hotBooks = []
+  let shelfBookIds = {}
+
+  dbg('page/popular:start', {
+    userId: userId,
+    tab: tab,
+    listCached: !!listBooks,
+  })
+
+  try {
+    hotBooks = popularBooksData.loadHotTrend(
+      {
+        data4libraryService: resolve('data4library-service'),
+        config: { apiKey: env('DATA4LIBRARY_APIKEY'), timeout: 10 },
+      },
+      now
+    )
+  } catch (exception) {
+    warn('page/popular:hot-trend-failed', {
+      userId: userId,
+      error: String(exception && exception.message ? exception.message : exception),
+    })
+  }
+
+  shelfBookIds = popularBooksData.findShelfBookIds(userId, hotBooks.concat(listBooks || []))
+</script>
+
+<section class="space-y-7">
+  <div class="space-y-4">
+    <a
+      href="/"
+      class="inline-flex items-center gap-2 rounded-full border-none bg-white/78 px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] ring-0 outline-none">
+      <span
+        class="i-lucide-arrow-left h-4 w-4"
+        aria-hidden="true"></span>
+      메인으로
+    </a>
+
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">인기 도서</h1>
+      <p class="mt-1 text-sm text-stone-500">전국 공공도서관 대출 기준</p>
+    </div>
+  </div>
+
+  <% if (hotBooks.length) { %>
+  <section
+    aria-labelledby="popular-hot-title"
+    class="rounded-[2rem] border border-stone-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
+    <div class="mb-3 flex items-baseline justify-between gap-3">
+      <h2
+        id="popular-hot-title"
+        class="m-0 text-lg font-semibold tracking-tight text-stone-950">
+        급상승
+      </h2>
+      <p class="m-0 text-[12px] text-stone-500">최근 7일 대출 순위 상승</p>
+    </div>
+    <div
+      class="-mx-1 [scrollbar-width:none] overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      <div class="flex w-max gap-3">
+        <% for (let index = 0; index < hotBooks.length; index += 1) { const book = hotBooks[index]; const ownedBookId = shelfBookIds[book.isbn13] || ''; const bookHref = ownedBookId ? '/books/' + ownedBookId + '?from=' + encodeURIComponent(fromPath) : book.detailUrl %>
+        <div
+          data-hot-book
+          class="w-[6.5rem] shrink-0 text-stone-900">
+          <a
+            href="<%= bookHref %>"
+            <% if (!ownedBookId) { %>target="_blank"
+            rel="noopener noreferrer"
+            <% } %>
+            tabindex="-1"
+            aria-hidden="true"
+            class="block no-underline">
+            <div
+              class="relative aspect-[2/3] overflow-hidden rounded-[0.35rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] shadow-[0_8px_18px_rgba(24,19,16,0.1)]">
+              <% if (book.coverUrl) { %>
+              <img
+                src="<%= book.coverUrl %>"
+                alt=""
+                loading="lazy"
+                decoding="async"
+                referrerpolicy="no-referrer"
+                class="h-full w-full object-cover" />
+              <% } %>
+            </div>
+          </a>
+          <div class="mt-2 flex items-start gap-1">
+            <a
+              href="<%= bookHref %>"
+              <% if (!ownedBookId) { %>target="_blank"
+              rel="noopener noreferrer"
+              <% } %>
+              data-book-link
+              class="min-w-0 flex-1 text-stone-900 no-underline">
+              <p class="m-0 line-clamp-2 text-[13px] leading-[1.15rem] font-semibold break-words"><%= book.title %></p>
+            </a>
+            <%- include('copy-title-button.ejs', { title: book.title }) %>
+          </div>
+          <% if (book.rankChange) { %>
+          <p class="m-0 mt-0.5 text-[11px] font-semibold text-[#9e6125]">순위 <%= book.rankChange %>계단 상승</p>
+          <% } %>
+        </div>
+        <% } %>
+      </div>
+    </div>
+  </section>
+  <% } %>
+
+  <section
+    class="rounded-[2rem] border border-stone-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
+    <nav
+      aria-label="인기 도서 기간"
+      class="mb-5 flex gap-2">
+      <% tabs.forEach(function (item) { %>
+      <a
+        href="<%= item.href %>"
+        aria-current="<%= item.active ? 'page' : 'false' %>"
+        class="<%= item.active ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
+        <%= item.label %>
+      </a>
+      <% }) %>
+    </nav>
+
+    <% if (listBooks) { %>
+    <%- include('popular-book-list.ejs', { books: listBooks, shelfBookIds, fromPath }) %>
+    <% } else { %>
+    <div
+      id="popular-list"
+      hx-get="/xapi/popular-list?tab=<%= tab %>"
+      hx-trigger="load"
+      hx-swap="outerHTML"
+      class="rounded-[1.25rem] bg-[#f7f2e8] px-4 py-6 text-center text-sm text-stone-600">
+      <span
+        class="i-lucide-loader-circle mx-auto mb-2 block h-5 w-5 animate-spin text-stone-500"
+        aria-hidden="true"></span>
+      목록을 불러오는 중입니다. 하루에 한 번은 조금 오래 걸릴 수 있어요.
+    </div>
+    <% } %>
+  </section>
+
+  <section
+    aria-labelledby="popular-store-title"
+    class="rounded-[2rem] border border-stone-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
+    <h2
+      id="popular-store-title"
+      class="m-0 text-lg font-semibold tracking-tight text-stone-950">
+      서점 순위도 볼 수 있어요
+    </h2>
+    <p class="mt-1 mb-4 text-[13px] leading-5 text-stone-500">
+      위 목록은 도서관 대출 기준이고, 서점 순위는 판매량 기준입니다.
+    </p>
+    <div class="grid gap-2 sm:grid-cols-2">
+      <a
+        href="https://www.aladin.co.kr/m/mbest.aspx?BestType=SteadySeller&BranchType=1"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[#f7f2e8] px-4 py-3 text-stone-900 no-underline">
+        <span>
+          <span class="block text-sm font-semibold">알라딘 스테디셀러</span>
+          <span class="block text-[12px] text-stone-500">오래 꾸준히 팔리는 책</span>
+        </span>
+        <span
+          class="i-lucide-arrow-up-right h-4 w-4 shrink-0 text-stone-500"
+          aria-hidden="true"></span>
+      </a>
+      <a
+        href="https://store.kyobobook.co.kr/bestseller/online/monthly"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[#f7f2e8] px-4 py-3 text-stone-900 no-underline">
+        <span>
+          <span class="block text-sm font-semibold">교보문고 월간 베스트셀러</span>
+          <span class="block text-[12px] text-stone-500">이번 달 가장 많이 팔린 책</span>
+        </span>
+        <span
+          class="i-lucide-arrow-up-right h-4 w-4 shrink-0 text-stone-500"
+          aria-hidden="true"></span>
+      </a>
+    </div>
+  </section>
+</section>

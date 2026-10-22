@@ -70,6 +70,24 @@ declare namespace types {
     parts: BookAudioPartView[]
   }
 
+  interface PopularBook {
+    isbn13: string
+    title: string
+    author: string
+    publisher: string
+    publicationYear: string
+    coverUrl: string
+    detailUrl: string
+    loanCount: number
+    loanCountText: string
+    rankChange: number
+  }
+
+  interface PopularBooksDeps {
+    data4libraryService: { getPopularLoanBooks: Function; getHotTrendBooks: Function }
+    config: { apiKey: string; timeout?: number }
+  }
+
   interface BookAudioJobCounts {
     total: number
     ready: number

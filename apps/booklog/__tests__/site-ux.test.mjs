@@ -52,7 +52,14 @@ before(async () => {
     new URL('./fixtures/site-ux-setup.pb.js', import.meta.url),
     path.join(fixtureDir, 'pb_hooks/test-setup.pb.js')
   )
-  writeFileSync(path.join(fixtureDir, '.env'), 'APP_ENV=production\nONESIGNAL_APPID=\nONESIGNAL_API_KEY=\n')
+  writeFileSync(
+    path.join(fixtureDir, 'pb_hooks/pages/_private/data4library-service.js'),
+    readFileSync(new URL('./fixtures/data4library-stub.js', import.meta.url), 'utf8')
+  )
+  writeFileSync(
+    path.join(fixtureDir, '.env'),
+    'APP_ENV=production\nDATA4LIBRARY_APIKEY=test-key\nONESIGNAL_APPID=\nONESIGNAL_API_KEY=\n'
+  )
   service = await startService({ serviceName: path.basename(fixtureDir), port: 18095, timeoutMs: 30000 })
   const response = await fetch(service.baseUrl + '/xapi/auth/sign-in', {
     method: 'POST',
@@ -241,4 +248,94 @@ test('Home counts every shelf book and points to the library when the chosen sta
   } finally {
     await homeBrowser.close()
   }
+})
+
+test('The popular page shows rising books at once, loads the ranking separately, then serves it from cache', async () => {
+  const first = await html('/popular')
+  const menuLinks = first('header a, nav a, [x-show="open"] a')
+    .map((_, element) => first(element).text().trim())
+    .get()
+  assert.equal(menuLinks[menuLinks.indexOf('EPUB 도서관') + 1], '인기 도서')
+  assert.equal(first('h1').text().trim(), '인기 도서')
+  assert.equal(first('[data-hot-book]').length, 1)
+  assert.match(first('[data-hot-book]').text(), /급상승 책[\s\S]*순위 42계단 상승/)
+  assert.equal(first('#popular-list').attr('hx-get'), '/xapi/popular-list?tab=month')
+  assert.deepEqual(
+    first('a[href*="aladin.co.kr"], a[href*="kyobobook.co.kr"]')
+      .map((_, element) => [first(element).attr('target'), first(element).attr('rel')])
+      .get(),
+    ['_blank', 'noopener noreferrer', '_blank', 'noopener noreferrer']
+  )
+
+  const list = await html('/xapi/popular-list?tab=month')
+  const books = list('[data-popular-book]')
+  assert.equal(list('h1').length, 0, 'the HTMX fragment has no page layout')
+  assert.equal(books.length, 2, 'two editions of the same book count once')
+  assert.equal(
+    books.eq(0).find('[data-book-link]').attr('href'),
+    '/books/finishedbook001?from=' + encodeURIComponent('/popular?tab=month')
+  )
+  assert.equal(books.eq(0).find('[data-book-link]').attr('target'), undefined)
+  assert.match(books.eq(0).text(), /도서함에 있음[\s\S]*완독한 책[\s\S]*첫 저자[\s\S]*대출 4,999회/)
+  assert.equal(books.eq(1).find('[data-book-link]').attr('href'), 'https://data4library.kr/bookV?isbn=9791100000002')
+  assert.equal(books.eq(1).find('[data-book-link]').attr('target'), '_blank')
+  assert.doesNotMatch(books.eq(1).text(), /도서함에 있음/)
+  assert.equal(books.eq(0).find('button[aria-label="도서명 복사"]').attr('data-copy-text'), '완독한 책')
+
+  const cached = await html('/popular')
+  assert.equal(cached('#popular-list').attr('hx-get'), undefined)
+  assert.equal(cached('[data-popular-book]').length, 2)
+})
+
+test('When the ranking cannot be loaded, the popular page still opens and explains the failure', async () => {
+  const page = await html('/popular?tab=steady')
+  assert.equal(page('nav[aria-label="인기 도서 기간"] a[aria-current="page"]').text().trim(), '스테디셀러')
+  assert.equal(page('#popular-list').attr('hx-get'), '/xapi/popular-list?tab=steady')
+
+  const list = await html('/xapi/popular-list?tab=steady')
+  assert.match(list('#popular-list').text(), /지금은 목록을 불러오지 못했어요/)
+  assert.equal(list('[data-popular-book]').length, 0)
+})
+
+test('The copy button puts the book title on the clipboard without opening the book', async () => {
+  const copyBrowser = await chromium.launch({ channel: 'chrome', headless: true })
+  try {
+    const context = await copyBrowser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] })
+    await context.route('https://**/*', (route) => route.abort())
+    await context.addCookies(
+      cookie.split('; ').map((entry) => {
+        const separator = entry.indexOf('=')
+        return { name: entry.slice(0, separator), value: entry.slice(separator + 1), url: service.baseUrl }
+      })
+    )
+    const page = await context.newPage()
+    await page.goto(service.baseUrl + '/popular?tab=month')
+    const list = page.locator('#popular-list')
+    const copy = list.getByRole('button', { name: '도서명 복사' }).first()
+    await copy.waitFor({ state: 'visible', timeout: 10000 })
+    await copy.click()
+
+    assert.equal(await page.evaluate(() => globalThis.navigator.clipboard.readText()), '완독한 책')
+    await list.getByRole('button', { name: '도서명을 복사했습니다' }).first().waitFor({ timeout: 3000 })
+    assert.equal(new URL(page.url()).pathname, '/popular')
+    assert.equal(context.pages().length, 1)
+
+    await page.locator('[data-hot-book]').getByRole('button', { name: '도서명 복사' }).click()
+    assert.equal(await page.evaluate(() => globalThis.navigator.clipboard.readText()), '급상승 책')
+  } finally {
+    await copyBrowser.close()
+  }
+})
+
+test('The early-morning job refreshes the lists inside PocketBase and the page then shows them at once', async () => {
+  const response = await fetch(service.baseUrl + '/_test/popular-books-job', { method: 'POST' })
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { 'list:month': true, 'list:steady': false, 'hot': true })
+
+  const month = await html('/popular?tab=month')
+  assert.equal(month('#popular-list').attr('hx-get'), undefined)
+  assert.equal(month('[data-popular-book]').length, 2)
+
+  const steady = await html('/xapi/popular-list?tab=steady')
+  assert.match(steady('#popular-list').text(), /지금은 목록을 불러오지 못했어요/)
 })
