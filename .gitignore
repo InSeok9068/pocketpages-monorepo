@@ -27,3 +27,6 @@ pbw.exe
 
 # SeedLab 관련 보안문서
 apps/seedlab/.docs/private
+
+# 테스트 결과
+apps/*/test-results/

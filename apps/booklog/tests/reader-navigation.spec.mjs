@@ -408,9 +408,10 @@ test('Tapping a footnote number shows the note in a sheet without leaving the re
   await body.locator('#r2').click()
   await expect(page.locator('#reader-note-title')).toHaveText('주석 2')
   await expect(page.locator('#reader-note-text')).toContainText('긴 주석 문단 30입니다.')
-  expect(
-    await page.locator('#reader-note-text').evaluate((element) => element.scrollHeight > element.clientHeight)
-  ).toBe(true)
+  await expect(sheet).toBeVisible()
+  await expect
+    .poll(() => page.locator('#reader-note-text').evaluate((element) => element.scrollHeight > element.clientHeight))
+    .toBe(true)
   await page.mouse.click(195, 40)
   await expect(sheet).toBeHidden()
   await expect(body.locator('#r2')).toBeInViewport()

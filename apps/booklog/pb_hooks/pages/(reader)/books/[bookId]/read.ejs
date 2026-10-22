@@ -230,12 +230,15 @@
       this.searchOpen = true
       this.controlsVisible = false
       this.searchMessage = ''
+      // x-show가 다음 프레임에 패널을 그리므로, 그 뒤에 포커스를 옮겨야 WebKit에서도 빠지지 않습니다.
       this.$nextTick(function () {
-        var input = document.getElementById('reader-search-input')
+        requestAnimationFrame(function () {
+          var input = document.getElementById('reader-search-input')
 
-        if (input) {
-          input.focus()
-        }
+          if (input) {
+            input.focus()
+          }
+        })
       })
     },
     closeSearch: function () {
@@ -375,6 +378,11 @@
         self.savePositionMessage = ''
         self.savePositionMessageTimer = null
       }, 1000)
+    },
+    progressJumpChanged: function () {
+      var value = String(this.progressJumpValue).trim()
+
+      return value !== '' && (this.currentProgressPercent === '' || Number(value) !== Number(this.currentProgressPercent))
     },
     toggleControls: function () {
       this.controlsVisible = !this.controlsVisible
@@ -696,18 +704,19 @@
             x-bind:disabled="progressLocationsStatus !== 'ready' || jumpingProgress || loading"
             x-on:focus="progressJumpEditing = true"
             x-on:blur="progressJumpEditing = false"
-            x-on:keydown.enter.prevent="goToProgress()"
+            x-on:keydown.enter.prevent="if (progressJumpChanged()) goToProgress()"
             type="number"
             min="0"
             max="100"
             step="1"
             inputmode="numeric"
             placeholder="0-100"
+            aria-label="이동할 진행률"
             class="box-border min-w-0 flex-1 rounded-full border-0 bg-white/80 px-3 py-1.5 text-sm text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none placeholder:text-stone-400" />
           <button
             type="button"
             x-on:click="goToProgress()"
-            x-bind:disabled="progressLocationsStatus !== 'ready' || jumpingProgress || loading"
+            x-bind:disabled="progressLocationsStatus !== 'ready' || jumpingProgress || loading || !progressJumpChanged()"
             class="inline-flex shrink-0 items-center justify-center rounded-full border-none bg-stone-950 px-3 py-1.5 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60">
             <span
               x-show="!jumpingProgress"
@@ -1028,6 +1037,7 @@
           <button
             type="button"
             x-on:click="closeBookmarks()"
+            aria-label="책갈피 닫기"
             class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] text-stone-700 ring-0 outline-none">
             <span
               class="i-lucide-x h-4 w-4"
@@ -1306,6 +1316,7 @@
           <button
             type="button"
             x-on:click="closeReadAloud()"
+            aria-label="읽어주기 닫기"
             class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] text-stone-700 ring-0 outline-none">
             <span
               class="i-lucide-x h-4 w-4"
@@ -1651,6 +1662,7 @@
           <button
             type="button"
             x-on:click="closeSearch()"
+            aria-label="검색 닫기"
             class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] text-stone-700 ring-0 outline-none">
             <span
               class="i-lucide-x h-4 w-4"
@@ -1742,6 +1754,7 @@
           <button
             type="button"
             x-on:click="closeToc()"
+            aria-label="목차 닫기"
             class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] text-stone-700 ring-0 outline-none">
             <span
               class="i-lucide-x h-4 w-4"
@@ -1819,6 +1832,7 @@
           <button
             type="button"
             x-on:click="closeHighlight()"
+            aria-label="문구 추가 닫기"
             class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] text-stone-700 ring-0 outline-none">
             <span
               class="i-lucide-x h-4 w-4"
