@@ -11,6 +11,54 @@ const MODELS = [
 const DEFAULT_MODEL = MODELS.filter(function (entry) {
   return entry.isDefault
 })[0].model
+/** @type {types.BookAudioVoiceEntry[]} */
+const VOICES = [
+  { voice: 'Sulafat', description: '따뜻한 여성', isDefault: true },
+  { voice: 'Achernar', description: '부드러운 여성', isDefault: false },
+  { voice: 'Zephyr', description: '밝은 여성', isDefault: false },
+  { voice: 'Gacrux', description: '성숙한 남성', isDefault: false },
+  { voice: 'Charon', description: '또렷한 남성', isDefault: false },
+]
+// 작업에는 문구를 저장하므로, 이미 쓰인 문구를 바꾸면 그 책들은 화면에서 이름 대신 문구로 보입니다.
+/** @type {types.BookAudioStyleEntry[]} */
+const STYLES = [
+  {
+    key: 'calm',
+    label: '차분한 낭독',
+    text: '차분하고 따뜻한 한국어 오디오북 낭독. 일정한 속도와 자연스러운 문장 사이 호흡.',
+    isDefault: true,
+  },
+  {
+    key: 'literary',
+    label: '담담한 문학 낭독',
+    text: '문학 작품을 읽는 오디오북 낭독가. 담담하고 절제된 톤으로, 조금 느리게 읽고 문장 끝에서 여운을 남김.',
+    isDefault: false,
+  },
+  {
+    key: 'dialogue',
+    label: '대사를 살리는 낭독',
+    text: '오디오북 낭독가. 지문은 차분하게 읽고, 대사는 인물의 감정을 자연스럽게 살리되 과장하지 않음. 일정한 속도 유지.',
+    isDefault: false,
+  },
+  {
+    key: 'nonfiction',
+    label: '설명형 낭독 (비소설)',
+    text: '논픽션 오디오북 낭독가. 또렷하고 신뢰감 있는 톤으로, 핵심 개념과 예시를 구분해 읽음. 일정한 속도, 문단 사이 짧은 쉼.',
+    isDefault: false,
+  },
+  {
+    key: 'essay',
+    label: '에세이 낭독',
+    text: '에세이를 읽는 오디오북 낭독가. 편안하고 담백하게, 말을 건네듯 자연스러운 속도로 읽음.',
+    isDefault: false,
+  },
+]
+const DEFAULT_VOICE = VOICES.filter(function (entry) {
+  return entry.isDefault
+})[0].voice
+const DEFAULT_STYLE = STYLES.filter(function (entry) {
+  return entry.isDefault
+})[0].key
 // 실측 Gemini 낭독 속도(공백 포함 초당 약 6.8자)로 아직 음성이 없는 구간의 재생 바 길이를 잡습니다.
 const ESTIMATED_CHARS_PER_SECOND = 6.8
 
@@ -106,20 +154,75 @@ function isSupportedModel(model) {
 }
 
 /**
+ * 목소리 후보를 찾습니다.
+ * @param {string} voice 목소리 이름
+ * @returns {types.BookAudioVoiceEntry | null} 목소리 후보, 없으면 null
+ */
+function findVoice(voice) {
+  return (
+    VOICES.filter(function (entry) {
+      return entry.voice === voice
+    })[0] || null
+  )
+}
+
+/**
+ * 스타일 후보를 찾습니다.
+ * @param {string} key 스타일 키
+ * @returns {types.BookAudioStyleEntry | null} 스타일 후보, 없으면 null
+ */
+function findStyle(key) {
+  return (
+    STYLES.filter(function (entry) {
+      return entry.key === key
+    })[0] || null
+  )
+}
+
+/**
+ * 생성 요청 화면의 목소리·스타일 선택 항목을 돌려줍니다.
+ * @returns {{ voices: types.BookAudioVoiceEntry[], styles: types.BookAudioStyleEntry[] }} 선택 항목
+ */
+function getVoiceStyleOptions() {
+  return { voices: VOICES, styles: STYLES }
+}
+
+/**
+ * 작업에 저장된 목소리·스타일을 화면 이름으로 바꿉니다. 후보에 없는 값은 저장된 값을 그대로 보여 줍니다.
+ * @param {string} voice 저장된 목소리 이름
+ * @param {string} style 저장된 스타일 문구
+ * @returns {{ voiceLabel: string, styleLabel: string }} 화면 이름
+ */
+function describeVoiceStyle(voice, style) {
+  const voiceEntry = findVoice(voice)
+  const styleEntry = STYLES.filter(function (entry) {
+    return entry.text === style
+  })[0]
+  return {
+    voiceLabel: voiceEntry ? voiceEntry.voice + ' · ' + voiceEntry.description : voice,
+    styleLabel: styleEntry ? styleEntry.label : style,
+  }
+}
+
+/**
  * 서버의 낭독 설정과 재사용 식별자를 만듭니다.
  * @param {string} model 모델 이름
+ * @param {string} [voice] 목소리 이름, 없으면 기본 목소리
+ * @param {string} [styleKey] 스타일 키, 없으면 기본 스타일
  * @returns {types.BookAudioSettings} 낭독 설정
  */
-function getSettings(model) {
-  if (!isSupportedModel(model)) {
+function getSettings(model, voice, styleKey) {
+  const voiceEntry = findVoice(voice || DEFAULT_VOICE)
+  const styleEntry = findStyle(styleKey || DEFAULT_STYLE)
+  if (!isSupportedModel(model) || !voiceEntry || !styleEntry) {
     throw new Error('서버의 TTS 모델 설정을 확인해 주세요.')
   }
   const settings = {
     provider: 'gemini',
     model,
-    voice: 'Sulafat',
+    voice: voiceEntry.voice,
     pipelineVersion: 'v2',
-    style: '차분하고 따뜻한 한국어 오디오북 낭독. 일정한 속도와 자연스러운 문장 사이 호흡.',
+    style: styleEntry.text,
     configHash: '',
   }
   settings.configHash = $security.sha256(
@@ -451,6 +554,10 @@ module.exports = {
   getModelOptions,
   pickAvailableModel,
   isSupportedModel,
+  findVoice,
+  findStyle,
+  getVoiceStyleOptions,
+  describeVoiceStyle,
   getSettings,
   findAuthorizedFile,
   readBookSections,

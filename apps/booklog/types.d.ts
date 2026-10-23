@@ -24,6 +24,22 @@ declare namespace types {
     isDefault: boolean
   }
 
+  interface BookAudioVoiceEntry {
+    /** Gemini 목소리 이름 */
+    voice: string
+    description: string
+    isDefault: boolean
+  }
+
+  interface BookAudioStyleEntry {
+    /** 요청 폼에서 고르는 값 */
+    key: string
+    label: string
+    /** Gemini에 보내고 작업에 저장하는 스타일 문구 */
+    text: string
+    isDefault: boolean
+  }
+
   interface BookAudioModelOption {
     model: BookAudioModelName
     label: string

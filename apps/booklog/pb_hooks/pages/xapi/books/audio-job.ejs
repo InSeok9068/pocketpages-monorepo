@@ -47,17 +47,31 @@
   try {
     if (action === 'start') {
       const model = String(form.model || audioData.DEFAULT_MODEL).trim()
-      if (!audioData.isSupportedModel(model)) {
-        redirectWithMessage(bookDetailPath, 'TTS 모델을 확인해 주세요.')
+      const voice = String(form.voice || '').trim()
+      const style = String(form.style || '').trim()
+      if (
+        !audioData.isSupportedModel(model)
+        || (voice && !audioData.findVoice(voice))
+        || (style && !audioData.findStyle(style))
+      ) {
+        redirectWithMessage(bookDetailPath, 'TTS 모델·목소리·스타일을 확인해 주세요.')
         return
       }
-      const result = jobService.requestJob($app, fileId, userId, audioData.getSettings(model))
+      // 이미 작업이 있으면 처음 고른 목소리·스타일을 그대로 쓰고, 새 값은 첫 요청에만 저장됩니다.
+      const result = jobService.requestJob($app, fileId, userId, audioData.getSettings(model, voice, style))
       if (result.message) {
-        dbg('xapi/books/audio-job:reservation', { userId, fileId, model, accepted: !!result.job })
+        dbg('xapi/books/audio-job:reservation', { userId, fileId, model, voice, style, accepted: !!result.job })
         redirectWithMessage(bookDetailPath, result.message)
         return
       }
-      info('xapi/books/audio-job:requested', { userId, fileId, model, jobId: String(result.job.get('id')) })
+      info('xapi/books/audio-job:requested', {
+        userId,
+        fileId,
+        model,
+        voice,
+        style,
+        jobId: String(result.job.get('id')),
+      })
       message = 'AI 오디오북 생성을 예약했습니다. 2분 안에 책을 분석해 생성을 시작합니다.'
     } else if (action === 'delete') {
       const deleted = jobService.deleteAudioBook($app, fileId)

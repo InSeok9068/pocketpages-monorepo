@@ -216,6 +216,13 @@
   let canRequestAudio = false
   /** @type {types.BookAudioFailedChunkView[]} */
   let audioFailedChunks = []
+  /** @type {types.BookAudioVoiceEntry[]} */
+  let audioVoiceOptions = []
+  /** @type {types.BookAudioStyleEntry[]} */
+  let audioStyleOptions = []
+  let audioVoiceStyle = { voiceLabel: '', styleLabel: '' }
+  let audioJobModel = ''
+  let audioModelBusyTitle = ''
 
   if (showAudioJob) {
     try {
@@ -233,6 +240,19 @@
       const availableModel = audioData.pickAvailableModel(audioModelOptions)
       audioSelectedModel = availableModel ? availableModel.model : ''
       canRequestAudio = !!availableModel
+      if (audioJobRecord) {
+        audioJobModel = String(audioJobRecord.get('model'))
+        audioModelBusyTitle =
+          audioModelOptions[0] && audioModelOptions[0].disabled ? audioModelOptions[0].busyBookTitle : ''
+        audioVoiceStyle = audioData.describeVoiceStyle(
+          String(audioJobRecord.get('voice')),
+          String(audioJobRecord.get('style'))
+        )
+      } else {
+        const voiceStyleOptions = audioData.getVoiceStyleOptions()
+        audioVoiceOptions = voiceStyleOptions.voices
+        audioStyleOptions = voiceStyleOptions.styles
+      }
     } catch (exception) {
       warn('page/books/[bookId]:audio-job-unavailable', {
         bookId: bookId,
@@ -851,9 +871,18 @@
           style="width: <%= audioJob.percent %>%"></div>
       </div>
       <p class="text-sm font-medium text-stone-800"><%= audioJob.statusLabel %></p>
-      <p class="text-xs text-stone-500">
-        모델: <%= audioModelOptions[0] ? audioModelOptions[0].label : '' %> · 생성 시작 시 고정
-      </p>
+      <dl
+        class="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 rounded-[1rem] bg-[#fbf7ef] px-4 py-3 text-xs shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+        <dt class="text-stone-500">모델</dt>
+        <dd class="m-0 font-medium text-stone-800">
+          <%= audioModelOptions[0] ? audioModelOptions[0].label : '' %>
+        </dd>
+        <dt class="text-stone-500">목소리</dt>
+        <dd class="m-0 font-medium text-stone-800"><%= audioVoiceStyle.voiceLabel %></dd>
+        <dt class="text-stone-500">스타일</dt>
+        <dd class="m-0 font-medium break-words text-stone-800"><%= audioVoiceStyle.styleLabel %></dd>
+        <dd class="col-span-2 m-0 pt-1 text-[11px] text-stone-400">생성을 시작할 때 고정된 설정입니다.</dd>
+      </dl>
       <% if (audioJob.nextRunLabel) { %>
       <p class="text-xs text-stone-500"><%= audioJob.nextRunLabel %></p>
       <% } %>
@@ -868,7 +897,9 @@
     <p class="text-sm text-stone-600">아직 생성을 요청하지 않았습니다.</p>
     <% } %>
     <div class="flex flex-wrap gap-2">
-      <% if (!audioJob || audioJob.canStart) { %>
+      <% if (!audioJob) { %>
+      <%- include('book-audio-request-dialog.ejs', { action: '/xapi/books/audio-job', fields: { bookId: bookId, fileId: audioJobFileId, action: 'start' }, fileId: audioJobFileId, bookTitle: mainTitle, modelOptions: audioModelOptions, selectedModel: audioSelectedModel, voices: audioVoiceOptions, styles: audioStyleOptions, canRequest: canRequestAudio }) %>
+      <% } else if (audioJob.canStart) { %>
       <form
         method="post"
         action="/xapi/books/audio-job"
@@ -885,35 +916,21 @@
           type="hidden"
           name="action"
           value="start" />
-        <fieldset class="mb-3 space-y-2">
-          <legend class="mb-2 text-sm font-medium text-stone-800">생성 모델</legend>
-          <% for (const option of audioModelOptions) { %>
-          <label class="flex items-start gap-2 text-sm text-stone-700">
-            <input
-              type="radio"
-              name="model"
-              value="<%= option.model %>"
-              <%= option.model === audioSelectedModel ? 'checked' : '' %>
-              <%= option.disabled ? 'disabled' : '' %>
-              required
-              class="mt-1" />
-            <span>
-              <%= option.label %>
-              <% if (option.disabled) { %>
-              <span class="block text-xs text-stone-500">
-                「<%= option.busyBookTitle %>」 미완료 · 완료하거나 삭제하면 사용 가능
-              </span>
-              <% } %>
-            </span>
-          </label>
-          <% } %>
-        </fieldset>
+        <input
+          type="hidden"
+          name="model"
+          value="<%= audioJobModel %>" />
         <button
           type="submit"
           <%= canRequestAudio ? '' : 'disabled' %>
           class="inline-flex h-10 items-center justify-center rounded-full border-none bg-stone-900 px-4 text-sm font-semibold text-white ring-0 transition outline-none hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40">
-          <%= audioJob ? '생성 다시 시작' : 'AI 오디오북 생성 요청' %>
+          생성 다시 시작
         </button>
+        <% if (audioModelBusyTitle) { %>
+        <span class="mt-1 block text-xs text-stone-500">
+          「<%= audioModelBusyTitle %>」 미완료 · 완료하거나 삭제하면 다시 시작할 수 있습니다
+        </span>
+        <% } %>
       </form>
       <% } %>
       <% if (audioJob && audioJob.canPause) { %>

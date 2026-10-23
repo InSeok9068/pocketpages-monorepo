@@ -94,8 +94,8 @@ async function detail(index) {
   return load(html)
 }
 
-async function request(index, action = 'start', model) {
-  const input = { bookId: bookId(index), fileId: fileId(index), action }
+async function request(index, action = 'start', model, extra = {}) {
+  const input = { bookId: bookId(index), fileId: fileId(index), action, ...extra }
   if (model) input.model = model
   const response = await fetch(service.baseUrl + '/xapi/books/audio-job', {
     method: 'POST',
@@ -124,12 +124,12 @@ async function control(index, options) {
 
 test('Book-level model reservations, concurrent requests, resume, playback and release work through HTTP', async () => {
   let $ = await detail(1)
-  assert.equal($('input[name=model]:checked').val(), lite)
-  assert.equal($('input[name=model]:disabled').length, 0)
+  assert.equal($('select[name=model] option[selected]').val(), lite)
+  assert.equal($('select[name=model] option[disabled]').length, 0)
   await request(1)
   $ = await detail(2)
-  assert.ok($(`input[value="${lite}"]`).is(':disabled'))
-  assert.equal($('input[name=model]:checked').val(), flash)
+  assert.ok($(`select[name=model] option[value="${lite}"]`).is("[disabled]"))
+  assert.equal($('select[name=model] option[selected]').val(), flash)
   assert.ok($.text().includes('테스트 책 1 <제목>'))
   await request(2, 'start', lite)
   assert.equal((await jobs()).length, 1, 'a forged POST cannot reserve an occupied model')
@@ -141,25 +141,21 @@ test('Book-level model reservations, concurrent requests, resume, playback and r
   const flashBook = flashJob.file_id === fileId(2) ? 2 : 3
   const waitingBook = flashBook === 2 ? 3 : 2
   $ = await detail(4)
-  assert.equal($('input[name=model]:disabled').length, 2)
-  assert.ok(
-    $('button')
-      .filter((_, element) => $(element).text().includes('AI 오디오북 생성 요청'))
-      .is(':disabled')
-  )
+  assert.equal($('select[name=model] option[disabled]').length, 2)
+  assert.ok($('dialog form button[type=submit]').is(':disabled'))
   await request(4, 'start', flash)
   assert.equal((await jobs()).length, 2)
 
   const originalHash = registered.find((job) => job.model === lite).config_hash
   await request(1, 'pause')
-  assert.ok((await detail(4))(`input[value="${lite}"]`).is(':disabled'))
+  assert.ok((await detail(4))(`select[name=model] option[value="${lite}"]`).is("[disabled]"))
   await request(1, 'start', flash)
   assert.equal((await jobs()).find((job) => job.file_id === fileId(1)).status, 'paused')
   await request(1, 'start', lite)
   assert.equal((await jobs()).find((job) => job.file_id === fileId(1)).config_hash, originalHash)
   await control(1, { status: 'failed' })
   assert.ok(
-    !(await detail(4))(`input[value="${lite}"]`).is(':disabled'),
+    !(await detail(4))(`select[name=model] option[value="${lite}"]`).is("[disabled]"),
     'a job that failed before registering chunks releases its model'
   )
   await request(1, 'start', lite)
@@ -216,14 +212,46 @@ test('Book-level model reservations, concurrent requests, resume, playback and r
   assert.equal((await jobs()).find((job) => job.file_id === fileId(flashBook)).status, 'paused')
   $ = await detail(flashBook)
   assert.equal($('input[name=model]').length, 1, 'an existing book keeps its selected model')
-  assert.equal($('input[name=model]:checked').val(), flash)
+  assert.equal($('input[name=model]').val(), flash)
+  assert.equal($('dialog').filter((_, element) => $(element).text().includes('AI 오디오북 생성')).length, 0)
   await request(flashBook, 'start', flash)
   assert.equal((await jobs()).find((job) => job.file_id === fileId(flashBook)).config_hash, flashJob.config_hash)
   await request(1, 'delete')
   $ = await detail(4)
-  assert.equal($('input[name=model]:checked').val(), lite)
-  await request(4)
-  assert.equal((await jobs()).find((job) => job.file_id === fileId(4)).model, lite)
+  assert.equal($('select[name=model] option[selected]').val(), lite)
+  assert.equal($('select[name=voice] option').length, 5)
+  assert.equal($('select[name=voice] option[selected]').val(), 'Sulafat')
+  assert.equal($('select[name=style] option[selected]').val(), 'calm')
+  await request(4, 'start', lite, { voice: 'Unknown', style: 'calm' })
+  assert.equal((await jobs()).filter((job) => job.file_id === fileId(4)).length, 0, 'unknown voices are rejected')
+  await request(4, 'start', lite, { voice: 'Gacrux', style: 'nonfiction' })
+  const chosen = (await jobs()).find((job) => job.file_id === fileId(4))
+  assert.equal(chosen.model, lite)
+  assert.equal(chosen.voice, 'Gacrux')
+  assert.match(chosen.style, /^논픽션 오디오북 낭독가/)
+  const adminList = load(
+    await (
+      await fetch(service.baseUrl + '/admin/books?scope=all&q=' + encodeURIComponent('테스트 책 6'), {
+        headers: { Cookie: cookie },
+      })
+    ).text()
+  )
+  assert.equal(adminList('dialog select[name=voice] option[selected]').val(), 'Sulafat', 'the admin list offers the same choices')
+  assert.equal(adminList('dialog select[name=style] option[selected]').val(), 'calm')
+  assert.equal(adminList('dialog input[name=action]').val(), 'audio-start')
+  await request(4, 'pause')
+  await request(4, 'start', lite, { voice: 'Zephyr', style: 'essay' })
+  const resumed = (await jobs()).find((job) => job.file_id === fileId(4))
+  assert.equal(resumed.config_hash, chosen.config_hash, 'restarting keeps the first chosen voice and style')
+  $ = await detail(4)
+  assert.equal($('select[name=voice]').length, 0)
+  const fixed = $('dl dt')
+    .toArray()
+    .map((element) => [$(element).text().trim(), $(element).next('dd').text().trim()])
+  assert.deepEqual(fixed.slice(-2), [
+    ['목소리', 'Gacrux · 성숙한 남성'],
+    ['스타일', '설명형 낭독 (비소설)'],
+  ])
 })
 
 async function scenario(index, name) {

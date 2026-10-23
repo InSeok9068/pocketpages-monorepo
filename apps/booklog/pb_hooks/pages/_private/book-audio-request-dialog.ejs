@@ -1,0 +1,117 @@
+<div x-data="{ styleText: '' }">
+  <button
+    type="button"
+    @click="$refs.requestDialog.showModal()"
+    aria-haspopup="dialog"
+    aria-controls="audio-request-dialog-<%= fileId %>"
+    class="inline-flex h-8 items-center gap-1 rounded-full border-0 bg-stone-900 px-3 text-xs font-semibold text-white ring-0 transition hover:bg-stone-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500">
+    <span
+      class="i-lucide-headphones h-3.5 w-3.5"
+      aria-hidden="true"></span>
+    AI 오디오북 생성
+  </button>
+  <dialog
+    id="audio-request-dialog-<%= fileId %>"
+    x-ref="requestDialog"
+    aria-labelledby="audio-request-title-<%= fileId %>"
+    @click="if ($event.target === $el) $el.close()"
+    class="fixed inset-0 m-auto max-h-[88dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-[1.75rem] border-none bg-[#fbf7ef] p-0 text-left text-stone-950 shadow-xl backdrop:bg-black/40">
+    <form
+      method="post"
+      action="<%= action %>"
+      class="m-0 space-y-5 p-6"
+      @click.stop>
+      <% for (const name of Object.keys(fields)) { %>
+      <input
+        type="hidden"
+        name="<%= name %>"
+        value="<%= fields[name] %>" />
+      <% } %>
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h3
+            id="audio-request-title-<%= fileId %>"
+            class="m-0 text-xl font-semibold tracking-tight">
+            AI 오디오북 생성
+          </h3>
+          <p class="m-0 mt-1 truncate text-sm text-stone-500"><%= bookTitle %></p>
+        </div>
+        <button
+          type="button"
+          @click="$refs.requestDialog.close()"
+          aria-label="닫기"
+          class="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border-none bg-stone-200/60 text-stone-700">
+          <span
+            class="i-lucide-x h-4 w-4"
+            aria-hidden="true"></span>
+        </button>
+      </div>
+
+      <label class="block space-y-1.5">
+        <span class="block text-sm font-semibold text-stone-800">모델</span>
+        <select
+          name="model"
+          required
+          class="box-border h-11 w-full rounded-xl border border-solid border-stone-300 bg-white px-3 text-sm text-stone-900 focus-visible:outline-stone-500">
+          <% for (const option of modelOptions) { %>
+          <option
+            value="<%= option.model %>"
+            <%= option.model === selectedModel ? 'selected' : '' %>
+            <%= option.disabled ? 'disabled' : '' %>>
+            <%= option.label %><%= option.disabled ? ' (「' + option.busyBookTitle + '」 생성 중)' : '' %>
+          </option>
+          <% } %>
+        </select>
+      </label>
+
+      <label class="block space-y-1.5">
+        <span class="block text-sm font-semibold text-stone-800">목소리</span>
+        <select
+          name="voice"
+          required
+          class="box-border h-11 w-full rounded-xl border border-solid border-stone-300 bg-white px-3 text-sm text-stone-900 focus-visible:outline-stone-500">
+          <% for (const option of voices) { %>
+          <option
+            value="<%= option.voice %>"
+            <%= option.isDefault ? 'selected' : '' %>>
+            <%= option.voice %> · <%= option.description %>
+          </option>
+          <% } %>
+        </select>
+      </label>
+
+      <label class="block space-y-1.5">
+        <span class="block text-sm font-semibold text-stone-800">스타일</span>
+        <select
+          name="style"
+          required
+          x-ref="styleSelect"
+          x-init="styleText = $el.selectedOptions[0].dataset.text"
+          @change="styleText = $el.selectedOptions[0].dataset.text"
+          class="box-border h-11 w-full rounded-xl border border-solid border-stone-300 bg-white px-3 text-sm text-stone-900 focus-visible:outline-stone-500">
+          <% for (const option of styles) { %>
+          <option
+            value="<%= option.key %>"
+            data-text="<%= option.text %>"
+            <%= option.isDefault ? 'selected' : '' %>>
+            <%= option.label %>
+          </option>
+          <% } %>
+        </select>
+        <span
+          class="block rounded-xl bg-white/70 px-3 py-2 text-xs leading-5 text-stone-500"
+          x-text="styleText"></span>
+      </label>
+
+      <div class="space-y-2.5 pt-3">
+        <button
+          type="submit"
+          <%= canRequest ? '' : 'disabled' %>
+          class="inline-flex h-12 w-full items-center justify-center rounded-full border-none bg-stone-900 px-4 text-sm font-semibold text-white ring-0 transition outline-none hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40">
+          <%= canRequest ? '생성 요청' : '사용할 수 있는 모델이 없습니다' %>
+        </button>
+        <p class="m-0 text-center text-xs leading-5 text-stone-400">고른 값은 생성을 시작하면 이 책에 고정됩니다.</p>
+      </div>
+    </form>
+  </dialog>
+</div>

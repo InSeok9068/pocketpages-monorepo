@@ -34,12 +34,37 @@
       $app.findFirstRecordByFilter('book_files', 'id = {:fileId} && book_id = {:bookId}', { fileId, bookId })
       const audioData = resolve('book-audio-data')
       const job = audioData.findFileJob($app, fileId)
-      const options = audioData.getModelOptions($app, fileId)
-      const available = audioData.pickAvailableModel(options)
-      const model = job ? String(job.get('model')) : available ? available.model : audioData.DEFAULT_MODEL
-      const result = resolve('book-audio-job-service').requestJob($app, fileId, userId, audioData.getSettings(model))
+      const requestedModel = String(form.model || '').trim()
+      const voice = String(form.voice || '').trim()
+      const style = String(form.style || '').trim()
+      if (
+        (requestedModel && !audioData.isSupportedModel(requestedModel))
+        || (voice && !audioData.findVoice(voice))
+        || (style && !audioData.findStyle(style))
+      ) {
+        throw new Error('지원하지 않는 모델·목소리·스타일입니다.')
+      }
+      const available = audioData.pickAvailableModel(audioData.getModelOptions($app, fileId))
+      const model = job
+        ? String(job.get('model'))
+        : requestedModel || (available ? available.model : audioData.DEFAULT_MODEL)
+      // 이미 작업이 있으면 처음 고른 목소리·스타일을 그대로 쓰고, 새 값은 첫 요청에만 저장됩니다.
+      const result = resolve('book-audio-job-service').requestJob(
+        $app,
+        fileId,
+        userId,
+        audioData.getSettings(model, voice, style)
+      )
       message = result.message || 'AI 오디오북 생성을 예약했습니다. 2분 안에 책을 분석해 생성을 시작합니다.'
-      info('page/admin/books:audio-requested', { userId, bookId, fileId, model, accepted: !result.message })
+      info('page/admin/books:audio-requested', {
+        userId,
+        bookId,
+        fileId,
+        model,
+        voice,
+        style,
+        accepted: !result.message,
+      })
     } catch (exception) {
       error('page/admin/books:audio-request-failed', {
         userId,
@@ -253,6 +278,7 @@
 
   const audioData = resolve('book-audio-data')
   const audioJobService = resolve('book-audio-job-service')
+  const voiceStyleOptions = audioData.getVoiceStyleOptions()
   const audioFilesByBook = {}
   const fileBindings = {}
   const fileFilter = rows
@@ -266,6 +292,8 @@
       const fileId = String(file.get('id'))
       const job = audioData.findFileJob($app, fileId)
       const view = job ? audioJobService.jobView(job) : null
+      const modelOptions = job ? [] : audioData.getModelOptions($app, fileId)
+      const availableModel = job ? null : audioData.pickAvailableModel(modelOptions)
       const bookId = String(file.get('book_id'))
       ;(audioFilesByBook[bookId] = audioFilesByBook[bookId] || []).push({
         fileId,
@@ -277,6 +305,10 @@
         requestLabel: view ? '생성 다시 시작' : 'AI 오디오북 생성',
         canDelete: !!job || audioData.countFileChunks($app, fileId) > 0,
         failedChunks: job ? audioData.listFinalFailedChunks($app, fileId, String(job.get('config_hash')), 50) : [],
+        hasJob: !!job,
+        modelOptions: job ? [] : modelOptions,
+        selectedModel: availableModel ? availableModel.model : '',
+        canRequestModel: !!availableModel,
       })
     })
   }
@@ -508,7 +540,9 @@
                   <%- include('book-audio-failed-chunks.ejs', { chunks: file.failedChunks, fileId: file.fileId, bookTitle: book.title }) %>
                   <% } %>
                   <div class="flex flex-wrap items-center gap-1">
-                    <% if (file.canRequest) { %>
+                    <% if (!file.hasJob) { %>
+                    <%- include('book-audio-request-dialog.ejs', { action: formAction, fields: { action: 'audio-start', bookId: book.bookId, fileId: file.fileId }, fileId: file.fileId, bookTitle: book.title, modelOptions: file.modelOptions, selectedModel: file.selectedModel, voices: voiceStyleOptions.voices, styles: voiceStyleOptions.styles, canRequest: file.canRequestModel }) %>
+                    <% } else if (file.canRequest) { %>
                     <form
                       method="post"
                       action="<%= formAction %>"
