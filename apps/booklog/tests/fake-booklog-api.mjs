@@ -77,6 +77,7 @@ export function progressConflict(stored, form) {
   const storedPosition = String(stored?.locator || stored?.href || '')
   if (!form.has('baseLocator') || text(form, 'force') === 'true' || !storedPosition) return null
   if (storedPosition === text(form, 'baseLocator')) return null
+  if (storedPosition === (text(form, 'locator') || text(form, 'href'))) return null
   return {
     ok: false,
     conflict: true,

@@ -61,8 +61,10 @@
     const checksBasePosition = Object.prototype.hasOwnProperty.call(form, 'baseLocator')
     const baseLocator = String(form.baseLocator || '').trim()
     const forceSave = String(form.force || '') === 'true'
+    // 두 기기가 같은 자리에서 시작하면 기준 위치는 달라도 덮어쓸 내용이 같아, 묻지 않고 받아 줍니다.
+    const samePosition = storedPosition === (locator || href)
 
-    if (checksBasePosition && !forceSave && storedPosition && storedPosition !== baseLocator) {
+    if (checksBasePosition && !forceSave && storedPosition && storedPosition !== baseLocator && !samePosition) {
       info('api/books/save-progress:conflict', {
         userId: userId,
         bookId: bookId,
