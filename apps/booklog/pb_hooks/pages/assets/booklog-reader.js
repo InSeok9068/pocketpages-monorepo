@@ -2868,6 +2868,8 @@ window.booklogReaderLogic = (function () {
 
     component.positionConflictOpen = false
     component.loading = true
+    // 이동 중에 위치가 바뀌어 자동 저장이 먼저 나갈 수 있어, 그 저장도 서버 위치를 기준으로 보내도록 먼저 바꿉니다.
+    serverPositionKey = target
     stopLocalReadAloud(component)
     prepareManualNavigation()
 
@@ -2881,7 +2883,6 @@ window.booklogReaderLogic = (function () {
       })
       .then(function (location) {
         updateCurrentLocation(component, location || renditionInstance.currentLocation())
-        serverPositionKey = target
         pendingConflictPosition = null
         lastPersistedProgressKey = buildProgressKey(getCurrentProgressPayload(component))
         component.showSavePositionMessage('다른 기기에서 읽던 위치로 이동했습니다.')

@@ -22,6 +22,10 @@ function createEpubBookMetadataService(dependencies) {
   const MAX_METADATA_PAGE_FALLBACKS = 12
   const MAX_BOOK_SEARCH_DOCS = 100
   const BOOK_SEARCH_PAGE_SIZE = 25
+  // 실제 EPUB 44권은 후보가 많아야 2개(전자책·종이책 ISBN)였습니다. 판권에 ISBN이 많이 적힌 책에 대비한 상한입니다.
+  const MAX_ISBN_DETAIL_LOOKUPS = 5
+  // 도서 API가 한 번 응답하지 않으면 남은 조회도 같은 시간만큼 기다리므로, 이 서비스(요청 한 건)에서는 더 부르지 않습니다.
+  let lookupUnavailable = false
   const METADATA_ENTRY_PATH_PATTERN =
     /(rights|copyright|colophon|author|about|credit|imprint|title|cover|bookinfo|book_info|book-info)/i
   const ISBN_SCAN_ENTRY_PATTERN = /\.(opf|xml|ncx|xhtml|html|htm|txt)$/i
@@ -1535,14 +1539,25 @@ function createEpubBookMetadataService(dependencies) {
     let request = {}
     let raw = null
 
+    if (lookupUnavailable) {
+      throw new Error('도서 API가 응답하지 않아 검색을 건너뜁니다.')
+    }
+
     while (docs.length < MAX_BOOK_SEARCH_DOCS) {
-      const searchResult = data4libraryService.searchBooks(
-        { apiKey: apiKey },
-        Object.assign({}, searchQuery, {
-          pageNo: pageNo,
-          pageSize: BOOK_SEARCH_PAGE_SIZE,
-        })
-      )
+      let searchResult = null
+
+      try {
+        searchResult = data4libraryService.searchBooks(
+          { apiKey: apiKey },
+          Object.assign({}, searchQuery, {
+            pageNo: pageNo,
+            pageSize: BOOK_SEARCH_PAGE_SIZE,
+          })
+        )
+      } catch (exception) {
+        lookupUnavailable = true
+        throw exception
+      }
 
       if (!numFound) {
         numFound = searchResult.numFound
@@ -1747,6 +1762,11 @@ function createEpubBookMetadataService(dependencies) {
       return null
     }
 
+    if (lookupUnavailable) {
+      dbg(logPrefix + ':detail-by-isbn13:skipped', { isbn13: normalizedIsbn13 })
+      return null
+    }
+
     dbg(logPrefix + ':detail-by-isbn13:start', {
       isbn13: normalizedIsbn13,
     })
@@ -1766,6 +1786,7 @@ function createEpubBookMetadataService(dependencies) {
 
       return detailResult
     } catch (exception) {
+      lookupUnavailable = true
       warn(logPrefix + ':detail-by-isbn13:failed', {
         isbn13: normalizedIsbn13,
         error: String(exception && exception.message ? exception.message : exception),
@@ -1777,7 +1798,11 @@ function createEpubBookMetadataService(dependencies) {
   function loadBookDetailByIsbnCandidates(isbnCandidates) {
     const candidates = Array.isArray(isbnCandidates) ? isbnCandidates : []
 
-    for (let index = 0; index < candidates.length; index += 1) {
+    for (
+      let index = 0;
+      index < candidates.length && index < MAX_ISBN_DETAIL_LOOKUPS && !lookupUnavailable;
+      index += 1
+    ) {
       const candidate = candidates[index]
       const detailResult = loadBookDetailByIsbn13(candidate.isbn13)
 

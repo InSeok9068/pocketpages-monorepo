@@ -1,4 +1,4 @@
-/* global window, document */
+/* global window, document, indexedDB */
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -13,6 +13,7 @@ test.setTimeout(90_000)
 
 const CHAPTER_COUNT = 5
 const SEARCH_WORD = '은하수표지'
+const SAVE_FAILURE_MESSAGE = '서버에 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.'
 
 function xhtml(body) {
   return strToU8(
@@ -25,7 +26,12 @@ function xhtml(body) {
 function chapterBody(chapter) {
   const count = 40
   const paragraphs = Array.from({ length: count }, (_, index) => {
-    const extra = chapter === 3 && index === 19 ? ' 여기에 ' + SEARCH_WORD + '가 숨어 있습니다.' : ''
+    const extra =
+      chapter === 3 && index === 19
+        ? ' 여기에 ' + SEARCH_WORD + '가 숨어 있습니다.'
+        : chapter === 2 && index === 4
+          ? ' 본문에 적힌 &lt;img src=x onerror=&quot;window.__searchXss=1&quot;&gt; 표식입니다.'
+          : ''
     return (
       '<p>'
       + chapter
@@ -96,7 +102,15 @@ async function readForm(route) {
 }
 
 async function mockReader(page, book) {
-  const state = { bookmarks: [], highlights: [], requests: [] }
+  const state = {
+    bookmarks: [],
+    highlights: [],
+    requests: [],
+    epubDownloads: 0,
+    epubStatus: 200,
+    failures: new Set(),
+    serverPosition: null,
+  }
   await page.route(
     (url) => url.protocol === 'http:' || url.protocol === 'https:',
     async (route) => {
@@ -105,14 +119,38 @@ async function mockReader(page, book) {
         return route.fulfill({ path: fileURLToPath(new URL(url.pathname.slice(1), pagesRoot)) })
       }
       if (url.pathname === '/test.epub') {
+        state.epubDownloads += 1
+        if (state.epubStatus !== 200) return route.fulfill({ status: state.epubStatus, body: 'unavailable' })
         return route.fulfill({ body: Buffer.from(book), contentType: 'application/epub+zip' })
       }
       if (url.pathname === '/api/books/load-progress') {
-        return route.fulfill({ json: { ok: true, hasSavedPosition: false, locator: '', href: '' } })
+        const server = state.serverPosition
+        return route.fulfill({
+          json: server
+            ? { ok: true, hasSavedPosition: true, locator: server.locator, href: server.href }
+            : { ok: true, hasSavedPosition: false, locator: '', href: '' },
+        })
       }
       if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/xapi/')) {
         const form = route.request().method() === 'POST' ? await readForm(route) : new FormData()
         state.requests.push({ path: url.pathname, form: Object.fromEntries(form.entries()) })
+        if (state.failures.has(url.pathname)) {
+          return route.fulfill({ status: 500, json: { ok: false, message: SAVE_FAILURE_MESSAGE } })
+        }
+        if (url.pathname === '/api/books/save-progress') {
+          const server = state.serverPosition
+          if (server && form.get('force') !== 'true' && form.get('baseLocator') !== (server.locator || server.href)) {
+            state.requests.at(-1).status = 409
+            return route.fulfill({ status: 409, json: { ok: false, conflict: true, ...server } })
+          }
+          state.serverPosition = {
+            locator: form.get('locator'),
+            href: form.get('href'),
+            chapterLabel: form.get('chapterLabel'),
+          }
+          state.requests.at(-1).status = 200
+          return route.fulfill({ json: { ok: true } })
+        }
         if (url.pathname === '/api/books/list-bookmarks')
           return route.fulfill({ json: { ok: true, bookmarks: state.bookmarks } })
         if (url.pathname === '/api/books/save-bookmark') {
@@ -547,4 +585,166 @@ test('Center panels close when the dimmed area outside them is tapped, but not a
   await page.mouse.move(195, 16, { steps: 4 })
   await page.mouse.up()
   await expect(input, 'a drag that started inside keeps the panel open').toBeVisible()
+})
+
+async function waitUntilLoaded(page) {
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const root = document.querySelector('section[x-data]')
+        return !!(window.Alpine && root && !window.Alpine.$data(root).loading)
+      })
+    )
+    .toBe(true)
+  await page.waitForTimeout(500)
+}
+
+function countCachedBooks(page) {
+  return page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        const request = indexedDB.open('booklog-reader-cache')
+        request.onerror = () => resolve(0)
+        request.onsuccess = () => {
+          const db = request.result
+          if (!db.objectStoreNames.contains('epubBuffers')) {
+            db.close()
+            resolve(0)
+            return
+          }
+          const count = db.transaction('epubBuffers').objectStore('epubBuffers').count()
+          count.onsuccess = () => {
+            db.close()
+            resolve(count.result)
+          }
+          count.onerror = () => {
+            db.close()
+            resolve(0)
+          }
+        }
+      })
+  )
+}
+
+async function selectSecondParagraph(page) {
+  await page.frameLocator('#epub-reader iframe').first().locator('p').nth(1).click({ clickCount: 3 })
+  await expect(page.getByText('선택한 문구', { exact: true })).toBeVisible({ timeout: 10_000 })
+}
+
+test('Saved highlights are drawn again when the book is reopened', async ({ page }) => {
+  const state = await openReader(page)
+  await selectSecondParagraph(page)
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.locator('#epub-reader .booklog-saved-highlight')).toHaveCount(1)
+
+  const requestsBeforeReload = state.requests.length
+  await page.reload()
+  await waitUntilLoaded(page)
+
+  await expect(page.locator('#epub-reader .booklog-saved-highlight')).toHaveCount(1)
+  expect(
+    state.requests
+      .slice(requestsBeforeReload)
+      .some((request) => request.path === '/api/books/list-highlights' && request.form.annotationsOnly === 'true')
+  ).toBe(true)
+})
+
+test('A book opened once is read from the device cache next time instead of downloading again', async ({ page }) => {
+  const state = await openReader(page)
+  expect(state.epubDownloads).toBe(1)
+  await expect.poll(() => countCachedBooks(page)).toBeGreaterThan(0)
+
+  await page.reload()
+  await waitUntilLoaded(page)
+
+  await expectChapter(page, 1)
+  expect(state.epubDownloads, 'the second opening uses the stored copy').toBe(1)
+})
+
+test('Markup-like text found by search is shown as plain text and never runs', async ({ page }) => {
+  await openReader(page)
+  await openMenuItem(page, '검색')
+  const input = page.locator('#reader-search-input')
+  await input.fill('onerror')
+  await input.press('Enter')
+
+  const result = page.getByRole('button', { name: /onerror/ })
+  await expect(result).toBeVisible()
+  await expect(result).toContainText('<img src=x onerror=')
+  expect(await result.locator('img').count()).toBe(0)
+  expect(await page.evaluate(() => window.__searchXss)).toBeUndefined()
+})
+
+test('Choosing the other device’s place moves there and is not asked again', async ({ page }) => {
+  const state = await openReader(page)
+  const saves = () => state.requests.filter((request) => request.path === '/api/books/save-progress')
+  const prompt = page.getByText('다른 기기에서 읽은 위치가 있어요.')
+  state.serverPosition = { locator: '', href: 'c4.xhtml', chapterLabel: '4장' }
+
+  await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).saveCurrentPosition())
+  await expect(page.getByText('4장 위치로 이동할까요?')).toBeVisible()
+  await page.getByRole('button', { name: '그 위치로 이동' }).click()
+
+  await expectChapter(page, 4)
+  await expect(prompt).toBeHidden()
+  await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).saveCurrentPosition())
+  await expect.poll(() => saves().some((request) => /^epubcfi\(\/6\/8!/.test(request.form.locator))).toBe(true)
+  await page.waitForTimeout(1500)
+
+  const afterMove = saves().filter((request) => /^epubcfi\(\/6\/8!/.test(request.form.locator))
+  expect(afterMove.length).toBeGreaterThan(0)
+  expect(afterMove[0].form.baseLocator, 'the first save from the new place builds on the other device').toBe('c4.xhtml')
+  expect(afterMove.map((request) => request.status)).not.toContain(409)
+  expect(afterMove.every((request) => request.form.force !== 'true')).toBe(true)
+  expect(state.serverPosition.locator).toMatch(/^epubcfi\(\/6\/8!/)
+  await expect(prompt).toBeHidden()
+})
+
+test('Failed saves explain the problem and keep what the reader entered until a retry succeeds', async ({ page }) => {
+  const state = await openReader(page)
+  state.failures = new Set(['/api/books/save-bookmark', '/api/books/save-highlight'])
+
+  await openMenuItem(page, '책갈피')
+  await page.getByRole('button', { name: '현재 위치 저장' }).click()
+  await expect(page.locator('p:visible', { hasText: SAVE_FAILURE_MESSAGE })).toHaveCount(1)
+  await expect(page.getByText('아직 저장한 책갈피가 없습니다.')).toBeVisible()
+  await expect(page.getByRole('button', { name: '현재 위치 저장' })).toBeEnabled()
+  await page.getByRole('button', { name: '책갈피 닫기' }).click()
+
+  await openMenuItem(page, '문구')
+  await page.getByRole('button', { name: '문구 추가', exact: true }).click()
+  await page.locator('#reader-highlight-quote').fill('남겨 둘 문장')
+  await page.getByRole('button', { name: '문구 저장' }).click()
+  await expect(page.locator('p:visible', { hasText: SAVE_FAILURE_MESSAGE })).toHaveCount(1)
+  await expect(page.locator('#reader-highlight-quote'), 'typed text survives a failed save').toHaveValue('남겨 둘 문장')
+  await page.getByRole('button', { name: '문구 추가 닫기' }).click()
+
+  await selectSecondParagraph(page)
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.locator('p:visible', { hasText: SAVE_FAILURE_MESSAGE })).toHaveCount(1)
+  await expect(page.getByText('선택한 문구', { exact: true })).toBeVisible()
+  await expect(page.locator('#epub-reader .booklog-saved-highlight')).toHaveCount(0)
+
+  state.failures.clear()
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByText('선택한 문구', { exact: true })).toBeHidden()
+  await expect(page.locator('#epub-reader .booklog-saved-highlight')).toHaveCount(1)
+})
+
+test('A failed reading-position save tells the reader instead of failing silently', async ({ page }) => {
+  const state = await openReader(page)
+  state.failures = new Set(['/api/books/save-progress'])
+
+  await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).saveCurrentPosition())
+  await expect(page.getByText(SAVE_FAILURE_MESSAGE)).toBeVisible()
+})
+
+test('When the book file cannot be downloaded, the reader says so instead of loading forever', async ({ page }) => {
+  const state = await mockReader(page, featureBook)
+  state.epubStatus = 503
+  await page.goto('/books/book/read')
+
+  await expect(page.getByText(/EPUB 파일 응답이 올바르지 않습니다/)).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('EPUB 파일을 불러오는 중입니다.')).toBeHidden()
+  expect(state.epubDownloads).toBe(1)
 })

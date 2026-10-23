@@ -1,5 +1,5 @@
 const RETENTION_DAYS = 30
-const BATCH_LIMIT = 1000
+const GROUP_LIMIT = 300
 const { dateutil } = require('@pocketpages/utils')
 
 /**
@@ -83,22 +83,32 @@ function setOptionalNumber(record, fieldName, value) {
 }
 
 /**
- * 오래된 독서 세션 후보를 조회합니다.
+ * 아직 합칠 세션이 남은 날짜 그룹의 오래된 독서 세션을 조회합니다.
  *
  * @param {string} cutoffIso 보존 기한
  * @returns {Array<any>} 독서 세션 후보
  */
 function findMergeCandidateRecords(cutoffIso) {
-  return $app.findRecordsByFilter(
-    'reading_sessions',
-    'ended_at != "" && ended_at < {:cutoffIso}',
-    'user_id,book_id,file_id,ended_at,created',
-    BATCH_LIMIT,
-    0,
-    {
-      cutoffIso: cutoffIso,
-    }
-  )
+  // 이미 합쳐진 하루 1건짜리 세션까지 읽으면 그것만으로 한도가 차 뒤쪽 세션이 영영 처리되지 않으므로,
+  // 합칠 그룹을 먼저 고릅니다. 날짜 기준(+9시간)과 건너뛰는 조건은 groupSessionRecords·mergeSessionGroup과 같습니다.
+  const rows = arrayOf(new DynamicModel({ id: '' }))
+  $app
+    .db()
+    .newQuery(
+      "SELECT id FROM reading_sessions WHERE ended_at != '' AND ended_at < {:cutoffIso}"
+        + " AND (user_id, book_id, file_id, date(ended_at, '+9 hours')) IN ("
+        + "SELECT user_id, book_id, file_id, date(ended_at, '+9 hours') FROM reading_sessions"
+        + " WHERE ended_at != '' AND ended_at < {:cutoffIso} AND user_id != '' AND book_id != ''"
+        + ' GROUP BY 1, 2, 3, 4'
+        + ' HAVING count(*) > 1 AND sum(CASE WHEN duration_seconds > 0 THEN duration_seconds ELSE 0 END) >= 1'
+        + ' LIMIT {:groupLimit})'
+    )
+    .bind({ cutoffIso: cutoffIso, groupLimit: GROUP_LIMIT })
+    .all(rows)
+  const ids = rows.map(function (row) {
+    return String(row.id)
+  })
+  return ids.length ? $app.findRecordsByIds('reading_sessions', ids) : []
 }
 
 /**

@@ -10,20 +10,24 @@ const require = createRequire(new URL('../package.json', import.meta.url))
 const testRequire = createRequire(import.meta.url)
 globalThis.__hooks = serviceRoot + 'pb_hooks'
 
-function createService() {
+function createService(options = {}) {
   const context = { module: { exports: {} }, require, __hooks: serviceRoot + 'pb_hooks' }
   vm.runInNewContext(
     readFileSync(new URL('../pb_hooks/pages/_private/epub-book-metadata-service.js', import.meta.url), 'utf8'),
     context
   )
   const detailRequests = []
+  const searchRequests = []
   const service = context.module.exports.create({
     data4libraryService: {
-      searchBooks() {
+      searchBooks(_config, query) {
+        searchRequests.push(query)
+        if (options.unavailable) throw new Error('context deadline exceeded')
         return { numFound: 0, docs: [], raw: {} }
       },
       getBookDetail(_config, input) {
         detailRequests.push(input.isbn13)
+        if (options.unavailable) throw new Error('context deadline exceeded')
         return { book: null }
       },
     },
@@ -33,7 +37,7 @@ function createService() {
     warn() {},
     apiKey: 'test',
   })
-  return { service, detailRequests }
+  return { service, detailRequests, searchRequests }
 }
 
 function parseOpf(service, metadataXml) {
@@ -125,6 +129,55 @@ test('ISBN candidates with a wrong check digit or placeholder digits are ignored
     'book.epub'
   )
   assert.deepEqual(detailRequests, ['9791161571195'])
+})
+
+function lookupWithIsbnPage(service, isbns) {
+  const metadata = parseOpf(service, '<dc:title>광고가 많은 책</dc:title><dc:creator>저자</dc:creator>')
+  const entries = {
+    'OPS/copyright.xhtml': new TextEncoder().encode(
+      '<html><body>'
+        + isbns
+          .map(function (isbn) {
+            return '<p>ISBN ' + isbn + '</p>'
+          })
+          .join('')
+        + '</body></html>'
+    ),
+  }
+  return service.resolveBookLookup(
+    metadata,
+    entries,
+    [{ id: 'c', href: 'copyright.xhtml', mediaType: 'application/xhtml+xml' }],
+    'OPS/book.opf',
+    Object.keys(entries),
+    'book.epub'
+  )
+}
+
+const MANY_ISBNS = [
+  '9788960001008',
+  '9788960001015',
+  '9788960001022',
+  '9788960001039',
+  '9788960001046',
+  '9788960001053',
+  '9788960001060',
+]
+
+test('Only the first five ISBN candidates are looked up', () => {
+  const { service, detailRequests } = createService()
+  lookupWithIsbnPage(service, MANY_ISBNS)
+  assert.equal(detailRequests.length, 5)
+})
+
+test('Once the book API times out, remaining ISBN lookups and title searches are skipped', () => {
+  const { service, detailRequests, searchRequests } = createService({ unavailable: true })
+  const lookup = lookupWithIsbnPage(service, MANY_ISBNS)
+  assert.equal(detailRequests.length, 1, 'one timeout is enough to stop waiting on the API')
+  assert.equal(searchRequests.length, 0)
+  assert.equal(lookup.detailResult, null)
+  assert.equal(service.loadBookDetailByIsbn13('9788960001008'), null)
+  assert.equal(detailRequests.length, 1)
 })
 
 test('A data4library network error never carries the API key', () => {
