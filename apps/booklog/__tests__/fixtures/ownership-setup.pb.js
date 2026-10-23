@@ -233,6 +233,11 @@ routerAdd('GET', '/_test/ownership-state', function (event) {
     settings: {
       owner: settingsOf('owneruser000001'),
       stranger: settingsOf('stranger0000001'),
+      ownerWeeklyNudge: $app
+        .findRecordsByFilter('user_settings', 'user_id = {:userId}', '', 0, 0, { userId: 'owneruser000001' })
+        .map(function (record) {
+          return record.get('weekly_reading_nudge_enabled')
+        }),
     },
     users: $app.findRecordsByFilter('users', "email ~ 'signup'", '', 0, 0).map(function (user) {
       return {

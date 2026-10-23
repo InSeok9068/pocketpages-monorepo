@@ -60,6 +60,37 @@ onBootstrap(function (event) {
   $app.save(finishedShelf)
 })
 
+// 이전 버전에서 저장된 '푸시만 켜고 알림 종류는 모두 꺼진' 상태처럼, 화면을 거치지 않은 설정을 만듭니다.
+routerAdd('POST', '/_test/settings', function (event) {
+  const query = event.request.url.query()
+  let record = $app.findRecordsByFilter('user_settings', 'user_id = {:userId}', '', 1, 0, {
+    userId: 'user00000000001',
+  })[0]
+  if (!record) {
+    record = new Record($app.findCollectionByNameOrId('user_settings'))
+    record.set('user_id', 'user00000000001')
+    record.set('preferred_view_mode', 'scrolled')
+  }
+  record.set('push_enabled', String(query.get('push')) === 'true')
+  record.set('reading_reminder_cycle', Number(query.get('reading') || 0) || null)
+  record.set('highlight_push_cycle', Number(query.get('highlight') || 0) || null)
+  record.set('weekly_reading_nudge_enabled', String(query.get('weekly')) === 'true')
+  $app.save(record)
+  return event.json(200, { ok: true })
+})
+
+routerAdd('GET', '/_test/settings', function (event) {
+  const record = $app.findRecordsByFilter('user_settings', 'user_id = {:userId}', '', 1, 0, {
+    userId: 'user00000000001',
+  })[0]
+  return event.json(200, {
+    push: !!record.get('push_enabled'),
+    reading: record.get('reading_reminder_cycle'),
+    highlight: record.get('highlight_push_cycle'),
+    weekly: !!record.get('weekly_reading_nudge_enabled'),
+  })
+})
+
 routerAdd('POST', '/_test/popular-books-job', function (event) {
   return event.json(200, require(__hooks + '/jobs/popular-books-job.js').run())
 })

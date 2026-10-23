@@ -182,6 +182,9 @@ async function mockReader(page, book) {
           })
           return route.fulfill({ json: { ok: true, message: '인상 깊은 문구를 저장했습니다.' } })
         }
+        if (url.pathname === '/api/books/save-reading-session') {
+          return route.fulfill({ json: { ok: true, id: form.get('sessionId') } })
+        }
         return route.fulfill({ json: { ok: true, id: 'session00000001' } })
       }
       return route.fulfill({
@@ -748,3 +751,147 @@ test('When the book file cannot be downloaded, the reader says so instead of loa
   await expect(page.getByText('EPUB 파일을 불러오는 중입니다.')).toBeHidden()
   expect(state.epubDownloads).toBe(1)
 })
+
+const DAY_MS = 86_400_000
+
+// 리더의 독서 시간 계산은 Date.now()만 쓰므로, 그 값만 앞당겨 하루가 지난 상황을 만듭니다.
+async function openReaderWithMovableClock(page) {
+  await page.addInitScript(() => {
+    const realNow = Date.now
+    window.__clockShiftMs = 0
+    Date.now = () => realNow.call(Date) + window.__clockShiftMs
+  })
+  return openReader(page)
+}
+
+function passTime(page, ms) {
+  return page.evaluate((ms) => {
+    window.__clockShiftMs += ms
+  }, ms)
+}
+
+function touchReader(page) {
+  return page.evaluate(() => window.dispatchEvent(new Event('pointerdown')))
+}
+
+function setScreen(page, visibility) {
+  return page.evaluate((visibility) => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => visibility === 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+  }, visibility)
+}
+
+function setReaderState(page, field, value) {
+  return page.evaluate(
+    ([field, value]) => {
+      window.Alpine.$data(document.querySelector('section[x-data]'))[field] = value
+    },
+    [field, value]
+  )
+}
+
+function sessionSaves(state) {
+  return state.requests
+    .filter((request) => request.path === '/api/books/save-reading-session')
+    .map((request) => ({
+      id: request.form.sessionId,
+      seconds: Number(request.form.durationSeconds),
+      startedAt: Date.parse(request.form.startedAt),
+      endedAt: Date.parse(request.form.endedAt),
+    }))
+}
+
+function lastSaveOf(state, id) {
+  return sessionSaves(state)
+    .filter((save) => save.id === id)
+    .at(-1)
+}
+
+async function waitForSave(state, matches) {
+  await expect.poll(() => sessionSaves(state).some(matches), { timeout: 10_000 }).toBe(true)
+  return sessionSaves(state).filter(matches).at(-1)
+}
+
+test('Coming back to an open reader the next day starts a new reading record for that day', async ({ page }) => {
+  const state = await openReaderWithMovableClock(page)
+
+  await passTime(page, 100_000)
+  await touchReader(page)
+  await setScreen(page, 'hidden')
+  const monday = await waitForSave(state, (save) => save.seconds >= 100)
+  await page.waitForTimeout(300)
+
+  await passTime(page, DAY_MS)
+  await setScreen(page, 'visible')
+  await passTime(page, 50_000)
+  await touchReader(page)
+  await setScreen(page, 'hidden')
+  const tuesday = await waitForSave(state, (save) => save.id !== monday.id && save.seconds >= 50)
+
+  expect(monday.seconds).toBeLessThan(110)
+  expect(tuesday.seconds).toBeLessThan(60)
+  expect(tuesday.startedAt - monday.endedAt).toBeGreaterThanOrEqual(DAY_MS)
+  expect(lastSaveOf(state, monday.id), 'the previous day is not touched again').toEqual(monday)
+})
+
+test('A reader left on screen ends the old record at the last reading moment and starts anew on the next touch', async ({
+  page,
+}) => {
+  const state = await openReaderWithMovableClock(page)
+
+  await passTime(page, 60_000)
+  await touchReader(page)
+  await passTime(page, DAY_MS)
+  await touchReader(page)
+  const earlier = await waitForSave(state, (save) => save.seconds >= 200)
+
+  // 마지막 손길 뒤 3분까지만 읽은 것으로 보고, 하루 동안 켜 둔 시간은 세지 않습니다.
+  expect(earlier.seconds).toBeLessThan(250)
+  expect(earlier.endedAt - earlier.startedAt).toBeGreaterThanOrEqual(240_000)
+  expect(earlier.endedAt - earlier.startedAt).toBeLessThan(250_000)
+
+  await passTime(page, 30_000)
+  await touchReader(page)
+  await setScreen(page, 'hidden')
+  const next = await waitForSave(state, (save) => save.id !== earlier.id && save.seconds >= 30)
+
+  expect(next.seconds).toBeLessThan(40)
+  expect(next.startedAt - earlier.endedAt).toBeGreaterThan(DAY_MS - 300_000)
+})
+
+for (const [field, player] of [
+  ['cloudAudioActive', 'AI audiobook'],
+  ['readAloudPlaying', 'device voice'],
+]) {
+  test(`Listening to the ${player} with the screen off counts as reading time until playback stops`, async ({
+    page,
+  }) => {
+    const errors = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    const state = await openReaderWithMovableClock(page)
+
+    await setReaderState(page, field, true)
+    await setScreen(page, 'hidden')
+    await passTime(page, 20 * 60_000)
+    await setReaderState(page, field, false)
+    const listened = await waitForSave(state, (save) => save.seconds >= 1200)
+
+    expect(listened.seconds).toBeLessThan(1215)
+    expect(listened.endedAt - listened.startedAt).toBeGreaterThanOrEqual(1_200_000)
+
+    await page.waitForTimeout(300)
+    await passTime(page, 10 * 60_000)
+    await setScreen(page, 'visible')
+    await passTime(page, 5_000)
+    await touchReader(page)
+    await setScreen(page, 'hidden')
+    const after = await waitForSave(state, (save) => save.id !== listened.id && save.seconds >= 5)
+
+    expect(after.seconds).toBeLessThan(15)
+    expect(lastSaveOf(state, listened.id).seconds, 'the silent break after listening is not counted').toBeLessThan(
+      1215
+    )
+    expect(errors).toEqual([])
+  })
+}

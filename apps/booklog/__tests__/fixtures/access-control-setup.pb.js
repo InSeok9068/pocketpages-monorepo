@@ -57,6 +57,13 @@ onBootstrap(function (event) {
     metadata_json: { source: 'original' },
   })
   saveRecord('books', { id: 'blankbook000001', title: '빈칸 책', isbn13: '9791100000021' })
+  saveRecord('books', {
+    id: 'isbnowner000001',
+    title: '먼저 등록된 같은 ISBN 책',
+    author: '먼저 올린 저자',
+    isbn13: '9791100000083',
+    metadata_json: { source: 'first' },
+  })
   for (let index = 1; index <= 2; index += 1) {
     const fileId = 'adminfile00000' + index
     saveRecord('book_files', {
@@ -178,9 +185,40 @@ routerAdd('GET', '/_test/access-state', function (event) {
     readingSessions: $app
       .findRecordsByFilter('reading_sessions', 'user_id = {:userId}', '', 0, 0, { userId: 'reviewuser00001' })
       .map(function (session) {
-        return { id: session.id, durationSeconds: session.get('duration_seconds') }
+        return {
+          id: session.id,
+          durationSeconds: session.get('duration_seconds'),
+          endedAt: String(session.get('ended_at')),
+          endLocator: session.get('end_locator'),
+        }
       }),
+    reviews: $app
+      .findRecordsByFilter('book_reviews', 'user_id = {:userId} && book_id = {:bookId}', '', 0, 0, {
+        userId: 'reviewuser00001',
+        bookId: 'reviewbook00001',
+      })
+      .map(function (review) {
+        return review.get('review_text')
+      }),
+    lastReadAt: String(
+      $app
+        .findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+          userId: 'reviewuser00001',
+          bookId: 'reviewbook00001',
+        })
+        .get('last_read_at')
+    ),
   })
+})
+
+routerAdd('POST', '/_test/shelf-last-read', function (event) {
+  const shelf = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+    userId: 'reviewuser00001',
+    bookId: 'reviewbook00001',
+  })
+  shelf.set('last_read_at', String(event.request.url.query().get('at')))
+  $app.save(shelf)
+  return event.json(200, { ok: true })
 })
 
 onRecordCreate(function (event) {
@@ -189,6 +227,30 @@ onRecordCreate(function (event) {
   }
   event.next()
 }, 'book_shelves')
+
+// 두 번 누른 저장 중 다른 요청이 같은 감상평을 방금 만든 순간을 그대로 재현합니다.
+onRecordCreate(function (event) {
+  if ($app.store().get('raceReviewCreate') === true) {
+    $app.store().set('raceReviewCreate', false)
+    const other = new Record($app.findCollectionByNameOrId('book_reviews'))
+    other.set('user_id', event.record.get('user_id'))
+    other.set('book_id', event.record.get('book_id'))
+    other.set('visibility', 'private')
+    other.set('review_text', '먼저 도착한 감상')
+    $app.save(other)
+  }
+  event.next()
+}, 'book_reviews')
+
+routerAdd('POST', '/_test/race-review-create', function (event) {
+  $app.store().set('raceReviewCreate', true)
+  return event.json(200, { ok: true })
+})
+
+routerAdd('POST', '/_test/refresh-match', function (event) {
+  $app.store().set('refreshMatch', String(event.request.url.query().get('on')) === 'true')
+  return event.json(200, { ok: true })
+})
 
 routerAdd('POST', '/_test/fail-shelf-save', function (event) {
   $app.store().set('failShelfSave', String(event.request.url.query().get('on')) === 'true')
@@ -223,7 +285,9 @@ routerAdd('GET', '/_test/book', function (event) {
   const query = event.request.url.query()
   const book = query.get('id')
     ? $app.findRecordById('books', String(query.get('id')))
-    : $app.findFirstRecordByFilter('books', 'isbn13 = {:isbn13}', { isbn13: String(query.get('isbn13')) })
+    : query.get('title')
+      ? $app.findFirstRecordByFilter('books', 'title = {:title}', { title: String(query.get('title')) })
+      : $app.findFirstRecordByFilter('books', 'isbn13 = {:isbn13}', { isbn13: String(query.get('isbn13')) })
   const fields = {}
   ;['title', 'author', 'publisher', 'isbn13', 'book_image_url', 'description', 'estimated_page_count'].forEach(
     function (field) {

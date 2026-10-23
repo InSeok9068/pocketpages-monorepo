@@ -1,3 +1,4 @@
+/* global window, document */
 import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
 import {
@@ -342,4 +343,71 @@ test('The early-morning job refreshes the lists inside PocketBase and the page t
 
   const steady = await html('/xapi/popular-list?tab=steady')
   assert.match(steady('#popular-list').text(), /지금은 목록을 불러오지 못했어요/)
+})
+
+test('Push settings still save when the push service is blocked, and push turned on gets reminders that actually send', async () => {
+  browser = browser || (await chromium.launch({ channel: 'chrome', headless: true }))
+  const context = await browser.newContext()
+  // 광고 차단기처럼 OneSignal CDN을 막은 상태입니다.
+  await context.route('https://**/*', (route) => route.abort())
+  await context.addCookies(
+    cookie.split('; ').map((entry) => {
+      const separator = entry.indexOf('=')
+      return { name: entry.slice(0, separator), value: entry.slice(separator + 1), url: service.baseUrl }
+    })
+  )
+  const page = await context.newPage()
+  page.setDefaultTimeout(10000)
+  const errors = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const saved = async () => (await fetch(service.baseUrl + '/_test/settings')).json()
+  const reading = page.locator('#reading-reminder-cycle-input')
+  const highlight = page.locator('#highlight-push-cycle-input')
+  const weekly = page.locator('#weekly-reading-nudge-input')
+  const push = page.locator('#push-enabled-input')
+  const notice = page.locator('#push-notice')
+  async function submit() {
+    await page.evaluate(() => {
+      window.__beforeSave = true
+    })
+    await page.getByRole('button', { name: '설정 저장' }).click()
+    await page.waitForFunction(() => !window.__beforeSave && document.readyState === 'complete')
+    assert.match(await page.locator('main').innerText(), /설정을 저장했습니다/)
+  }
+
+  assert.equal((await fetch(service.baseUrl + '/_test/settings?push=true', { method: 'POST' })).status, 200)
+  await page.goto(service.baseUrl + '/settings')
+  assert.equal(await reading.inputValue(), '3')
+  assert.equal(await highlight.inputValue(), '7')
+  assert.equal(await weekly.isChecked(), true)
+  assert.match(await notice.innerText(), /알림이 모두 꺼져 있어 알림이 오지 않았습니다/)
+  await submit()
+  assert.deepEqual(await saved(), { push: true, reading: 3, highlight: 7, weekly: true })
+
+  // 이 기기는 구독되지 않았고 SDK도 막혔지만, 다른 설정만 바꾸는 저장은 막지 않습니다.
+  await reading.fill('10')
+  await submit()
+  assert.equal((await saved()).reading, 10)
+
+  await page.getByText('푸시 알림 사용', { exact: true }).click()
+  assert.equal(await push.isChecked(), false)
+  await submit()
+  assert.equal((await saved()).push, false, 'push can be turned off without the push service')
+
+  await reading.fill('')
+  await highlight.fill('')
+  await page.getByText('주간 독서 리마인더', { exact: true }).click()
+  assert.equal(await weekly.isChecked(), false)
+  await page.getByText('푸시 알림 사용', { exact: true }).click()
+  assert.equal(await reading.inputValue(), '3', 'turning push on fills reminders that will send')
+  assert.equal(await highlight.inputValue(), '7')
+  assert.equal(await weekly.isChecked(), true)
+  assert.match(await notice.innerText(), /기본 알림 주기를 채웠습니다/)
+
+  // 이 기기에서 새로 켤 때는 실제 구독이 필요하므로, 구독할 수 없으면 이유를 알리고 저장하지 않습니다.
+  await page.getByRole('button', { name: '설정 저장' }).click()
+  await page.getByText('푸시 설정을 불러오지 못했습니다').waitFor({ timeout: 8000 })
+  assert.equal((await saved()).push, false)
+  assert.deepEqual(errors, [])
+  await context.close()
 })

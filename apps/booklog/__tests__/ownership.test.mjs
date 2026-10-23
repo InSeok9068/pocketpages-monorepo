@@ -171,6 +171,35 @@ test('Saving settings changes only the signed-in reader’s settings and rejects
   ])
 })
 
+test('Turning push on with every reminder left empty saves default reminders so notifications actually arrive', async () => {
+  const saved = await post('/xapi/settings/save', owner, {
+    pushEnabled: 'true',
+    readingReminderCycle: '',
+    highlightPushCycle: '',
+  })
+  assert.match(saved, /기본 알림 주기를 적용했습니다/)
+  let current = (await state()).settings
+  assert.deepEqual(current.owner, [{ pushEnabled: true, readingReminderCycle: 3, highlightPushCycle: 7 }])
+  assert.deepEqual(current.ownerWeeklyNudge, [true])
+
+  // 하나라도 고른 알림이 있으면 사용자가 정한 값을 그대로 둡니다.
+  const chosen = await post('/xapi/settings/save', owner, {
+    pushEnabled: 'true',
+    readingReminderCycle: '',
+    highlightPushCycle: '',
+    weeklyReadingNudgeEnabled: 'true',
+  })
+  assert.doesNotMatch(chosen, /기본 알림 주기/)
+  current = (await state()).settings
+  assert.deepEqual(current.owner, [{ pushEnabled: true, readingReminderCycle: 0, highlightPushCycle: 0 }])
+  assert.deepEqual(current.ownerWeeklyNudge, [true])
+
+  await post('/xapi/settings/save', owner, { pushEnabled: '', readingReminderCycle: '', highlightPushCycle: '' })
+  current = (await state()).settings
+  assert.deepEqual(current.owner, [{ pushEnabled: false, readingReminderCycle: 0, highlightPushCycle: 0 }])
+  assert.deepEqual(current.ownerWeeklyNudge, [false])
+})
+
 test('A stranger who shelves the same book cannot change or delete the owner’s records', async () => {
   const shared = { bookId, highlightId: 'ownerquote00001' }
 

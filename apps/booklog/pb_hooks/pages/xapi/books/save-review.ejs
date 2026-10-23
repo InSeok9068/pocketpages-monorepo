@@ -58,28 +58,42 @@
 
     if (!shelfRecord) throw new Error('내 도서함에 있는 책만 감상평을 남길 수 있습니다.')
 
-    try {
-      reviewRecord = $app.findFirstRecordByFilter('book_reviews', 'user_id = {:userId} && book_id = {:bookId}', {
-        userId: userId,
-        bookId: bookId,
-      })
-    } catch (exception) {
-      reviewRecord = null
+    function findReview() {
+      try {
+        return $app.findFirstRecordByFilter('book_reviews', 'user_id = {:userId} && book_id = {:bookId}', {
+          userId: userId,
+          bookId: bookId,
+        })
+      } catch (exception) {
+        return null
+      }
     }
 
-    if (!reviewRecord) {
-      const collection = $app.findCollectionByNameOrId('book_reviews')
-      reviewRecord = new Record(collection)
+    function writeReview(record) {
+      record.set('user_id', userId)
+      record.set('book_id', String(bookRecord.get('id') || ''))
+      record.set('visibility', 'private')
+      record.set('review_text', reviewText)
+      record.set('reviewed_at', nowIso)
+      record.set('shelf_id', String(shelfRecord.get('id') || ''))
+      $app.save(record)
     }
 
-    reviewRecord.set('user_id', userId)
-    reviewRecord.set('book_id', String(bookRecord.get('id') || ''))
-    reviewRecord.set('visibility', 'private')
-    reviewRecord.set('review_text', reviewText)
-    reviewRecord.set('reviewed_at', nowIso)
-    reviewRecord.set('shelf_id', String(shelfRecord.get('id') || ''))
+    reviewRecord = findReview()
 
-    $app.save(reviewRecord)
+    if (reviewRecord) {
+      writeReview(reviewRecord)
+    } else {
+      try {
+        writeReview(new Record($app.findCollectionByNameOrId('book_reviews')))
+      } catch (saveException) {
+        // 두 번 누른 저장 중 다른 요청이 먼저 만들었으면, 유니크 충돌 대신 그 감상평을 갱신합니다.
+        reviewRecord = findReview()
+        if (!reviewRecord) throw saveException
+        info('xapi/books/save-review:concurrent-create', { userId: userId, bookId: bookId })
+        writeReview(reviewRecord)
+      }
+    }
 
     dbg('xapi/books/save-review:redirect', {
       status: 303,

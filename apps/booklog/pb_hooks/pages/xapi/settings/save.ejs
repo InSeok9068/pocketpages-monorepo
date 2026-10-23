@@ -1,4 +1,7 @@
 <script server>
+  const DEFAULT_READING_REMINDER_CYCLE = 3
+  const DEFAULT_HIGHLIGHT_PUSH_CYCLE = 7
+
   if (request.method !== 'POST') {
     dbg('xapi/settings/save:redirect', {
       status: 303,
@@ -29,10 +32,25 @@
   const userId = String(request.auth.get('id') || '')
   const readingReminderCycleRaw = String(form.readingReminderCycle || '').trim()
   const highlightPushCycleRaw = String(form.highlightPushCycle || '').trim()
-  const readingReminderCycle = readingReminderCycleRaw ? Number(readingReminderCycleRaw) : null
-  const highlightPushCycle = highlightPushCycleRaw ? Number(highlightPushCycleRaw) : null
   const pushEnabled = String(form.pushEnabled || '').trim() === 'true'
-  const weeklyReadingNudgeEnabled = String(form.weeklyReadingNudgeEnabled || '').trim() === 'true'
+  // 푸시를 켰는데 받을 알림이 하나도 없으면 아무 알림도 오지 않으므로 기본 주기를 넣습니다.
+  const usesDefaultReminders =
+    pushEnabled
+    && !readingReminderCycleRaw
+    && !highlightPushCycleRaw
+    && String(form.weeklyReadingNudgeEnabled || '').trim() !== 'true'
+  const readingReminderCycle = usesDefaultReminders
+    ? DEFAULT_READING_REMINDER_CYCLE
+    : readingReminderCycleRaw
+      ? Number(readingReminderCycleRaw)
+      : null
+  const highlightPushCycle = usesDefaultReminders
+    ? DEFAULT_HIGHLIGHT_PUSH_CYCLE
+    : highlightPushCycleRaw
+      ? Number(highlightPushCycleRaw)
+      : null
+  const weeklyReadingNudgeEnabled =
+    usesDefaultReminders || String(form.weeklyReadingNudgeEnabled || '').trim() === 'true'
   const maxReminderCycleDays = 90
   let errorMessage = ''
 
@@ -42,6 +60,7 @@
     highlightPushCycle: highlightPushCycle,
     pushEnabled: pushEnabled,
     weeklyReadingNudgeEnabled: weeklyReadingNudgeEnabled,
+    usesDefaultReminders: usesDefaultReminders,
   })
 
   try {
@@ -94,14 +113,18 @@
 
     $app.save(settingsRecord)
 
+    const savedMessage = usesDefaultReminders
+      ? '설정을 저장했습니다. 받을 알림이 비어 있어 기본 알림 주기를 적용했습니다.'
+      : '설정을 저장했습니다.'
+
     dbg('xapi/settings/save:redirect', {
       status: 303,
       redirectTo: '/settings',
-      message: '설정을 저장했습니다.',
+      message: savedMessage,
     })
     redirect('/settings', {
       status: 303,
-      message: '설정을 저장했습니다.',
+      message: savedMessage,
     })
     return
   } catch (exception) {

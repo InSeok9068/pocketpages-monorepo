@@ -38,7 +38,31 @@ before(async () => {
   // 외부 도서 검색만 고정하고 업로드·EPUB 파싱·DB 저장은 실제 코드로 검증합니다.
   writeFileSync(
     path.join(fixtureDir, 'pb_hooks/pages/_private/data4library-service.js'),
-    'module.exports = { searchBooks: function (config, query) { if (JSON.stringify(query).indexOf("검색장애") >= 0) throw new Error("도서관정보나루 API 요청에 실패했습니다. timeout"); return { numFound: 0, docs: [], raw: {} } }, getBookDetail: function () { return { book: null } } }'
+    `const refreshBook = {
+      bookname: '재분석 충돌 책',
+      authors: '충돌 저자',
+      publisher: '재분석 출판사',
+      publication_year: '2024',
+      isbn13: '9791100000083',
+      bookImageURL: 'https://example.com/refresh.jpg',
+      description: '도서관정보나루 소개',
+    }
+    module.exports = {
+      searchBooks: function (config, query) {
+        const text = JSON.stringify(query)
+        if (text.indexOf('검색장애') >= 0) throw new Error('도서관정보나루 API 요청에 실패했습니다. timeout')
+        if (text.indexOf('재분석 충돌') >= 0 && $app.store().get('refreshMatch') === true) {
+          return { numFound: 1, docs: [refreshBook], raw: {} }
+        }
+        return { numFound: 0, docs: [], raw: {} }
+      },
+      getBookDetail: function (config, query) {
+        if (query && query.isbn13 === refreshBook.isbn13 && $app.store().get('refreshMatch') === true) {
+          return { book: refreshBook, raw: { source: 'refresh' } }
+        }
+        return { book: null }
+      },
+    }`
   )
   const configPath = path.join(fixtureDir, 'pb_hooks/pages/+config.js')
   writeFileSync(
@@ -449,6 +473,85 @@ test('Saves sent together while closing the reader keep one reading session', as
   assert.equal(sessions.find((session) => session.id === sessionId).durationSeconds, 42)
 })
 
+test('A save that arrives late with less reading time does not shrink the reading session', async () => {
+  const sessionId = 'latesession0001'
+  const now = new Date().toISOString()
+  const save = (durationSeconds, endLocator) =>
+    request('/api/books/save-reading-session', 1, {
+      bookId,
+      sessionId,
+      startedAt: now,
+      endedAt: now,
+      durationSeconds,
+      endLocator,
+    })
+
+  assert.equal((await save('120', 'later-place')).status, 200)
+  const late = await save('60', 'earlier-place')
+  assert.equal(late.status, 200)
+  assert.equal((await late.json()).id, sessionId)
+
+  const session = (await (await request('/_test/access-state')).json()).readingSessions.find(
+    (item) => item.id === sessionId
+  )
+  assert.equal(session.durationSeconds, 120)
+  assert.equal(session.endLocator, 'later-place')
+})
+
+test('Pressing save on a review several times at once keeps one review with the latest text', async () => {
+  assert.equal((await request('/_test/race-review-create', 1, {})).status, 200)
+  const raced = await request('/xapi/books/save-review', 1, { bookId, reviewText: '나중에 도착한 감상' })
+  assert.equal(raced.status, 303)
+  assert.match(decodeURIComponent(raced.headers.get('location') || ''), /감상평을 저장했습니다/)
+  assert.deepEqual(
+    (await (await request('/_test/access-state')).json()).reviews,
+    ['나중에 도착한 감상'],
+    'the save that lost the race updates the review the other save just created'
+  )
+
+  const texts = ['첫 감상', '둘째 감상', '셋째 감상', '넷째 감상', '다섯째 감상', '여섯째 감상']
+  const responses = await Promise.all(
+    texts.map((reviewText) => request('/xapi/books/save-review', 1, { bookId, reviewText }))
+  )
+  for (const response of responses) {
+    assert.equal(response.status, 303)
+    assert.match(decodeURIComponent(response.headers.get('location') || ''), /감상평을 저장했습니다/)
+  }
+
+  const { reviews } = await (await request('/_test/access-state')).json()
+  assert.equal(reviews.length, 1)
+  assert.ok(texts.includes(reviews[0]))
+
+  await request('/xapi/books/save-review', 1, { bookId, reviewText: '고쳐 쓴 감상' })
+  assert.deepEqual((await (await request('/_test/access-state')).json()).reviews, ['고쳐 쓴 감상'])
+})
+
+test('Saved reading or listening time marks the book as recently read and never moves that back', async () => {
+  const toMs = (value) => new Date(String(value).replace(' ', 'T')).getTime()
+  const lastReadAt = async () => toMs((await (await request('/_test/access-state')).json()).lastReadAt)
+  const save = (sessionId, endedAtMs) =>
+    request('/api/books/save-reading-session', 1, {
+      bookId,
+      sessionId,
+      startedAt: new Date(endedAtMs - 600_000).toISOString(),
+      endedAt: new Date(endedAtMs).toISOString(),
+      durationSeconds: '600',
+    })
+  assert.equal((await request('/_test/shelf-last-read?at=' + encodeURIComponent('2020-01-01 00:00:00.000Z'), 1, {})).status, 200)
+
+  const listenedAt = Date.now() - 2 * 3_600_000
+  assert.equal((await save('listenedsession', listenedAt)).status, 200)
+  assert.ok(Math.abs((await lastReadAt()) - listenedAt) < 1000, 'last read time follows the session end')
+
+  assert.equal((await save('oldersession001', Date.now() - 3 * 86_400_000)).status, 200)
+  assert.ok(Math.abs((await lastReadAt()) - listenedAt) < 1000, 'an older session does not move it back')
+
+  const beforeFuture = Date.now()
+  assert.equal((await save('futuresession01', Date.now() + 86_400_000)).status, 200)
+  const clamped = await lastReadAt()
+  assert.ok(clamped >= beforeFuture - 1000 && clamped <= Date.now() + 1000, 'a device clock ahead is capped at now')
+})
+
 test('A failing book search does not block the upload; the EPUB metadata is saved instead', async () => {
   const { zipSync, strToU8 } = require('fflate')
   const epub = zipSync({
@@ -464,6 +567,47 @@ test('A failing book search does not block the upload; the EPUB metadata is save
   assert.match(message, /저장했습니다/)
   const state = await (await request('/_test/upload-state?title=' + encodeURIComponent('검색장애 책'))).json()
   assert.equal(state.bookCount, 1)
+})
+
+test('Re-reading metadata matched to an ISBN another book already uses fills the details and leaves the ISBN blank', async () => {
+  const { zipSync, strToU8 } = require('fflate')
+  const epub = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8('<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'),
+    'OPS/book.opf': strToU8(
+      '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>재분석 충돌 책</dc:title><dc:creator>충돌 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+    ),
+    'OPS/body.xhtml': strToU8('<html><body><p>ISBN 없이 올린 책입니다.</p></body></html>'),
+  })
+  assert.match(await uploadEpub(1, epub, 'refresh-conflict.epub'), /저장했습니다/)
+  const uploaded = await (await request('/_test/book?title=' + encodeURIComponent('재분석 충돌 책'))).json()
+  assert.equal(uploaded.fields.isbn13, '')
+  const owner = await (await request('/_test/book?id=isbnowner000001')).json()
+  const refresh = async () => {
+    const response = await request('/xapi/books/refresh-metadata', 1, { bookId: uploaded.id })
+    assert.equal(response.status, 303)
+    return decodeURIComponent(response.headers.get('location') || '')
+  }
+
+  assert.equal((await request('/_test/refresh-match?on=true', 1, {})).status, 200)
+  try {
+    const message = await refresh()
+    assert.match(message, /메타데이터를 갱신했습니다/)
+    assert.doesNotMatch(message, /UNIQUE|constraint|validation_|Failed/i)
+
+    const refreshed = await (await request('/_test/book?id=' + uploaded.id)).json()
+    assert.equal(refreshed.fields.isbn13, '', 'the ISBN stays with the book that already had it')
+    assert.equal(refreshed.fields.author, '충돌 저자')
+    assert.equal(refreshed.fields.publisher, '재분석 출판사')
+    assert.equal(refreshed.fields.book_image_url, 'https://example.com/refresh.jpg')
+    assert.equal(refreshed.fields.description, '도서관정보나루 소개')
+    assert.match(refreshed.metadataJson, /refresh/)
+    assert.deepEqual(await (await request('/_test/book?id=isbnowner000001')).json(), owner)
+
+    assert.match(await refresh(), /도서 상세 메타데이터가 이미 있습니다/, 'pressing again no longer retries and fails')
+  } finally {
+    await request('/_test/refresh-match?on=false', 1, {})
+  }
 })
 
 test('An EPUB whose text expands far beyond a real book is rejected before it is unpacked', async () => {

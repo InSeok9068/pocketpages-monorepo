@@ -2035,7 +2035,10 @@
         "type": "autodate"
       }
     ],
-    "indexes": ["CREATE INDEX idx_book_reviews_user_book_reviewed ON book_reviews (user_id, book_id, reviewed_at)"],
+    "indexes": [
+      "CREATE INDEX idx_book_reviews_user_book_reviewed ON book_reviews (user_id, book_id, reviewed_at)",
+      "CREATE UNIQUE INDEX idx_book_reviews_user_book ON book_reviews (user_id, book_id)"
+    ],
     "system": false
   },
   {

@@ -96,6 +96,7 @@
             </span>
           </span>
           <input
+            id="weekly-reading-nudge-input"
             type="checkbox"
             name="weeklyReadingNudgeEnabled"
             value="true"
@@ -169,6 +170,7 @@
   ;(function () {
     const form = document.getElementById('settings-form')
     const pushEnabledInput = document.getElementById('push-enabled-input')
+    const weeklyReadingNudgeInput = document.getElementById('weekly-reading-nudge-input')
     const readingReminderCycleInput = document.getElementById('reading-reminder-cycle-input')
     const highlightPushCycleInput = document.getElementById('highlight-push-cycle-input')
     const pushNoticeElement = document.getElementById('push-notice')
@@ -176,10 +178,14 @@
     const submitButton = document.getElementById('settings-submit-button')
     const submitLabel = document.getElementById('settings-submit-label')
     const maxReminderCycleDays = 90
+    const defaultReadingReminderCycle = '3'
+    const defaultHighlightPushCycle = '7'
+    const bestEffortWaitMs = 1500
 
     if (
       !form
       || !pushEnabledInput
+      || !weeklyReadingNudgeInput
       || !readingReminderCycleInput
       || !highlightPushCycleInput
       || !pushNoticeElement
@@ -369,49 +375,80 @@
     }
 
     /**
-     * 현재 저장에서 브라우저 푸시 상태를 함께 맞춰야 하는지 확인합니다.
+     * 푸시를 켰는데 받을 알림이 모두 비어 있으면 기본 주기를 채웁니다.
      *
-     * @returns {boolean} 재동기화 필요 여부
+     * @param {string} message 채운 뒤 보여줄 안내 문구
      */
-    function isPushSyncRequired() {
-      const pushEnabled = pushEnabledInput.checked
-      const pushIntentChanged = pushEnabled !== initialPushEnabled
-
-      if (pushEnabled) {
-        return pushIntentChanged || !state.pushState.ready || !state.pushState.supported || !state.pushState.optedIn
+    function fillDefaultRemindersIfEmpty(message) {
+      if (
+        !pushEnabledInput.checked
+        || readingReminderCycleInput.value
+        || highlightPushCycleInput.value
+        || weeklyReadingNudgeInput.checked
+      ) {
+        return
       }
 
-      return pushIntentChanged || state.pushState.optedIn
+      readingReminderCycleInput.value = defaultReadingReminderCycle
+      highlightPushCycleInput.value = defaultHighlightPushCycle
+      weeklyReadingNudgeInput.checked = true
+      renderMessage(pushNoticeElement, message)
     }
 
     /**
-     * 브라우저에서 푸시 끄기를 먼저 반영한 뒤 저장합니다.
+     * 이 기기에서 알림 권한을 물어볼 수 있는지 확인합니다.
+     *
+     * @returns {boolean} 권한 요청 가능 여부
+     */
+    function canAskPushHere() {
+      return (
+        state.pushState.supported
+        && state.pushState.permission !== 'denied'
+        && !(isIosDevice() && !isStandaloneWebApp())
+        && typeof window.OneSignalDeferred !== 'undefined'
+      )
+    }
+
+    /**
+     * 이 기기의 구독 해제를 시도한 뒤 결과와 관계없이 저장합니다.
+     *
+     * 발송은 서버의 푸시 사용 값으로 멈추므로, 구독 해제 실패가 저장을 막지 않게 합니다.
      *
      * @param {any} oneSignal OneSignal SDK 객체
      */
-    function syncPushDisableAndSubmit(oneSignal) {
+    function optOutThenSubmit(oneSignal) {
       const pushSubscription = findPushSubscription(oneSignal)
 
       if (!pushSubscription || typeof pushSubscription.optOut !== 'function') {
-        stopSubmit('푸시 설정을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
+        finishSubmit()
         return
       }
 
       Promise.resolve(pushSubscription.optOut())
-        .then(function () {
-          updatePushStateFromOneSignal(oneSignal)
-
-          if (pushSubscription.optedIn) {
-            stopSubmit('브라우저 구독을 끄지 못했습니다. 잠시 후 다시 시도해주세요.')
-            return
-          }
-
-          finishSubmit()
-        })
         .catch(function (error) {
           console.warn('OneSignal optOut failed', error)
-          stopSubmit('브라우저 구독을 끄지 못했습니다. 잠시 후 다시 시도해주세요.')
         })
+        .then(finishSubmit)
+    }
+
+    /**
+     * 푸시가 켜진 계정의 다른 기기에서 이 기기 구독을 시도한 뒤 결과와 관계없이 저장합니다.
+     *
+     * @param {any} oneSignal OneSignal SDK 객체
+     */
+    function tryOptInThenSubmit(oneSignal) {
+      const pushSubscription = findPushSubscription(oneSignal)
+
+      if (!pushSubscription || typeof pushSubscription.optIn !== 'function') {
+        finishSubmit()
+        return
+      }
+
+      Promise.resolve(pushSubscription.optIn())
+        .catch(function (error) {
+          console.warn('OneSignal optIn failed', error)
+        })
+        .then(finishSubmit)
     }
 
     /**
@@ -448,8 +485,10 @@
      * OneSignal SDK 준비를 기다린 뒤 콜백을 실행합니다.
      *
      * @param {(oneSignal: any) => void} callback SDK 준비 후 실행할 콜백
+     * @param {() => void} onUnavailable 제한 시간 안에 준비되지 않을 때 실행할 콜백
+     * @param {number} waitMs 기다릴 최대 시간
      */
-    function runWithOneSignal(callback) {
+    function runWithOneSignal(callback, onUnavailable, waitMs) {
       let handled = false
       const timeoutId = window.setTimeout(function () {
         if (handled) {
@@ -457,8 +496,8 @@
         }
 
         handled = true
-        stopSubmit('푸시 설정을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
-      }, 4000)
+        onUnavailable()
+      }, waitMs)
 
       window.OneSignalDeferred.push(function (OneSignal) {
         if (handled) {
@@ -472,8 +511,15 @@
     }
 
     pushEnabledInput.addEventListener('change', function () {
+      fillDefaultRemindersIfEmpty(
+        '알림을 받을 수 있도록 기본 알림 주기를 채웠습니다. 원하는 값으로 바꾼 뒤 저장하세요.'
+      )
       renderPushStateNotice()
     })
+
+    fillDefaultRemindersIfEmpty(
+      '푸시 알림은 켜져 있지만 받을 알림이 모두 꺼져 있어 알림이 오지 않았습니다. 기본 주기를 채웠으니 저장하면 적용됩니다.'
+    )
 
     if (window.__booklogPushBridge && typeof window.__booklogPushBridge.subscribe === 'function') {
       window.__booklogPushBridge.subscribe(function (nextState) {
@@ -523,18 +569,31 @@
         }
       }
 
-      if (!isPushSyncRequired()) {
+      if (!pushEnabledInput.checked) {
+        if ((initialPushEnabled || state.pushState.optedIn) && typeof window.OneSignalDeferred !== 'undefined') {
+          event.preventDefault()
+          runWithOneSignal(optOutThenSubmit, finishSubmit, bestEffortWaitMs)
+        }
+        return
+      }
+
+      // 이미 켜 둔 푸시는 다른 기기에서 받을 수 있으므로, 이 기기 구독은 시도만 하고 저장을 막지 않습니다.
+      if (initialPushEnabled) {
+        if (!state.pushState.optedIn && canAskPushHere()) {
+          event.preventDefault()
+          runWithOneSignal(tryOptInThenSubmit, finishSubmit, bestEffortWaitMs)
+        }
         return
       }
 
       event.preventDefault()
 
-      if (pushEnabledInput.checked && isIosDevice() && !isStandaloneWebApp()) {
+      if (isIosDevice() && !isStandaloneWebApp()) {
         stopSubmit('iPhone/iPad에서는 북로그를 홈 화면에 추가한 뒤 앱처럼 연 상태에서만 푸시를 켤 수 있습니다.')
         return
       }
 
-      if (pushEnabledInput.checked && state.pushState.ready && !state.pushState.supported) {
+      if (state.pushState.ready && !state.pushState.supported) {
         stopSubmit('현재 브라우저에서는 웹 푸시 알림을 지원하지 않습니다.')
         return
       }
@@ -544,14 +603,13 @@
         return
       }
 
-      runWithOneSignal(function (OneSignal) {
-        if (!pushEnabledInput.checked) {
-          syncPushDisableAndSubmit(OneSignal)
-          return
-        }
-
-        syncPushEnableAndSubmit(OneSignal)
-      })
+      runWithOneSignal(
+        syncPushEnableAndSubmit,
+        function () {
+          stopSubmit('푸시 설정을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
+        },
+        4000
+      )
     })
   })()
 </script>

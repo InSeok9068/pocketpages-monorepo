@@ -34,6 +34,22 @@
     return normalizedFreshValue || String(currentValue || '').trim()
   }
 
+  function createUserError(message) {
+    return Object.assign(new Error(message), { userMessage: message })
+  }
+
+  function findOtherBookIdByIsbn13(isbn13, bookId) {
+    try {
+      const record = $app.findFirstRecordByFilter('books', 'isbn13 = {:isbn13} && id != {:bookId}', {
+        isbn13: isbn13,
+        bookId: bookId,
+      })
+      return String(record.get('id') || '')
+    } catch (exception) {
+      return ''
+    }
+  }
+
   if (request.method !== 'POST') {
     dbg('xapi/books/refresh-metadata:redirect', {
       status: 303,
@@ -76,7 +92,7 @@
 
   try {
     if (!bookId) {
-      throw new Error('책 정보가 필요합니다.')
+      throw createUserError('책 정보가 필요합니다.')
     }
 
     let shelfRecord = null
@@ -91,7 +107,7 @@
     }
 
     if (!shelfRecord) {
-      throw new Error('내 도서함에서 책을 찾을 수 없습니다.')
+      throw createUserError('내 도서함에서 책을 찾을 수 없습니다.')
     }
 
     let bookRecord = null
@@ -105,7 +121,7 @@
     }
 
     if (!bookRecord) {
-      throw new Error('책 정보를 찾을 수 없습니다.')
+      throw createUserError('책 정보를 찾을 수 없습니다.')
     }
 
     const metadataJsonState = new DynamicModel({ isMissing: 0 })
@@ -131,7 +147,7 @@
       const bookFileId = String(shelfRecord.get('book_file_id') || '').trim()
 
       if (!bookFileId) {
-        throw new Error('재분석할 EPUB 파일이 도서함에 연결되어 있지 않습니다.')
+        throw createUserError('재분석할 EPUB 파일이 도서함에 연결되어 있지 않습니다.')
       }
 
       let bookFileRecord = null
@@ -146,7 +162,7 @@
       }
 
       if (!bookFileRecord) {
-        throw new Error('재분석할 EPUB 파일을 찾을 수 없습니다.')
+        throw createUserError('재분석할 EPUB 파일을 찾을 수 없습니다.')
       }
 
       const storedFileName = String(bookFileRecord.get('stored_file') || '').trim()
@@ -154,11 +170,11 @@
       const fileSize = Number(bookFileRecord.get('file_size') || 0)
 
       if (!storedFileName) {
-        throw new Error('저장된 EPUB 파일을 찾을 수 없습니다.')
+        throw createUserError('저장된 EPUB 파일을 찾을 수 없습니다.')
       }
 
       if (fileSize <= 0 || fileSize > MAX_EPUB_BYTES) {
-        throw new Error('EPUB 파일 크기를 확인할 수 없습니다.')
+        throw createUserError('EPUB 파일 크기를 확인할 수 없습니다.')
       }
 
       const storageFileKey = String(bookFileRecord.baseFilesPath() || '') + '/' + storedFileName
@@ -247,6 +263,19 @@
         const normalizedPublicationDate = publicationDate
           ? dateutil.toDateOnlyIso(publicationDate)
           : String(bookRecord.get('publication_date') || '')
+        const currentIsbn13 = String(bookRecord.get('isbn13') || '').trim()
+        const freshIsbn13 = preferFreshValue(detailBook.isbn13 || selectedIsbn13, currentIsbn13)
+        const isbnOwnerBookId = freshIsbn13 !== currentIsbn13 ? findOtherBookIdByIsbn13(freshIsbn13, bookId) : ''
+
+        // 같은 ISBN의 다른 책이 이미 있으면 ISBN만 비워 두고, 나머지 정보는 채워 재분석이 계속 실패하지 않게 합니다.
+        if (isbnOwnerBookId) {
+          warn('xapi/books/refresh-metadata:isbn13-owned-by-other-book', {
+            userId: userId,
+            bookId: bookId,
+            isbn13: freshIsbn13,
+            isbnOwnerBookId: isbnOwnerBookId,
+          })
+        }
 
         bookRecord.set('title', preferFreshValue(detailBook.bookname, bookRecord.get('title')))
         bookRecord.set('author', preferFreshValue(detailBook.authors, bookRecord.get('author')))
@@ -255,7 +284,7 @@
         bookRecord.set('publication_year', preferFreshValue(publicationYear, bookRecord.get('publication_year')))
         bookRecord.set('class_no', preferFreshValue(detailBook.class_no, bookRecord.get('class_no')))
         bookRecord.set('isbn', preferFreshValue(detailBook.isbn, bookRecord.get('isbn')))
-        bookRecord.set('isbn13', preferFreshValue(detailBook.isbn13 || selectedIsbn13, bookRecord.get('isbn13')))
+        bookRecord.set('isbn13', isbnOwnerBookId ? currentIsbn13 : freshIsbn13)
         bookRecord.set('book_image_url', preferFreshValue(detailBook.bookImageURL, bookRecord.get('book_image_url')))
         bookRecord.set('description', preferFreshValue(detailBook.description, bookRecord.get('description')))
         bookRecord.set('metadata_json', detailResult.raw)
@@ -273,7 +302,10 @@
     }
   } catch (exception) {
     const errorMessage = String(exception.message || exception)
-    failureMessage = exception && exception.userMessage ? String(exception.userMessage) : errorMessage
+    failureMessage =
+      exception && exception.userMessage
+        ? String(exception.userMessage)
+        : '메타데이터를 갱신하지 못했습니다. 잠시 후 다시 시도해 주세요.'
     error('xapi/books/refresh-metadata:failed', {
       userId: userId,
       bookId: bookId,

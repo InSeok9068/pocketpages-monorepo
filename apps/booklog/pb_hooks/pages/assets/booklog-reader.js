@@ -80,7 +80,9 @@ window.booklogReaderLogic = (function () {
   var readingSessionActiveSeconds = 0
   var readingSessionLastTickMs = 0
   var readingSessionWasVisible = false
+  var readingSessionWasListening = false
   var readingSessionLastActivityMs = 0
+  var readingSessionLastCountedMs = 0
   var readingSessionActivityBound = false
   var isRestoringPosition = false
   var hasResolvedSavedPosition = false
@@ -2185,40 +2187,56 @@ window.booklogReaderLogic = (function () {
     return typeof document === 'undefined' || document.visibilityState !== 'hidden'
   }
 
-  function markReadingSessionActivity() {
+  function isListeningAloud(component) {
+    return !!(component && (component.cloudAudioActive || component.readAloudPlaying))
+  }
+
+  function markReadingSessionActivity(component) {
     var nowMs = Date.now()
 
     syncReadingSessionActiveSeconds()
+
+    // 오래 쉬었다 돌아온 독서는 앞 기록에 이어 붙이지 않아야 날짜별 기록이 제 날에 남습니다.
+    if (readingSessionStartedAtMs && nowMs - readingSessionLastActivityMs > READING_SESSION_IDLE_MS) {
+      restartReadingSession(component)
+    }
+
     readingSessionLastActivityMs = nowMs
   }
 
   function syncReadingSessionActiveSeconds() {
     var nowMs = Date.now()
-    var elapsedMs = 0
+    var countedUntilMs = 0
 
     if (!readingSessionStartedAtMs || !readingSessionLastTickMs) {
       readingSessionLastTickMs = nowMs
       readingSessionWasVisible = isDocumentVisible()
+      readingSessionWasListening = isListeningAloud(activeComponent)
       return
     }
 
-    if (readingSessionWasVisible) {
-      // 화면 전환 직전 상태로 지난 구간을 집계합니다.
-      elapsedMs = Math.max(
-        0,
-        Math.min(nowMs, readingSessionLastActivityMs + READING_SESSION_IDLE_MS) - readingSessionLastTickMs
-      )
-      readingSessionActiveSeconds += elapsedMs / 1000
+    // 화면 전환 직전 상태로 지난 구간을 집계하고, 듣는 동안은 화면이 꺼져도 계속 독서로 셉니다.
+    if (readingSessionWasListening) {
+      countedUntilMs = nowMs
+      readingSessionLastActivityMs = nowMs
+    } else if (readingSessionWasVisible) {
+      countedUntilMs = Math.min(nowMs, readingSessionLastActivityMs + READING_SESSION_IDLE_MS)
+    }
+
+    if (countedUntilMs > readingSessionLastTickMs) {
+      readingSessionActiveSeconds += (countedUntilMs - readingSessionLastTickMs) / 1000
+      readingSessionLastCountedMs = countedUntilMs
     }
 
     readingSessionLastTickMs = nowMs
     readingSessionWasVisible = isDocumentVisible()
+    readingSessionWasListening = isListeningAloud(activeComponent)
   }
 
   function buildReadingSessionFormData(component) {
     var endProgress = null
     var startedAt = readingSessionStartedAtMs || 0
-    var endedAtMs = Date.now()
+    var endedAtMs = 0
     var durationSeconds = 0
     var startProgressPercent = null
     var endProgressPercent = null
@@ -2234,6 +2252,9 @@ window.booklogReaderLogic = (function () {
     if (!startedAt || !readingSessionStartProgress || durationSeconds < 1) {
       return null
     }
+
+    // 쉬는 동안 흐른 시간이 아니라 마지막으로 읽거나 들은 시각을 끝 시각으로 남깁니다.
+    endedAtMs = Math.max(startedAt, readingSessionLastCountedMs)
 
     endProgress = getCurrentProgressPayload(component)
     startProgressPercent = parseOptionalInteger(readingSessionStartProgress.progressPercent)
@@ -2305,7 +2326,7 @@ window.booklogReaderLogic = (function () {
           )
         }
 
-        if (result.payload && result.payload.id) {
+        if (result.payload && result.payload.id && formData.get('sessionId') === readingSessionId) {
           readingSessionId = String(result.payload.id || '')
         }
 
@@ -2342,7 +2363,9 @@ window.booklogReaderLogic = (function () {
     readingSessionSaveInFlight = true
     activeReadingSessionRequest = requestSaveReadingSession(payload.formData, options)
       .then(function (saved) {
-        lastReadingSessionSavedSeconds = Math.max(lastReadingSessionSavedSeconds, payload.durationSeconds)
+        if (payload.formData.get('sessionId') === readingSessionId) {
+          lastReadingSessionSavedSeconds = Math.max(lastReadingSessionSavedSeconds, payload.durationSeconds)
+        }
         return saved
       })
       .finally(function () {
@@ -2438,7 +2461,9 @@ window.booklogReaderLogic = (function () {
     readingSessionActiveSeconds = 0
     readingSessionLastTickMs = readingSessionStartedAtMs
     readingSessionWasVisible = isDocumentVisible()
+    readingSessionWasListening = isListeningAloud(component)
     readingSessionLastActivityMs = readingSessionStartedAtMs
+    readingSessionLastCountedMs = 0
     lastReadingSessionSavedSeconds = 0
     readingSessionBeaconSent = false
 
@@ -2454,9 +2479,44 @@ window.booklogReaderLogic = (function () {
     }, READING_SESSION_SAVE_INTERVAL_MS)
   }
 
+  function restartReadingSession(component) {
+    var previous = buildReadingSessionFormData(component)
+
+    if (previous && previous.durationSeconds > lastReadingSessionSavedSeconds) {
+      requestSaveReadingSession(previous.formData, {
+        keepalive: true,
+      }).catch(function (exception) {
+        console.warn('page/books/[bookId]/read:session-rollover-save:failed', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+      })
+    }
+
+    startReadingSession(component)
+  }
+
+  function handleListeningChange(component) {
+    markReadingSessionActivity(component)
+
+    // 잠금 화면에서 멈추면 다시 화면을 켜지 않을 수 있어, 들은 시간을 바로 남깁니다.
+    if (!isListeningAloud(component) && !isDocumentVisible()) {
+      saveReadingSessionCheckpoint(component, {
+        final: false,
+        keepalive: true,
+      }).catch(function (exception) {
+        console.warn('page/books/[bookId]/read:session-listening-save:failed', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+      })
+    }
+  }
+
   function bindReadingSessionActivityTracking(component) {
     var markActivity = function () {
-      markReadingSessionActivity()
+      markReadingSessionActivity(component)
+    }
+    var onListeningChange = function () {
+      handleListeningChange(component)
     }
 
     if (readingSessionActivityBound) {
@@ -2470,13 +2530,15 @@ window.booklogReaderLogic = (function () {
     window.addEventListener('scroll', markActivity, { passive: true })
     window.addEventListener('pointerdown', markActivity, { passive: true })
     window.addEventListener('touchstart', markActivity, { passive: true })
+    component.$watch('cloudAudioActive', onListeningChange)
+    component.$watch('readAloudPlaying', onListeningChange)
 
     document.addEventListener('visibilitychange', function () {
       syncReadingSessionActiveSeconds()
 
       if (isDocumentVisible()) {
         readingSessionBeaconSent = false
-        markReadingSessionActivity()
+        markReadingSessionActivity(component)
         return
       }
 

@@ -1,4 +1,6 @@
 <script server>
+  const { dateutil } = require('@pocketpages/utils')
+
   if (request.method !== 'POST') {
     response.json(405, {
       ok: false,
@@ -106,6 +108,9 @@
 
     // 리더가 처음부터 세션 ID를 정해 보내므로, 닫을 때 거의 동시에 오는 두 저장도 같은 기록을 갱신합니다.
     const clientSessionId = /^[a-z0-9]{15}$/.test(sessionId) ? sessionId : ''
+    const endedAtMs = new Date(endedAt).getTime()
+    const lastReadAt = dateutil.toDbDateTime(isNaN(endedAtMs) ? Date.now() : Math.min(endedAtMs, Date.now()))
+    let staleSave = false
 
     $app.runInTransaction(function (txApp) {
       if (clientSessionId) {
@@ -122,6 +127,12 @@
         } catch (exception) {
           sessionRecord = null
         }
+      }
+
+      // 함께 보낸 저장이 늦게 도착해도, 이미 더 길게 저장된 기록을 줄이지 않습니다.
+      if (sessionRecord && Number(sessionRecord.get('duration_seconds') || 0) > durationSeconds) {
+        staleSave = true
+        return
       }
 
       if (!sessionRecord) {
@@ -154,6 +165,15 @@
       setOptionalNumber(sessionRecord, 'page_delta', pageDelta)
 
       txApp.save(sessionRecord)
+
+      // 오디오만 듣고 페이지를 넘기지 않아도 최근 독서로 보이도록, 세션 끝 시각까지 앞당깁니다.
+      const latestShelfRecord = txApp.findRecordById('book_shelves', String(shelfRecord.get('id') || ''))
+      const storedLastReadAt = dateutil.toDbDateTime(String(latestShelfRecord.get('last_read_at') || ''))
+
+      if (!storedLastReadAt || storedLastReadAt < lastReadAt) {
+        latestShelfRecord.set('last_read_at', lastReadAt)
+        txApp.save(latestShelfRecord)
+      }
     })
 
     info('api/books/save-reading-session:done', {
@@ -161,6 +181,7 @@
       bookId: bookId,
       sessionId: String(sessionRecord.get('id') || ''),
       durationSeconds: durationSeconds,
+      staleSave: staleSave,
     })
 
     response.json(200, {
