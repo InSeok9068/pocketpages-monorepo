@@ -321,3 +321,9 @@ test('Book management opens only for administrators, including with odd search i
   }
   await expectPage('/admin/books?scope=all', 'admin', { contains: ['unshelvedbook01'] })
 })
+
+test('Only administrators receive the audio diagnostic control and manual copy field', async () => {
+  const controls = ['id="reader-audio-diagnostics-copy"', 'id="reader-audio-diagnostics-text"']
+  await expectPage('/books/fullbook0000001/read', 'rich', { lacks: controls })
+  await expectPage('/books/fullbook0000001/read', 'admin', { contains: controls })
+})

@@ -132,5 +132,5 @@ onBootstrap(function (event) {
     preferred_view_mode: 'scrolled',
   })
 
-  save('book_shelves', { user_id: 'adminreader0001', book_id: 'fullbook0000001', status: 'reading' })
+  save('book_shelves', { user_id: 'adminreader0001', book_id: 'fullbook0000001', book_file_id: 'fullfile0000001', status: 'reading' })
 })

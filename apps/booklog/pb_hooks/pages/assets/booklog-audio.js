@@ -11,10 +11,135 @@ window.booklogAudio = (function () {
   var saveSequence = 0
   var SLEEP_MODES = ['', '15', '30', '60', 'chapter']
   var sleepTimer = { mode: '', endsAt: 0, timerId: 0 }
+  var diagnosticsEnabled = !!document.getElementById('reader-audio-diagnostics-copy')
+  var diagnosticsKey = 'booklog-audio-diagnostics:' + config.readerCacheKey
+  var diagnostics = []
+  var diagnosticsPage = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8)
+  var diagnosticsStorage = true
+  var diagnosticsLastProgress = 0
+  if (diagnosticsEnabled) {
+    try {
+      var storedDiagnostics = JSON.parse(localStorage.getItem(diagnosticsKey) || '[]')
+      if (Array.isArray(storedDiagnostics)) diagnostics = storedDiagnostics.slice(-300)
+    } catch (_error) {
+      diagnosticsStorage = false
+    }
+  }
   try {
     pendingSaves = JSON.parse(localStorage.getItem(outboxKey) || '{}') || {}
   } catch (_error) {
     /* 저장 없이 동기화합니다. */
+  }
+
+  // 진단 기록 실패가 재생을 방해하지 않도록 본문·URL 없이 상태만 기기에 보관합니다.
+  function recordDiagnostic(event, session, details) {
+    if (!diagnosticsEnabled) return
+    try {
+      var player = session && session.player
+      var part = session && session.parts[session.partIndex]
+      var entry = {
+        at: new Date().toISOString(),
+        page: diagnosticsPage,
+        event: event,
+        visibility: document.visibilityState || 'unknown',
+        online: navigator.onLine,
+      }
+      if (session) {
+        Object.assign(entry, {
+          session: session.diagnosticsId,
+          section: session.sectionIndex,
+          chunk: session.chunkIndex,
+          chunkId: session.chunkId,
+          part: session.partIndex,
+          audioId: part ? part.audioId || '' : '',
+          deviceVoice: session.fallback,
+          busy: session.state.cloudAudioBusy,
+          positionReady: session.positionReady,
+          seconds: Math.round((player.currentTime || 0) * 10) / 10,
+          duration: isFinite(player.duration) ? player.duration : null,
+          paused: player.paused,
+          ended: player.ended,
+          readyState: player.readyState,
+          networkState: player.networkState,
+          bufferedEnd: player.buffered && player.buffered.length ? player.buffered.end(player.buffered.length - 1) : 0,
+          rate: player.playbackRate,
+          sleepMode: sleepTimer.mode,
+        })
+      }
+      if (details) entry.details = details
+      diagnostics.push(entry)
+      diagnostics = diagnostics.slice(-300)
+      try {
+        localStorage.setItem(diagnosticsKey, JSON.stringify(diagnostics))
+        diagnosticsStorage = true
+      } catch (_error) {
+        diagnosticsStorage = false
+      }
+    } catch (_error) {
+      /* 진단 실패와 관계없이 재생합니다. */
+    }
+  }
+
+  /**
+   * 이 기기의 재생 진단을 내보냅니다.
+   * @returns {string} 진단 JSON
+   */
+  function exportDiagnostics() {
+    recordDiagnostic('export', activeSession)
+    return JSON.stringify(
+      {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        bookId: config.bookId,
+        fileId: config.bookFileId,
+        userAgent: navigator.userAgent || '',
+        storageAvailable: diagnosticsStorage,
+        events: diagnostics,
+      },
+      null,
+      2
+    )
+  }
+
+  /**
+   * 오디오 진단을 복사하고 실패 시 직접 복사할 칸을 표시합니다.
+   * @param {HTMLButtonElement} button 복사 버튼
+   * @returns {void}
+   */
+  function copyDiagnostics(button) {
+    var text = exportDiagnostics()
+    var field = /** @type {HTMLTextAreaElement | null} */ (document.getElementById('reader-audio-diagnostics-text'))
+    var status = document.getElementById('reader-audio-diagnostics-status')
+    button.disabled = true
+    function showResult(copied) {
+      button.disabled = false
+      if (field) {
+        field.value = text
+        field.hidden = copied
+        if (!copied) {
+          field.focus()
+          field.select()
+        }
+      }
+      if (status) {
+        status.hidden = false
+        status.textContent = copied
+          ? '진단 기록을 복사했습니다. 채팅에 붙여넣어 주세요.'
+          : '자동 복사가 안 됩니다. 아래 기록을 길게 눌러 복사해 주세요.'
+      }
+    }
+    try {
+      navigator.clipboard.writeText(text).then(
+        function () {
+          showResult(true)
+        },
+        function () {
+          showResult(false)
+        }
+      )
+    } catch (_error) {
+      showResult(false)
+    }
   }
 
   function persistPendingSaves() {
@@ -130,8 +255,10 @@ window.booklogAudio = (function () {
       sectionIndex: String(sectionIndex),
       chunkIndex: String(index),
     })
+    recordDiagnostic('chunk-request', session, { section: sectionIndex, chunk: index })
     return fetch('/api/books/audio-chunk?' + query.toString(), { cache: 'no-store', signal: session.controller.signal })
       .then(function (response) {
+        recordDiagnostic('chunk-response', session, { section: sectionIndex, chunk: index, status: response.status })
         return response.json().then(function (result) {
           if (response.ok && result.ok) return result
           // 표지·이미지 페이지처럼 본문이 없는 곳에서 시작하면 뒤쪽 첫 본문 챕터부터 재생합니다.
@@ -169,7 +296,12 @@ window.booklogAudio = (function () {
               }
             }
             return fetchAudioBlob(session, part.audioUrl).then(function (blob) {
-              return { blob: blob, text: text, duration: Number(part.durationSeconds) || 0 }
+              return {
+                blob: blob,
+                audioId: new URL(part.audioUrl, window.location.origin).searchParams.get('chunkId') || '',
+                text: text,
+                duration: Number(part.durationSeconds) || 0,
+              }
             })
           })
         ).then(function (parts) {
@@ -191,6 +323,12 @@ window.booklogAudio = (function () {
   function loadChunkRetrying(session, sectionIndex, index, retries) {
     return loadChunk(session, sectionIndex, index).catch(function (error) {
       var network = error && (error.name === 'TypeError' || error.name === 'SyntaxError')
+      recordDiagnostic('chunk-request-error', session, {
+        section: sectionIndex,
+        chunk: index,
+        error: error.name,
+        retries: retries,
+      })
       if (!network || !isActive(session)) throw error
       if (!(retries > 0)) {
         throw new Error('인터넷 연결이 불안정해 다음 구간을 받지 못했습니다. 연결을 확인한 뒤 이어 듣기를 눌러 주세요.')
@@ -204,6 +342,7 @@ window.booklogAudio = (function () {
   }
 
   function fetchAudioBlob(session, audioUrl) {
+    var audioId = new URL(audioUrl, window.location.origin).searchParams.get('chunkId') || ''
     var url = new URL(
       '/_booklog-audio-cache/' + encodeURIComponent(config.readerCacheKey + ':' + audioUrl),
       window.location.origin
@@ -217,14 +356,20 @@ window.booklogAudio = (function () {
             })
           : Promise.resolve(null)
       ).then(function (cached) {
-        if (cached) return cached.blob()
+        if (cached) {
+          recordDiagnostic('audio-cache-hit', session, { audioId: audioId })
+          return cached.blob()
+        }
         if (!isActive(session)) throw new DOMException('Playback stopped', 'AbortError')
+        recordDiagnostic('audio-request', session, { audioId: audioId })
         return fetch(audioUrl, { signal: session.controller.signal })
           .then(function (response) {
+            recordDiagnostic('audio-response', session, { audioId: audioId, status: response.status })
             if (!response.ok) throw new Error('음성을 내려받지 못했습니다. 인터넷 연결을 확인해 주세요.')
             return response.blob()
           })
           .then(function (blob) {
+            recordDiagnostic('audio-downloaded', session, { audioId: audioId, bytes: blob.size })
             if (!cache) return blob
             return cache
               .put(url, new Response(blob, { headers: { 'Content-Type': 'audio/mpeg' } }))
@@ -251,6 +396,7 @@ window.booklogAudio = (function () {
 
   function setError(session, error) {
     if (!isActive(session) || error.name === 'AbortError') return
+    recordDiagnostic('session-error', session, { error: error.name })
     session.failed = true
     endSession(session, error.message || '음성을 재생하지 못했습니다. 잠시 후 다시 시도해 주세요.')
   }
@@ -258,6 +404,7 @@ window.booklogAudio = (function () {
   // 재생이 끝나거나 막히면 시작 화면으로 돌아가, 이유와 함께 이어 들을 위치를 보여줍니다.
   function endSession(session, message) {
     if (!isActive(session)) return
+    recordDiagnostic('session-end', session)
     var state = session.state
     stop()
     state.cloudAudioMessage = message
@@ -292,7 +439,9 @@ window.booklogAudio = (function () {
   }
 
   function playAudio(session) {
+    recordDiagnostic('play-request', session)
     return session.player.play().catch(function (error) {
+      recordDiagnostic('play-rejected', session, { error: error.name })
       if (!isActive(session)) return
       if (error.name === 'NotAllowedError') {
         session.state.cloudAudioActive = false
@@ -432,6 +581,7 @@ window.booklogAudio = (function () {
   }
 
   function sleepNow(session, message) {
+    recordDiagnostic('sleep-stop', session)
     clearSleepTimer(session.state)
     endSession(session, message)
   }
@@ -639,6 +789,7 @@ window.booklogAudio = (function () {
   function toggle() {
     var session = activeSession
     if (!session || session.completed || session.failed) return false
+    recordDiagnostic('toggle-request', session)
     // 다른 구간을 불러오는 중에는 이전 음성이 다시 재생되지 않도록 잠금화면 재생 요청도 무시합니다.
     if (session.state.cloudAudioBusy) return true
     if (session.fallback && window.speechSynthesis) {
@@ -706,7 +857,10 @@ window.booklogAudio = (function () {
     }
     Object.keys(handlers).forEach(function (action) {
       try {
-        mediaSession.setActionHandler(action, handlers[action])
+        mediaSession.setActionHandler(action, function (details) {
+          recordDiagnostic('media-action', session, { action: action })
+          return handlers[action](details)
+        })
       } catch (_error) {
         /* 지원하지 않는 동작은 건너뜁니다. */
       }
@@ -729,6 +883,7 @@ window.booklogAudio = (function () {
   }
 
   function playChunk(session, prepared) {
+    recordDiagnostic('chunk-transition', session, { prepared: !!prepared })
     // 재생 바를 연달아 옮기면 늦게 도착한 이전 구간이 새 위치를 덮지 않도록 마지막 요청만 반영합니다.
     var token = (session.loadToken += 1)
     session.positionReady = false
@@ -754,6 +909,7 @@ window.booklogAudio = (function () {
         session.parts = result.parts
         session.partIndex = 0
         session.partOffset = 0
+        recordDiagnostic('chunk-ready', session, { parts: result.parts.length })
         // 저장 위치는 조각 길이를 이어 붙인 구간 내 시간이라, 해당 조각과 조각 안의 시간으로 되돌립니다.
         while (
           session.partIndex < session.parts.length - 1
@@ -778,6 +934,7 @@ window.booklogAudio = (function () {
     var hold = !!session.holdPaused
     session.holdPaused = false
     setDeviceVoice(session, false)
+    recordDiagnostic('part-transition', session, { deviceVoice: !!part.fallbackText })
     if (part.fallbackText) return speakFallback(session, part.fallbackText, hold)
     session.startAnchor = ''
     session.positionReady = false
@@ -866,6 +1023,7 @@ window.booklogAudio = (function () {
   }
 
   function speakFallback(session, text, hold) {
+    recordDiagnostic('device-voice', session)
     var synth = window.speechSynthesis
     if (!synth || typeof window.SpeechSynthesisUtterance !== 'function') {
       setError(session, new Error('이 구간은 AI 음성을 만들지 못했고, 이 브라우저는 기기 음성을 지원하지 않습니다.'))
@@ -1058,6 +1216,8 @@ window.booklogAudio = (function () {
       restartPending: !!fromBeginning,
     }
     activeSession = session
+    session.diagnosticsId = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8)
+    recordDiagnostic('session-start', session, { fromBeginning: !!fromBeginning })
     state.cloudAudioBusy = true
     state.cloudAudioSession = true
     state.cloudAudioMessage = ''
@@ -1075,11 +1235,16 @@ window.booklogAudio = (function () {
       }
     }
     player.ontimeupdate = function () {
+      if (Date.now() - diagnosticsLastProgress >= 30000) {
+        diagnosticsLastProgress = Date.now()
+        recordDiagnostic('progress', session)
+      }
       updateProgress(session)
       savePosition(session, false, false)
     }
     player.onplay = function () {
       if (!isActive(session)) return
+      recordDiagnostic('play', session)
       setMediaPlaybackState('playing')
       updateProgress(session)
       state.cloudAudioActive = true
@@ -1088,6 +1253,7 @@ window.booklogAudio = (function () {
       prepareNextChunk(session)
     }
     player.onpause = function () {
+      recordDiagnostic('pause', session)
       // 기기 음성 조각으로 넘어갈 때 플레이어를 멈춘 이벤트가 늦게 와도 재생 중 표시를 지우지 않습니다.
       if (!isActive(session) || session.fallback) return
       setMediaPlaybackState('paused')
@@ -1095,9 +1261,11 @@ window.booklogAudio = (function () {
       savePosition(session, true, false)
     }
     player.onerror = function () {
+      recordDiagnostic('media-error', session, { code: player.error ? player.error.code : 0 })
       setError(session, new Error('오디오를 재생하지 못했습니다.'))
     }
     player.onended = function () {
+      recordDiagnostic('ended', session)
       advancePart(session)
     }
     bindMediaSession(session)
@@ -1171,6 +1339,7 @@ window.booklogAudio = (function () {
   function stop() {
     var session = activeSession
     if (!session) return
+    recordDiagnostic('stop', session)
     savePosition(session, true, false)
     activeSession = null
     session.controller.abort()
@@ -1207,10 +1376,45 @@ window.booklogAudio = (function () {
     clearSleepTimer(session.state)
   }
 
-  window.addEventListener('pagehide', stop)
+  window.addEventListener('pagehide', function (event) {
+    recordDiagnostic('pagehide', activeSession, { persisted: !!event.persisted })
+    stop()
+  })
   window.addEventListener('visibilitychange', function () {
+    recordDiagnostic('visibilitychange', activeSession)
     if (activeSession) savePosition(activeSession, true, false)
   })
+  if (diagnosticsEnabled) {
+    recordDiagnostic('page-init', null, { wasDiscarded: !!document.wasDiscarded })
+    ;['freeze', 'resume'].forEach(function (event) {
+      document.addEventListener(event, function () {
+        recordDiagnostic(event, activeSession)
+      })
+    })
+    ;['online', 'offline', 'pageshow'].forEach(function (event) {
+      window.addEventListener(event, function () {
+        recordDiagnostic(event, activeSession)
+      })
+    })
+    var diagnosticsPlayer = document.getElementById('reader-cloud-audio')
+    if (diagnosticsPlayer) {
+      ;[
+        'playing',
+        'waiting',
+        'stalled',
+        'suspend',
+        'emptied',
+        'loadedmetadata',
+        'seeking',
+        'seeked',
+        'ratechange',
+      ].forEach(function (event) {
+        diagnosticsPlayer.addEventListener(event, function () {
+          recordDiagnostic(event, activeSession)
+        })
+      })
+    }
+  }
   return {
     start: start,
     stop: stop,
@@ -1225,5 +1429,7 @@ window.booklogAudio = (function () {
     preview: preview,
     currentAnchor: currentAnchor,
     formatTime: formatTime,
+    exportDiagnostics: exportDiagnostics,
+    copyDiagnostics: copyDiagnostics,
   }
 })()

@@ -1336,16 +1336,46 @@
               class="mt-1 text-sm text-stone-500"
               x-text="'현재 챕터: ' + currentChapterLabel"></p>
           </div>
-          <button
-            type="button"
-            x-on:click="closeReadAloud()"
-            aria-label="읽어주기 닫기"
-            class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] text-stone-700 ring-0 outline-none">
-            <span
-              class="i-lucide-x h-4 w-4"
-              aria-hidden="true"></span>
-          </button>
+          <div class="flex shrink-0 items-center gap-1">
+            <% if (showAudioDetail) { %>
+            <button
+              id="reader-audio-diagnostics-copy"
+              type="button"
+              x-on:click="window.booklogAudio.copyDiagnostics($el)"
+              title="오디오 진단 기록 복사"
+              aria-label="오디오 진단 기록 복사"
+              class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-transparent text-stone-400 ring-0 outline-none hover:bg-stone-100 disabled:opacity-50">
+              <span
+                class="i-lucide-bug h-4 w-4"
+                aria-hidden="true"></span>
+            </button>
+            <% } %>
+            <button
+              type="button"
+              x-on:click="closeReadAloud()"
+              aria-label="읽어주기 닫기"
+              class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] text-stone-700 ring-0 outline-none">
+              <span
+                class="i-lucide-x h-4 w-4"
+                aria-hidden="true"></span>
+            </button>
+          </div>
         </div>
+
+        <% if (showAudioDetail) { %>
+        <p
+          id="reader-audio-diagnostics-status"
+          role="status"
+          hidden
+          class="mb-3 text-xs text-stone-500"></p>
+        <textarea
+          id="reader-audio-diagnostics-text"
+          aria-label="직접 복사할 오디오 진단 기록"
+          readonly
+          hidden
+          rows="5"
+          class="mb-3 box-border w-full rounded-lg border border-solid border-stone-200 bg-stone-50 p-2 font-mono text-xs text-stone-700"></textarea>
+        <% } %>
 
         <div class="space-y-4">
           <label class="mb-4 block space-y-2">

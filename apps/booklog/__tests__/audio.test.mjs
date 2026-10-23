@@ -609,10 +609,18 @@ test('Chunk views number the chapter among chapters with narration and link its 
 
 function createPlayerHarness(fetchAudio, options = {}) {
   const values = options.storage || new Map()
+  const listeners = { window: {}, document: {}, audio: {} }
+  function bind(target, event, callback) {
+    ;(listeners[target][event] ||= []).push(callback)
+  }
+  const diagnosticButton = { disabled: false }
+  const diagnosticStatus = { hidden: true, textContent: '' }
+  const diagnosticField = { hidden: true, value: '', focus() {}, select() { this.selected = true } }
   const cachedAudio = new Map()
   const requests = []
   const server = options.server || { progress: null, downloads: 0, chunkCount: 1, failSaves: false }
   const audio = {
+    addEventListener: (event, callback) => bind('audio', event, callback),
     currentTime: 0,
     duration: 60,
     source: '',
@@ -663,7 +671,7 @@ function createPlayerHarness(fetchAudio, options = {}) {
           }
         : undefined,
       location: { origin: 'http://localhost' },
-      addEventListener() {},
+      addEventListener: (event, callback) => bind('window', event, callback),
       caches: {
         open: async () => ({
           match: async (key) => (options.matchCache ? options.matchCache(key) : cachedAudio.get(key)?.clone()),
@@ -673,11 +681,26 @@ function createPlayerHarness(fetchAudio, options = {}) {
         }),
       },
     },
-    document: { getElementById: () => audio },
-    navigator: options.mediaSession ? { mediaSession: options.mediaSession } : {},
+    document: {
+      visibilityState: 'visible',
+      addEventListener: (event, callback) => bind('document', event, callback),
+      getElementById: (id) => {
+        if (id === 'reader-cloud-audio') return audio
+        if (!options.diagnostics) return null
+        return {
+          'reader-audio-diagnostics-copy': diagnosticButton,
+          'reader-audio-diagnostics-status': diagnosticStatus,
+          'reader-audio-diagnostics-text': diagnosticField,
+        }[id] || null
+      },
+    },
+    navigator: { mediaSession: options.mediaSession, clipboard: options.clipboard, onLine: true, userAgent: 'Test Android' },
     localStorage: {
       getItem: (key) => values.get(key) || null,
-      setItem: (key, value) => values.set(key, value),
+      setItem: (key, value) => {
+        if (options.storageFailure) throw new Error('QuotaExceededError')
+        values.set(key, value)
+      },
       removeItem: (key) => values.delete(key),
     },
     fetch: async (url, options = {}) => {
@@ -763,7 +786,12 @@ function createPlayerHarness(fetchAudio, options = {}) {
     readFileSync(new URL('../pb_hooks/pages/assets/booklog-audio.js', import.meta.url), 'utf8'),
     context
   )
-  return { logic: context.window.booklogAudio, state, audio, values, requests, server }
+  return {
+    logic: context.window.booklogAudio, state, audio, values, requests, server,
+    document: context.document,
+    diagnosticButton, diagnosticStatus, diagnosticField,
+    emit: (target, event, details = {}) => (listeners[target][event] || []).forEach((callback) => callback(details)),
+  }
 }
 
 const audioResponse = (count = 1) =>
@@ -779,6 +807,79 @@ const audioResponse = (count = 1) =>
 async function flushPlayback() {
   for (let index = 0; index < 15; index += 1) await new Promise((resolve) => setImmediate(resolve))
 }
+
+test('Admin audio diagnostics retain transitions, hidden playback and lifecycle events across reloads', async () => {
+  const player = createPlayerHarness(() => audioResponse(2), { diagnostics: true })
+  player.logic.start(player.state, 0)
+  await flushPlayback()
+  player.audio.currentTime = 42
+  player.document.visibilityState = 'hidden'
+  player.emit('window', 'visibilitychange')
+  player.emit('audio', 'waiting')
+  player.emit('document', 'freeze')
+  player.emit('document', 'resume')
+  player.document.visibilityState = 'visible'
+  player.emit('window', 'visibilitychange')
+  player.audio.onended()
+  await flushPlayback()
+  const report = JSON.parse(player.logic.exportDiagnostics())
+  const hidden = report.events.find((entry) => entry.event === 'visibilitychange' && entry.visibility === 'hidden')
+  assert.equal(hidden.seconds, 42)
+  assert.equal(hidden.audioId, 'chunk-0-0')
+  for (const event of ['chunk-request', 'audio-downloaded', 'play', 'waiting', 'freeze', 'resume', 'ended', 'part-transition']) {
+    assert.ok(report.events.some((entry) => entry.event === event), event)
+  }
+  assert.ok(report.events.some((entry) => entry.event === 'play' && entry.chunk === 1))
+  assert.equal(report.userAgent, 'Test Android')
+  assert.doesNotMatch(JSON.stringify(report), /fallbackText|input_text|audioUrl|user:hash/)
+  const reloaded = createPlayerHarness(() => audioResponse(), { diagnostics: true, storage: player.values })
+  assert.ok(JSON.parse(reloaded.logic.exportDiagnostics()).events.some((entry) => entry.event === 'freeze'))
+  for (let index = 0; index < 350; index += 1) reloaded.emit('window', 'online')
+  assert.equal(JSON.parse(reloaded.logic.exportDiagnostics()).events.length, 300)
+  player.logic.stop()
+})
+
+test('Diagnostic clipboard supports direct copying and a selectable fallback on phones', async () => {
+  let copied = ''
+  const player = createPlayerHarness(() => audioResponse(), {
+    diagnostics: true,
+    clipboard: { writeText: async (text) => { copied = text } },
+  })
+  player.logic.copyDiagnostics(player.diagnosticButton)
+  await flushPlayback()
+  assert.equal(JSON.parse(copied).version, 1)
+  assert.equal(player.diagnosticButton.disabled, false)
+  assert.equal(player.diagnosticField.hidden, true)
+  assert.match(player.diagnosticStatus.textContent, /복사했습니다/)
+  for (const clipboard of [undefined, { writeText: async () => { throw new Error('NotAllowedError') } }]) {
+    const blocked = createPlayerHarness(() => audioResponse(), { diagnostics: true, clipboard })
+    blocked.logic.copyDiagnostics(blocked.diagnosticButton)
+    await flushPlayback()
+    assert.equal(blocked.diagnosticButton.disabled, false)
+    assert.equal(blocked.diagnosticField.hidden, false)
+    assert.equal(blocked.diagnosticField.selected, true)
+    assert.ok(JSON.parse(blocked.diagnosticField.value).events.length)
+    assert.match(blocked.diagnosticStatus.textContent, /길게 눌러/)
+  }
+})
+
+test('Diagnostics do not affect playback when storage fails and stay off without the admin control', async () => {
+  const reader = createPlayerHarness(() => audioResponse())
+  reader.logic.start(reader.state, 0)
+  await flushPlayback()
+  assert.equal(reader.state.cloudAudioActive, true)
+  assert.equal(JSON.parse(reader.logic.exportDiagnostics()).events.length, 0)
+  assert.equal(reader.values.has('booklog-audio-diagnostics:user:hash'), false)
+  reader.logic.stop()
+  const admin = createPlayerHarness(() => audioResponse(), { diagnostics: true, storageFailure: true })
+  admin.logic.start(admin.state, 0)
+  await flushPlayback()
+  assert.equal(admin.state.cloudAudioActive, true)
+  const report = JSON.parse(admin.logic.exportDiagnostics())
+  assert.equal(report.storageAvailable, false)
+  assert.ok(report.events.some((entry) => entry.event === 'play'))
+  admin.logic.stop()
+})
 
 test('Replay uses browser audio cache and restores server progress without downloading audio again', async () => {
   const { logic, state, audio, requests, server } = createPlayerHarness(() => audioResponse())
