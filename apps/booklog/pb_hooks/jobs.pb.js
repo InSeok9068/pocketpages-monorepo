@@ -1,6 +1,6 @@
 // 운영 환경에서만 예약 작업을 등록합니다. UTC 기준이며 한국 시간은 +9시간입니다.
 if (String(process.env.APP_ENV || '').trim() === 'production') {
-  cronAdd('booklog-reading-reminder', '10 0 * * *', function () {
+  cronAdd('booklog-reading-reminder', '0 11 * * *', function () {
     try {
       const readingReminderJob = require(__hooks + '/jobs/reading-reminder-job.js')
 
@@ -17,7 +17,6 @@ if (String(process.env.APP_ENV || '').trim() === 'production') {
   })
 
   cronAdd('booklog-highlight-reminder', '0 0 * * *', function () {
-    // cronAdd('booklog-highlight-reminder', '*/1 * * * *', function () {
     try {
       const highlightReminderJob = require(__hooks + '/jobs/highlight-reminder-job.js')
 

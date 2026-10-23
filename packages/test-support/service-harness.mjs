@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -85,6 +86,21 @@ function createTempDataDir(serviceDir, serviceName) {
   return {
     tempRootDir,
     tempDataDir,
+  }
+}
+
+// 관리자 계정이 없으면 PocketBase가 serve 시작 때 설치 화면을 브라우저로 열어서, 테스트용 계정을 먼저 만들어 둡니다.
+function ensureHarnessSuperuser(pocketBasePath, tempDataDir, serviceName) {
+  const result = spawnSync(
+    pocketBasePath,
+    ['superuser', 'upsert', 'harness@pocketpages.test', randomBytes(18).toString('hex'), '--dir', tempDataDir],
+    { encoding: 'utf8', windowsHide: true }
+  )
+
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      `[${serviceName}] Failed to create the harness superuser.\n${result.error ? result.error.message : ''}${result.stdout || ''}${result.stderr || ''}`
+    )
   }
 }
 
@@ -315,6 +331,7 @@ export async function startService(options) {
   }
 
   try {
+    ensureHarnessSuperuser(pocketBasePath, tempData.tempDataDir, serviceName)
     runDataImports(serviceDir, tempData.tempDataDir, options.imports, serviceName)
   } catch (error) {
     removeTempDir(tempData.tempRootDir)
