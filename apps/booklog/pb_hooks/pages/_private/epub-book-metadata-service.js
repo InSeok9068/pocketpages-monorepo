@@ -2,7 +2,7 @@ const fflate = require('fflate')
 const { XMLParser } = require('fast-xml-parser')
 const he = require('he')
 const { compile: compileHtmlToText } = require(`${__hooks}/pages/_private/vendor/html-to-text.bundle.js`)
-const { createTextEntrySizeGuard } = require(`${__hooks}/pages/_private/epub-reading-metrics.js`)
+const { createTextEntrySizeGuard, decodeArchiveBytes } = require(`${__hooks}/pages/_private/epub-reading-metrics.js`)
 
 /**
  * EPUB 업로드와 재분석에서 같은 도서 메타데이터 탐색을 제공합니다.
@@ -102,7 +102,7 @@ function createEpubBookMetadataService(dependencies) {
       return ''
     }
 
-    return fflate.strFromU8(archiveEntries[entryPath])
+    return decodeArchiveBytes(archiveEntries[entryPath])
   }
 
   function shouldExtractEpubTextEntry(entryPath) {

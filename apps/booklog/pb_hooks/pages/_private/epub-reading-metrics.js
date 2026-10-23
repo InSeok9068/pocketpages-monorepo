@@ -193,12 +193,22 @@ function resolveManifestEntryPath(archiveEntries, packageDocumentPath, href) {
   }
 }
 
+/**
+ * EPUB 압축에서 꺼낸 UTF-8 바이트를 문자열로 바꿉니다.
+ * @param {Uint8Array} bytes 압축을 푼 파일 바이트
+ * @returns {string} 파일 내용
+ */
+function decodeArchiveBytes(bytes) {
+  // PocketBase JSVM에는 TextDecoder가 없어 fflate가 글자마다 문자열을 이어 붙이고, 파일 크기의 제곱만큼 느려집니다.
+  return typeof $app !== 'undefined' ? toString(bytes) : fflate.strFromU8(bytes)
+}
+
 function readArchiveText(archiveEntries, entryPath) {
   if (!entryPath || !archiveEntries[entryPath]) {
     return ''
   }
 
-  return fflate.strFromU8(archiveEntries[entryPath])
+  return decodeArchiveBytes(archiveEntries[entryPath])
 }
 
 function decodeXmlText(input) {
@@ -655,5 +665,6 @@ module.exports = {
   buildReadingMetrics,
   buildReadingMetricsFromBytes,
   createTextEntrySizeGuard,
+  decodeArchiveBytes,
   resolveManifestEntryPath,
 }

@@ -341,6 +341,51 @@ test('Different readers uploading the same new EPUB at once share one book and f
   assert.ok(existsSync(path.join(state.storageRoot, state.files[0].path)), 'stored EPUB file exists')
 })
 
+test('A book whose body is one very large chapter file uploads in seconds and gets its page count', async () => {
+  const { zipSync, strToU8 } = require('fflate')
+  const title = 'single-large-chapter'
+  const paragraphs = Array.from(
+    { length: 4000 },
+    (_, index) => '<p>' + index + '번째 문단은 한 파일에 모든 본문이 들어 있는 책을 확인합니다.</p>'
+  )
+  const bytes = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+    ),
+    'OPS/book.opf': strToU8(
+      '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>' + title + '</dc:title><dc:creator>큰 챕터 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+    ),
+    'OPS/body.xhtml': strToU8('<html><body>' + paragraphs.join('') + '</body></html>'),
+  })
+  const form = new FormData()
+  form.set('epubFile', new Blob([bytes], { type: 'application/epub+zip' }), title + '.epub')
+
+  // PocketBase 안에서 바이트를 글자마다 이어 붙여 문자열로 만들면, 이 크기 파일 하나에 10초 넘게 걸립니다.
+  const decode = await (await request('/_test/decode-speed')).json()
+  assert.ok(decode.kb > 250, 'the sample is as large as a big chapter file')
+  assert.equal(decode.same, true, 'the decoded text matches the original')
+  assert.ok(decode.ms < 1000, 'decoding ' + decode.kb + 'KB took ' + decode.ms + 'ms')
+
+  const startedAt = Date.now()
+  const response = await fetch(service.baseUrl + '/xapi/epub/upload', {
+    method: 'POST',
+    headers: sessions[1],
+    redirect: 'manual',
+    body: form,
+  })
+  const elapsedMs = Date.now() - startedAt
+  const message = decodeURIComponent(response.headers.get('location') || '')
+  assert.equal(response.status, 303)
+  assert.match(message, /EPUB 파일과 도서 메타데이터를 저장했습니다\./, message)
+  assert.ok(elapsedMs < 60_000, 'upload took ' + elapsedMs + 'ms')
+
+  const state = await (await request('/_test/upload-state?title=' + encodeURIComponent(title))).json()
+  assert.equal(state.files.length, 1)
+  const book = await (await request('/_test/book?title=' + encodeURIComponent(title))).json()
+  assert.ok(book.fields.estimated_page_count > 100, 'page count ' + book.fields.estimated_page_count)
+})
+
 test('Renamed legacy EPUBs reuse the same file, while equal-size different contents stay separate', async () => {
   const { zipSync, strToU8 } = require('fflate')
   const title = 'legacy-hash-rename-case'

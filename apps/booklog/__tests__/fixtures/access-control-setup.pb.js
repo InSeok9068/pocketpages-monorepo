@@ -1,4 +1,4 @@
-/* global onBootstrap, $app, $os, __hooks, Record, $filesystem, $security, routerAdd, $dbx, onRecordCreate */
+/* global onBootstrap, $app, $os, __hooks, Record, $filesystem, $security, routerAdd, $dbx, onRecordCreate, require */
 onBootstrap(function (event) {
   event.next()
   $app.importCollectionsByMarshaledJSON($os.readFile(__hooks + '/test-schema.json'), false)
@@ -373,4 +373,19 @@ routerAdd('GET', '/_test/admin-state', function (event) {
     originalFileCount: $app.countRecords('book_files', $dbx.hashExp({ book_id: 'reviewbook00001' })),
     unusedBookCount: $app.countRecords('books', $dbx.hashExp({ id: 'unusedbook00001' })),
   })
+})
+
+// 업로드 전체 시간은 컴퓨터 부하에 따라 흔들려, 바뀐 변환 단계만 PocketBase 안에서 따로 잽니다.
+routerAdd('GET', '/_test/decode-speed', function (event) {
+  const fflate = require('fflate')
+  const metrics = require(__hooks + '/pages/_private/epub-reading-metrics.js')
+  const parts = []
+  for (let index = 0; index < 4000; index += 1) {
+    parts.push('<p>' + index + '번째 문단은 한 파일에 모든 본문이 들어 있는 책을 확인합니다.</p>')
+  }
+  const text = parts.join('')
+  const bytes = fflate.strToU8(text)
+  const startedAt = Date.now()
+  const decoded = metrics.decodeArchiveBytes(bytes)
+  return event.json(200, { kb: Math.round(bytes.length / 1024), ms: Date.now() - startedAt, same: decoded === text })
 })
