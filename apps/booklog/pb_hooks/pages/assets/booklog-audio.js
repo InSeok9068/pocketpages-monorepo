@@ -6,6 +6,8 @@ window.booklogAudio = (function () {
   var CACHE_NAME = 'booklog-audio-v3'
   var CACHE_LIMIT = 16
   var SAVE_INTERVAL_MS = 15000
+  var BUFFER_AHEAD_SECONDS = 120
+  var BUFFER_BEHIND_SECONDS = 30
   var outboxKey = 'booklog-audio-pending:' + config.readerCacheKey
   var pendingSaves = {}
   var saveSequence = 0
@@ -64,6 +66,8 @@ window.booklogAudio = (function () {
           bufferedEnd: player.buffered && player.buffered.length ? player.buffered.end(player.buffered.length - 1) : 0,
           rate: player.playbackRate,
           sleepMode: sleepTimer.mode,
+          playbackMode: session.stream ? 'buffer' : 'file',
+          partSeconds: audioSeconds(session),
         })
       }
       if (details) entry.details = details
@@ -207,9 +211,7 @@ window.booklogAudio = (function () {
       fields: {
         configHash: session.configHash,
         chunkId: session.chunkId,
-        seconds: String(
-          session.partOffset + (session.fallback ? session.fallbackElapsed : session.player.currentTime || 0)
-        ),
+        seconds: String(session.partOffset + (session.fallback ? session.fallbackElapsed : audioSeconds(session))),
         isCompleted: String(!!completed),
         restart: String(session.restartPending),
         listenedAt: new Date().toISOString(),
@@ -418,6 +420,7 @@ window.booklogAudio = (function () {
   }
 
   function prepareNextChunk(session) {
+    if (session.stream) return
     var next = nextPosition(session)
     var key = next ? next.sectionIndex + ':' + next.chunkIndex : ''
     if (!isActive(session) || !next || session.prefetchedKey === key) return
@@ -560,7 +563,7 @@ window.booklogAudio = (function () {
   }
 
   function chapterPosition(session) {
-    var within = session.fallback ? session.fallbackElapsed : session.player.currentTime || 0
+    var within = session.fallback ? session.fallbackElapsed : audioSeconds(session)
     return Math.min(
       sumUntil(session.timeline, session.chunkIndex) + session.partOffset + within,
       chapterDuration(session)
@@ -639,6 +642,8 @@ window.booklogAudio = (function () {
   function moveChapter(direction) {
     var session = activeSession
     if (!session || session.state.cloudAudioBusy) return
+    syncBufferedPosition(session)
+    if (!isActive(session)) return
     var target = direction > 0 ? session.nextSectionIndex : session.previousSectionIndex
     if (!(target >= 0)) return
     var wasPaused = !session.state.cloudAudioActive
@@ -681,6 +686,7 @@ window.booklogAudio = (function () {
       window.speechSynthesis.resume()
     }
     session.player.pause()
+    closeAudioBuffer(session)
   }
 
   /**
@@ -691,6 +697,8 @@ window.booklogAudio = (function () {
   function seekTo(seconds) {
     var session = activeSession
     if (!session || session.state.cloudAudioBusy || !session.timeline.length || !session.parts.length) return
+    syncBufferedPosition(session)
+    if (!isActive(session)) return
     var target = Math.max(0, Math.min(Number(seconds) || 0, chapterDuration(session) - 0.5))
     var chunkIndex = 0
     var chunkStart = 0
@@ -719,7 +727,7 @@ window.booklogAudio = (function () {
       partIndex += 1
     }
     if (partIndex === session.partIndex && !session.fallback && session.positionReady) {
-      session.player.currentTime = within - partStart
+      session.player.currentTime = (session.streamEntry ? session.streamEntry.start : 0) + within - partStart
       updateProgress(session)
       savePosition(session, true, false)
       return
@@ -744,7 +752,7 @@ window.booklogAudio = (function () {
     if (session.fallback && session.fallbackSpeaking) {
       return { sectionIndex: session.sectionIndex, text: session.fallbackSpeaking.replace(/\s+/g, ' ').trim() }
     }
-    var elapsed = session.fallback ? session.fallbackElapsed : session.player.currentTime || 0
+    var elapsed = session.fallback ? session.fallbackElapsed : audioSeconds(session)
     var ratio = part.duration > 0 ? Math.min(1, elapsed / part.duration) : 0
     var text = part.text
     // 낭독 속도는 공백을 뺀 글자 수에 비례하므로, 줄바꿈·공백이 많은 대사 부분에서 위치가 앞서가지 않게 공백 제외 글자로 셉니다.
@@ -907,6 +915,7 @@ window.booklogAudio = (function () {
         session.nextChunk = null
         session.prefetchedKey = ''
         session.parts = result.parts
+        session.chunkData = result
         session.partIndex = 0
         session.partOffset = 0
         recordDiagnostic('chunk-ready', session, { parts: result.parts.length })
@@ -929,7 +938,301 @@ window.booklogAudio = (function () {
       })
   }
 
+  function audioSeconds(session) {
+    var entry = session.streamEntry
+    var seconds = session.player.currentTime || 0
+    return entry ? Math.max(0, Math.min(seconds - entry.start, entry.end - entry.start)) : seconds
+  }
+
+  function closeAudioBuffer(session) {
+    var stream = session.stream
+    if (!stream) return
+    session.stream = null
+    session.streamEntry = null
+    stream.controller.abort()
+    stream.source.removeEventListener('sourceopen', stream.onOpen)
+    stream.source.removeEventListener('sourceclose', stream.onClose)
+    try {
+      if (stream.buffer && stream.buffer.updating) stream.buffer.abort()
+    } catch (_error) {
+      /* 이미 분리된 버퍼입니다. */
+    }
+    URL.revokeObjectURL(stream.url)
+    stream.entries = []
+    stream.cursor = null
+  }
+
+  function isCurrentBuffer(session, stream) {
+    return isActive(session) && session.stream === stream
+  }
+
+  // 버퍼의 전역 시간을 기존 챕터·구간·조각 위치로 바꿉니다.
+  function syncBufferedPosition(session) {
+    var stream = session.stream
+    if (!stream || !stream.started || stream.syncing) return
+    stream.syncing = true
+    try {
+      var time = session.player.currentTime || 0
+      var index = stream.entries.indexOf(session.streamEntry) + 1
+      while (index < stream.entries.length && stream.entries[index].start <= time + 0.001) {
+        var entry = stream.entries[index++]
+        var previous = session.streamEntry
+        var chapterChanged = session.sectionIndex !== entry.data.sectionIndex
+        if (previous) savePosition(session, true, chapterChanged)
+        if (previous && chapterChanged && sleepTimer.mode === 'chapter') {
+          sleepNow(
+            session,
+            '챕터를 끝까지 들어 잠자기 타이머로 멈췄습니다. 이어 듣기로 다음 챕터부터 들을 수 있습니다.'
+          )
+          return
+        }
+        session.streamEntry = entry
+        session.sectionIndex = entry.data.sectionIndex
+        session.chunkIndex = entry.chunkIndex
+        session.chunkData = entry.data
+        session.chunkId = entry.data.chunkId
+        session.chunkCount = entry.data.count
+        session.parts = entry.data.parts
+        session.partIndex = entry.partIndex
+        session.partOffset = entry.partOffset
+        session.timeline = entry.data.timeline
+        session.nextSectionIndex = entry.data.nextSectionIndex
+        session.previousSectionIndex = entry.data.previousSectionIndex
+        session.state.cloudAudioChapter = chapterLabel(session)
+        session.state.cloudAudioChapterOrder = entry.data.chapterOrder
+        if (chapterChanged) session.restartPending = true
+        showPlayback(session)
+        updateMediaSession(session)
+        recordDiagnostic('buffer-boundary', session)
+        if (previous) savePosition(session, true, false)
+      }
+    } finally {
+      stream.syncing = false
+    }
+  }
+
+  function mutateAudioBuffer(session, stream, mutate) {
+    return new Promise(function (resolve, reject) {
+      var buffer = stream.buffer
+      function cleanup() {
+        buffer.removeEventListener('updateend', done)
+        buffer.removeEventListener('error', failed)
+        buffer.removeEventListener('abort', failed)
+        stream.controller.signal.removeEventListener('abort', failed)
+      }
+      function done() {
+        cleanup()
+        resolve()
+      }
+      function failed() {
+        cleanup()
+        reject(new Error('오디오 버퍼를 준비하지 못했습니다.'))
+      }
+      if (!isCurrentBuffer(session, stream)) {
+        failed()
+        return
+      }
+      buffer.addEventListener('updateend', done)
+      buffer.addEventListener('error', failed)
+      buffer.addEventListener('abort', failed)
+      stream.controller.signal.addEventListener('abort', failed)
+      try {
+        mutate(buffer)
+      } catch (error) {
+        cleanup()
+        reject(error)
+      }
+    })
+  }
+
+  function useFilePlayback(session, stream, error) {
+    if (!isCurrentBuffer(session, stream)) return
+    syncBufferedPosition(session)
+    if (!isCurrentBuffer(session, stream)) return
+    var seconds = stream.started ? audioSeconds(session) : stream.resume
+    var hold = stream.started ? session.player.paused : stream.hold
+    recordDiagnostic('buffer-fallback', session, { error: error.name })
+    session.positionReady = false
+    session.player.pause()
+    closeAudioBuffer(session)
+    session.streamDisabled = true
+    session.resumeSeconds = seconds
+    session.holdPaused = hold
+    playPart(session)
+  }
+
+  // 현재 음성과 앞쪽 약 2분을 준비합니다. 한 파일이 길면 그 파일 끝까지 받을 수 있습니다.
+  function pumpAudioBuffer(session) {
+    var stream = session.stream
+    if (!stream || !stream.buffer || stream.pumping || stream.terminal || !isActive(session)) return
+    stream.pumping = true
+    function step() {
+      if (!isCurrentBuffer(session, stream)) return
+      var cutoff = (session.player.currentTime || 0) - BUFFER_BEHIND_SECONDS
+      if (cutoff >= stream.trimmed + 30) {
+        return mutateAudioBuffer(session, stream, function (buffer) {
+          buffer.remove(0, cutoff)
+        }).then(function () {
+          stream.trimmed = cutoff
+          stream.entries = stream.entries.filter(function (entry) {
+            return entry === session.streamEntry || entry.end > cutoff
+          })
+          recordDiagnostic('buffer-trim', session, { before: cutoff })
+          return step()
+        })
+      }
+      if (stream.started && stream.end - session.player.currentTime >= BUFFER_AHEAD_SECONDS) return
+      var cursor = stream.cursor
+      if (cursor.partIndex >= cursor.data.parts.length) {
+        var nextIndex = cursor.chunkIndex + 1
+        var nextSection = cursor.data.sectionIndex
+        if (nextIndex >= cursor.data.count) {
+          nextIndex = 0
+          nextSection = cursor.data.nextSectionIndex
+        }
+        if (nextSection < 0) {
+          finish('complete')
+          return
+        }
+        return loadChunkRetrying(session, nextSection, nextIndex, 2).then(
+          function (data) {
+            if (!isCurrentBuffer(session, stream)) return
+            stream.cursor = { data: data, chunkIndex: nextIndex, partIndex: 0 }
+            return step()
+          },
+          function (error) {
+            if (!isCurrentBuffer(session, stream)) return
+            stream.error = error
+            finish('error')
+          }
+        )
+      }
+      var part = cursor.data.parts[cursor.partIndex]
+      if (part.fallbackText) {
+        finish('device-voice')
+        return
+      }
+      return part.blob
+        .arrayBuffer()
+        .then(function (bytes) {
+          return mutateAudioBuffer(session, stream, function (buffer) {
+            buffer.appendBuffer(bytes)
+          })
+        })
+        .then(function () {
+          if (!isCurrentBuffer(session, stream)) return
+          var ranges = stream.buffer.buffered
+          var end = ranges.length ? ranges.end(ranges.length - 1) : stream.end
+          if (!(end > stream.end)) throw new Error('오디오 버퍼에 음성이 없습니다.')
+          var entry = {
+            data: cursor.data,
+            chunkIndex: cursor.chunkIndex,
+            partIndex: cursor.partIndex,
+            partOffset: cursor.data.parts.slice(0, cursor.partIndex).reduce(function (sum, item) {
+              return sum + item.duration
+            }, 0),
+            start: stream.end,
+            end: end,
+          }
+          stream.entries.push(entry)
+          stream.end = end
+          cursor.partIndex += 1
+          recordDiagnostic('buffer-append', session, { audioId: part.audioId || '', start: entry.start, end: end })
+          if (!stream.started) {
+            stream.started = true
+            session.player.currentTime = Math.min(stream.resume, Math.max(0, end - 0.1))
+            session.resumeSeconds = 0
+            session.positionReady = true
+            session.state.cloudAudioBusy = false
+            syncBufferedPosition(session)
+            updateProgress(session)
+            if (stream.hold) {
+              session.state.cloudAudioActive = false
+              setMediaPlaybackState('paused')
+              savePosition(session, true, false)
+            } else {
+              playAudio(session)
+            }
+          }
+          return step()
+        })
+    }
+    function finish(reason) {
+      stream.terminal = reason
+      recordDiagnostic('buffer-end', session, { reason: reason })
+      if (stream.source.readyState === 'open') stream.source.endOfStream()
+    }
+    Promise.resolve()
+      .then(step)
+      .catch(function (error) {
+        useFilePlayback(session, stream, error)
+      })
+      .then(function () {
+        stream.pumping = false
+      })
+  }
+
+  function startBufferedAudio(session, hold) {
+    var MediaSource = window.MediaSource
+    var part = session.parts[session.partIndex]
+    if (
+      session.streamDisabled
+      || !MediaSource
+      || !MediaSource.isTypeSupported('audio/mpeg')
+      || part.blob.type !== 'audio/mpeg'
+    )
+      return false
+    try {
+      var source = new MediaSource()
+      var stream = {
+        source: source,
+        buffer: null,
+        entries: [],
+        end: 0,
+        trimmed: 0,
+        cursor: { data: session.chunkData, chunkIndex: session.chunkIndex, partIndex: session.partIndex },
+        controller: new AbortController(),
+        started: false,
+        pumping: false,
+        terminal: '',
+        resume: session.resumeSeconds,
+        hold: hold,
+        url: URL.createObjectURL(source),
+      }
+      session.stream = stream
+      stream.onOpen = function () {
+        if (!isCurrentBuffer(session, stream) || stream.buffer) return
+        try {
+          stream.buffer = source.addSourceBuffer('audio/mpeg')
+          stream.buffer.mode = 'sequence'
+          pumpAudioBuffer(session)
+        } catch (error) {
+          useFilePlayback(session, stream, error)
+        }
+      }
+      stream.onClose = function () {
+        useFilePlayback(session, stream, new Error('MediaSource closed'))
+      }
+      source.addEventListener('sourceopen', stream.onOpen)
+      source.addEventListener('sourceclose', stream.onClose)
+      if (session.objectUrl) {
+        URL.revokeObjectURL(session.objectUrl)
+        session.objectUrl = ''
+      }
+      session.player.src = stream.url
+      session.player.playbackRate = Number(session.state.readAloudRate || 1)
+      recordDiagnostic('buffer-start', session)
+      return true
+    } catch (error) {
+      closeAudioBuffer(session)
+      session.streamDisabled = true
+      recordDiagnostic('buffer-unavailable', session, { error: error.name })
+      return false
+    }
+  }
+
   function playPart(session) {
+    closeAudioBuffer(session)
     var part = session.parts[session.partIndex]
     var hold = !!session.holdPaused
     session.holdPaused = false
@@ -938,6 +1241,7 @@ window.booklogAudio = (function () {
     if (part.fallbackText) return speakFallback(session, part.fallbackText, hold)
     session.startAnchor = ''
     session.positionReady = false
+    if (startBufferedAudio(session, hold)) return
     if (session.objectUrl) URL.revokeObjectURL(session.objectUrl)
     session.objectUrl = URL.createObjectURL(part.blob)
     session.player.src = session.objectUrl
@@ -1122,6 +1426,7 @@ window.booklogAudio = (function () {
     var next = nextPosition(session)
     var chapterDone = session.chunkIndex + 1 >= session.chunkCount
     savePosition(session, true, chapterDone)
+    closeAudioBuffer(session)
     session.positionReady = false
     setDeviceVoice(session, false)
     if (!next) {
@@ -1223,6 +1528,7 @@ window.booklogAudio = (function () {
     state.cloudAudioMessage = ''
     player.onloadedmetadata = function () {
       if (!isActive(session)) return
+      if (session.stream) return
       if (session.resumeSeconds > 0 && isFinite(player.duration)) {
         player.currentTime = Math.min(session.resumeSeconds, Math.max(0, player.duration - 0.1))
       }
@@ -1235,12 +1541,16 @@ window.booklogAudio = (function () {
       }
     }
     player.ontimeupdate = function () {
+      if (!isActive(session)) return
+      syncBufferedPosition(session)
+      if (!isActive(session)) return
       if (Date.now() - diagnosticsLastProgress >= 30000) {
         diagnosticsLastProgress = Date.now()
         recordDiagnostic('progress', session)
       }
       updateProgress(session)
       savePosition(session, false, false)
+      pumpAudioBuffer(session)
     }
     player.onplay = function () {
       if (!isActive(session)) return
@@ -1253,6 +1563,7 @@ window.booklogAudio = (function () {
       prepareNextChunk(session)
     }
     player.onpause = function () {
+      syncBufferedPosition(session)
       recordDiagnostic('pause', session)
       // 기기 음성 조각으로 넘어갈 때 플레이어를 멈춘 이벤트가 늦게 와도 재생 중 표시를 지우지 않습니다.
       if (!isActive(session) || session.fallback) return
@@ -1262,10 +1573,20 @@ window.booklogAudio = (function () {
     }
     player.onerror = function () {
       recordDiagnostic('media-error', session, { code: player.error ? player.error.code : 0 })
+      if (session.stream) {
+        useFilePlayback(session, session.stream, new Error('MediaSource playback failed'))
+        return
+      }
       setError(session, new Error('오디오를 재생하지 못했습니다.'))
     }
     player.onended = function () {
+      syncBufferedPosition(session)
+      if (!isActive(session)) return
       recordDiagnostic('ended', session)
+      if (session.stream && session.stream.error) {
+        setError(session, session.stream.error)
+        return
+      }
       advancePart(session)
     }
     bindMediaSession(session)
@@ -1339,9 +1660,12 @@ window.booklogAudio = (function () {
   function stop() {
     var session = activeSession
     if (!session) return
+    syncBufferedPosition(session)
+    if (!isActive(session)) return
     recordDiagnostic('stop', session)
     savePosition(session, true, false)
     activeSession = null
+    closeAudioBuffer(session)
     session.controller.abort()
     if (session.fallback && window.speechSynthesis) {
       window.speechSynthesis.cancel()
@@ -1381,6 +1705,7 @@ window.booklogAudio = (function () {
     stop()
   })
   window.addEventListener('visibilitychange', function () {
+    if (activeSession) syncBufferedPosition(activeSession)
     recordDiagnostic('visibilitychange', activeSession)
     if (activeSession) savePosition(activeSession, true, false)
   })
