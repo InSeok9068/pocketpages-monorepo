@@ -80,6 +80,39 @@
     return
   }
 
+  if (request.method === 'POST' && body().action === 'audio-compress') {
+    const form = body()
+    const bookId = String(form.bookId || '').trim()
+    const fileId = String(form.fileId || '').trim()
+    const kbps = Number(form.kbps)
+    let message = ''
+    try {
+      $app.findFirstRecordByFilter('book_files', 'id = {:fileId} && book_id = {:bookId}', { fileId, bookId })
+      if (!resolve('book-audio-compress-service').isSupportedBitrate(kbps)) {
+        throw new Error('지원하지 않는 비트레이트입니다.')
+      }
+      const job = resolve('book-audio-data').findFileJob($app, fileId)
+      if (!job) throw new Error('압축할 AI 오디오북이 없습니다.')
+      job.set('compress_kbps', kbps)
+      $app.save(job)
+      info('page/admin/books:audio-compress-requested', { userId, bookId, fileId, kbps })
+      message = kbps + 'kbps 압축을 예약했습니다. 5분마다 몇 구간씩 줄어듭니다.'
+    } catch (exception) {
+      error('page/admin/books:audio-compress-failed', {
+        userId,
+        bookId,
+        fileId,
+        kbps,
+        error: String(exception.message || exception),
+      })
+      message = 'AI 오디오북 압축을 요청하지 못했습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.'
+    }
+    const redirectTo = buildPageHref(requestedPage)
+    dbg('page/admin/books:redirect', { status: 303, redirectTo, message })
+    redirect(redirectTo, { status: 303, message })
+    return
+  }
+
   if (request.method === 'POST' && body().action === 'audio-delete') {
     const form = body()
     const bookId = String(form.bookId || '').trim()
@@ -279,6 +312,8 @@
   const audioData = resolve('book-audio-data')
   const audioJobService = resolve('book-audio-job-service')
   const voiceStyleOptions = audioData.getVoiceStyleOptions()
+  const audioCompress = resolve('book-audio-compress-service')
+  const compressBitrates = audioCompress.getBitrateOptions()
   const audioFilesByBook = {}
   const fileBindings = {}
   const fileFilter = rows
@@ -297,6 +332,7 @@
       const estimatedSeconds = job ? 0 : audioData.estimateSecondsFromText(Number(file.get('text_char_count') || 0))
       const modelOptions = job ? [] : audioData.getModelOptions($app, fileId)
       const availableModel = job ? null : audioData.pickAvailableModel(modelOptions)
+      const compression = job ? audioCompress.getCompressionProgress($app, job) : { kbps: 0, done: 0, total: 0 }
       const bookId = String(file.get('book_id'))
       ;(audioFilesByBook[bookId] = audioFilesByBook[bookId] || []).push({
         fileId,
@@ -314,6 +350,12 @@
         modelOptions: job ? [] : modelOptions,
         selectedModel: availableModel ? availableModel.model : '',
         canRequestModel: !!availableModel,
+        canCompress: compression.total > 0,
+        compressKbps: compression.kbps,
+        compressLabel:
+          compression.kbps > 0
+            ? '압축 ' + compression.kbps + 'kbps · ' + compression.done + ' / ' + compression.total + ' 구간'
+            : '',
       })
     })
   }
@@ -533,6 +575,9 @@
                   <% if (file.chunkLabel) { %>
                   <p class="m-0 text-[11px] text-stone-500"><%= file.chunkLabel %></p>
                   <% } %>
+                  <% if (file.compressLabel) { %>
+                  <p class="m-0 text-[11px] text-stone-500"><%= file.compressLabel %></p>
+                  <% } %>
                   <% if (book.audioFiles.length > 1) { %>
                   <p class="m-0 text-[11px] break-all text-stone-500"><%= file.name %></p>
                   <% } %>
@@ -548,6 +593,9 @@
                   <%- include('book-audio-failed-chunks.ejs', { chunks: file.failedChunks, fileId: file.fileId, bookTitle: book.title }) %>
                   <% } %>
                   <div class="flex flex-wrap items-center gap-1">
+                    <% if (file.canCompress) { %>
+                    <%- include('book-audio-compress-dialog.ejs', { action: formAction, fields: { action: 'audio-compress', bookId: book.bookId, fileId: file.fileId }, fileId: file.fileId, bookTitle: book.title, bitrates: compressBitrates, currentKbps: file.compressKbps }) %>
+                    <% } %>
                     <% if (!file.hasJob) { %>
                     <%- include('book-audio-request-dialog.ejs', { action: formAction, fields: { action: 'audio-start', bookId: book.bookId, fileId: file.fileId }, fileId: file.fileId, bookTitle: book.title, estimateLabel: file.estimateLabel, modelOptions: file.modelOptions, selectedModel: file.selectedModel, voices: voiceStyleOptions.voices, styles: voiceStyleOptions.styles, canRequest: file.canRequestModel }) %>
                     <% } else if (file.canRequest) { %>

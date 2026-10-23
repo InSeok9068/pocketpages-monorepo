@@ -655,6 +655,19 @@
         "type": "number"
       },
       {
+        "help": "다시 압축한 음성의 비트레이트(kbps), 0이면 생성 원본(128kbps)",
+        "hidden": false,
+        "id": "number1101001140",
+        "max": 320,
+        "min": 0,
+        "name": "audio_kbps",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
         "help": "생성 시작 시각",
         "hidden": false,
         "id": "date1101001115",
@@ -1114,6 +1127,19 @@
         "max": null,
         "min": 0,
         "name": "failed_chunks",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "help": "관리자가 요청한 음성 압축 목표 비트레이트(kbps), 0이면 압축하지 않음",
+        "hidden": false,
+        "id": "number1101001139",
+        "max": 320,
+        "min": 0,
+        "name": "compress_kbps",
         "onlyInt": true,
         "presentable": false,
         "required": false,

@@ -73,6 +73,39 @@ routerAdd('POST', '/_test/audio-control', function (event) {
   return event.json(200, { reset })
 })
 
+// 실제 MP3를 구간에 넣고 압축 cron이 하는 일을 한 번 실행합니다. lame이 있는 환경에서만 테스트가 부릅니다.
+routerAdd('POST', '/_test/audio-compress', function (event) {
+  const input = new DynamicModel({ fileId: '', sourcePath: '', kbps: 0 })
+  event.bindBody(input)
+  const audioData = require(__hooks + '/pages/_private/book-audio-data.js')
+  const compress = require(__hooks + '/pages/_private/book-audio-compress-service.js')
+  const job = audioData.findFileJob($app, input.fileId)
+  const chunk = $app.findFirstRecordByFilter('book_audio_chunks', 'file_id = {:fileId}', { fileId: input.fileId })
+  chunk.set('status', 'ready')
+  chunk.set('generated_at', new Date().toISOString())
+  chunk.set('audio_file', $filesystem.fileFromPath(input.sourcePath))
+  chunk.set('audio_kbps', 0)
+  $app.save(chunk)
+  const sourceFile = String(chunk.get('audio_file'))
+  job.set('compress_kbps', input.kbps)
+  $app.save(job)
+  const result = compress.compressNextChunks($app)
+  const after = $app.findRecordById('book_audio_chunks', chunk.id)
+  const fsys = $app.newFilesystem()
+  try {
+    return event.json(200, {
+      result,
+      kbps: after.get('audio_kbps'),
+      durationSeconds: after.get('duration_seconds'),
+      size: Number(fsys.attributes(after.baseFilesPath() + '/' + after.get('audio_file')).size),
+      sourceExists: fsys.exists(after.baseFilesPath() + '/' + sourceFile),
+      again: compress.compressNextChunks($app),
+    })
+  } finally {
+    fsys.close()
+  }
+})
+
 // 모델 예약 흐름과 섞이지 않도록 작업을 직접 만들고, 구간 상태를 시나리오대로 바꿉니다.
 routerAdd('POST', '/_test/audio-scenario', function (event) {
   const input = new DynamicModel({ fileId: '', name: '' })

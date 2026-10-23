@@ -433,6 +433,7 @@ function applyRegenerateRequests(app, nowMs) {
         chunk.set('status', 'queued')
         chunk.set('audio_file', '')
         chunk.set('duration_seconds', 0)
+        chunk.set('audio_kbps', 0)
         chunk.set('attempt_count', 0)
         chunk.set('next_retry_at', '')
         chunk.set('error_message', '')

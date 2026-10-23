@@ -1,0 +1,86 @@
+<div x-data="{}">
+  <button
+    type="button"
+    @click="$refs.compressDialog.showModal()"
+    aria-haspopup="dialog"
+    aria-controls="audio-compress-dialog-<%= fileId %>"
+    class="inline-flex h-8 items-center gap-1 rounded-full border-0 bg-stone-100 px-3 text-xs font-semibold text-stone-700 ring-0 transition hover:bg-stone-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500">
+    <span
+      class="i-lucide-archive h-3.5 w-3.5"
+      aria-hidden="true"></span>
+    오디오 압축
+  </button>
+  <dialog
+    id="audio-compress-dialog-<%= fileId %>"
+    x-ref="compressDialog"
+    aria-labelledby="audio-compress-title-<%= fileId %>"
+    @click="if ($event.target === $el) $el.close()"
+    class="fixed inset-0 m-auto max-h-[88dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-[1.75rem] border-none bg-[#fbf7ef] p-0 text-left text-stone-950 shadow-xl backdrop:bg-black/40">
+    <form
+      method="post"
+      action="<%= action %>"
+      class="m-0 space-y-5 p-6"
+      @click.stop>
+      <% for (const name of Object.keys(fields)) { %>
+      <input
+        type="hidden"
+        name="<%= name %>"
+        value="<%= fields[name] %>" />
+      <% } %>
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h3
+            id="audio-compress-title-<%= fileId %>"
+            class="m-0 text-xl font-semibold tracking-tight">
+            오디오 압축
+          </h3>
+          <p class="m-0 mt-1 truncate text-sm text-stone-500"><%= bookTitle %></p>
+        </div>
+        <button
+          type="button"
+          @click="$refs.compressDialog.close()"
+          aria-label="닫기"
+          class="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border-none bg-stone-200/60 text-stone-700">
+          <span
+            class="i-lucide-x h-4 w-4"
+            aria-hidden="true"></span>
+        </button>
+      </div>
+
+      <label class="block space-y-1.5">
+        <span class="block text-sm font-semibold text-stone-800">비트레이트</span>
+        <select
+          name="kbps"
+          required
+          class="box-border h-11 w-full rounded-xl border border-solid border-stone-300 bg-white px-3 text-sm text-stone-900 focus-visible:outline-stone-500">
+          <% for (const kbps of bitrates) { %>
+          <option
+            value="<%= kbps %>"
+            <%= kbps === (currentKbps || 64) ? 'selected' : '' %>>
+            <%= kbps %>kbps (원본 128kbps의 <%= Math.round((kbps / 128) * 100) %>%)
+          </option>
+          <% } %>
+        </select>
+      </label>
+
+      <ul class="m-0 list-none space-y-1.5 rounded-xl bg-white/70 p-3 text-xs leading-5 text-stone-600">
+        <li>완성된 구간부터 5분마다 몇 개씩 줄이고, 앞으로 완성되는 구간도 같은 값으로 줄입니다.</li>
+        <li>낭독은 64kbps 모노가 보편적이고, 48kbps는 높은 소리가 조금 거칠어질 수 있습니다.</li>
+        <li class="font-semibold text-[#8e5521]">
+          원본은 남지 않아 되돌릴 수 없습니다. 다시 높이려면 재생성해야 합니다.
+        </li>
+      </ul>
+
+      <div class="space-y-2.5 pt-1">
+        <button
+          type="submit"
+          class="inline-flex h-12 w-full items-center justify-center rounded-full border-none bg-stone-900 px-4 text-sm font-semibold text-white ring-0 transition outline-none hover:bg-stone-700">
+          압축 요청
+        </button>
+        <% if (currentKbps) { %>
+        <p class="m-0 text-center text-xs leading-5 text-stone-400">지금 요청된 값: <%= currentKbps %>kbps</p>
+        <% } %>
+      </div>
+    </form>
+  </dialog>
+</div>

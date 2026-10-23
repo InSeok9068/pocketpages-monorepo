@@ -11,6 +11,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { load } from 'cheerio'
@@ -164,6 +165,33 @@ test('Book-level model reservations, concurrent requests, resume, playback and r
   const played = await detail(flashBook)
   assert.match(played.text(), /생성 완료 · 1분 \/ 약 1분 \(100%\)/, 'progress is shown by the stored audio length')
   assert.match(played.text(), /1 \/ 1 구간/)
+  const compressRequest = (kbps) =>
+    fetch(service.baseUrl + '/admin/books?scope=all', {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { Cookie: cookie },
+      body: new URLSearchParams({
+        action: 'audio-compress',
+        bookId: bookId(flashBook),
+        fileId: fileId(flashBook),
+        kbps: String(kbps),
+      }),
+    })
+  const adminQuery = '/admin/books?scope=all&q=' + encodeURIComponent('테스트 책 ' + flashBook)
+  let admin = load(await (await fetch(service.baseUrl + adminQuery, { headers: { Cookie: cookie } })).text())
+  assert.deepEqual(
+    admin('select[name=kbps] option')
+      .toArray()
+      .map((option) => admin(option).val()),
+    ['96', '64', '48']
+  )
+  assert.equal(admin('select[name=kbps] option[selected]').val(), '64', '64kbps is offered by default')
+  assert.equal((await compressRequest(32)).status, 303)
+  assert.equal(Number((await jobs()).find((job) => job.file_id === fileId(flashBook)).compress_kbps || 0), 0)
+  await compressRequest(64)
+  assert.equal((await jobs()).find((job) => job.file_id === fileId(flashBook)).compress_kbps, 64)
+  admin = load(await (await fetch(service.baseUrl + adminQuery, { headers: { Cookie: cookie } })).text())
+  assert.match(admin.text(), /압축 64kbps · 0 \/ 1 구간/)
   const query = new URLSearchParams({ bookId: bookId(flashBook), fileId: fileId(flashBook) })
   const headers = { Cookie: cookie }
   let response = await fetch(service.baseUrl + '/api/books/audio-progress?' + query, { headers })
@@ -267,6 +295,55 @@ async function scenario(index, name) {
   assert.equal(response.status, 200, JSON.stringify(result))
   return result
 }
+
+const hasLame = spawnSync('lame', ['--version']).status === 0
+
+test(
+  'Compressing a ready part with lame replaces the 128kbps file with a mono file at the chosen bitrate',
+  { skip: hasLame ? false : 'lame is not installed' },
+  async () => {
+    const job = (await jobs()).find((entry) => Number(entry.compress_kbps) === 64)
+    assert.ok(job, 'the playback book from the first test has a ready part')
+    const seconds = 3
+    const rate = 24000
+    const samples = Buffer.alloc(seconds * rate * 2)
+    for (let index = 0; index < seconds * rate; index += 1) {
+      samples.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * index) / rate) * 8000), index * 2)
+    }
+    const header = Buffer.alloc(44)
+    header.write('RIFF', 0)
+    header.writeUInt32LE(36 + samples.length, 4)
+    header.write('WAVEfmt ', 8)
+    header.writeUInt32LE(16, 16)
+    header.writeUInt16LE(1, 20)
+    header.writeUInt16LE(1, 22)
+    header.writeUInt32LE(rate, 24)
+    header.writeUInt32LE(rate * 2, 28)
+    header.writeUInt16LE(2, 32)
+    header.writeUInt16LE(16, 34)
+    header.write('data', 36)
+    header.writeUInt32LE(samples.length, 40)
+    const wavPath = path.join(fixtureDir, 'tone.wav')
+    const sourcePath = path.join(fixtureDir, 'tone.mp3')
+    writeFileSync(wavPath, Buffer.concat([header, samples]))
+    assert.equal(spawnSync('lame', ['--quiet', '-b', '128', '-m', 'm', wavPath, sourcePath]).status, 0)
+    const sourceSize = readFileSync(sourcePath).length
+
+    const response = await fetch(service.baseUrl + '/_test/audio-compress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileId: job.file_id, sourcePath, kbps: 64 }),
+    })
+    const compressed = await response.json()
+    assert.equal(response.status, 200, JSON.stringify(compressed))
+    assert.deepEqual(compressed.result, { jobId: job.id, compressed: 1, failed: 0 })
+    assert.equal(compressed.kbps, 64)
+    assert.ok(compressed.size < sourceSize * 0.6, compressed.size + ' / ' + sourceSize)
+    assert.ok(Math.abs(compressed.durationSeconds - seconds) < 0.3, String(compressed.durationSeconds))
+    assert.equal(compressed.sourceExists, false, 'the 128kbps file is removed with the record update')
+    assert.equal(compressed.again.compressed, 0, 'an already compressed part is skipped')
+  }
+)
 
 test('A job whose only missing parts were blocked by policy is completed and releases its model', async () => {
   const { job, chunks } = await scenario(5, 'blocked')

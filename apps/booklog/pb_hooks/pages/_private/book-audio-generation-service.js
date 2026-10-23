@@ -224,6 +224,7 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
     const saved = updateClaimed(app, chunkId, claimedAt, function (current) {
       current.set('audio_file', audioFile)
       current.set('duration_seconds', audio.durationSeconds)
+      current.set('audio_kbps', 0)
       current.set('generated_at', new Date().toISOString())
       current.set('status', 'ready')
       current.set(
@@ -275,6 +276,11 @@ function decodeMp3(data, returnedMimeType) {
   return { bytes, durationSeconds: mp3Duration(bytes) }
 }
 
+/**
+ * MP3 프레임을 세어 재생 길이를 계산합니다.
+ * @param {Uint8Array} bytes MP3 파일 바이트
+ * @returns {number} 재생 길이(초)
+ */
 function mp3Duration(bytes) {
   let offset = 0
   if (bytes.length >= 10 && String.fromCharCode(bytes[0], bytes[1], bytes[2]) === 'ID3') {
@@ -379,4 +385,5 @@ module.exports = {
   generateClaimedChunk,
   splitInHalf,
   decodeMp3,
+  mp3Duration,
 }

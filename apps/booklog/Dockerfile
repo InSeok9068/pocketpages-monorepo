@@ -58,7 +58,8 @@ ENV APP_ROOT=/app/apps/booklog
 
 WORKDIR /app/apps/booklog
 
-RUN apk add --no-cache ca-certificates
+# lame은 생성된 128kbps 오디오북 MP3를 더 낮은 비트레이트로 다시 압축할 때 씁니다.
+RUN apk add --no-cache ca-certificates lame
 
 COPY apps/booklog/. .
 COPY --from=deps /app/packages /app/packages

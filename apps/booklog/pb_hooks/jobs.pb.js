@@ -81,6 +81,21 @@ if (String(process.env.APP_ENV || '').trim() === 'production') {
     }
   })
 
+  // 압축은 생성 cron과 따로 돌려, Gemini 응답을 기다리는 동안에도 밀리지 않게 합니다.
+  cronAdd('booklog-audio-compress', '*/5 * * * *', function () {
+    try {
+      require(__hooks + '/jobs/audio-compress-job.js').run()
+    } catch (exception) {
+      $app
+        .logger()
+        .error(
+          'jobs/audio-compress:failed',
+          'error',
+          String(exception && exception.message ? exception.message : exception)
+        )
+    }
+  })
+
   cronAdd('booklog-reading-session-merge', '30 18 * * *', function () {
     try {
       const readingSessionMergeJob = require(__hooks + '/jobs/reading-session-merge-job.js')
