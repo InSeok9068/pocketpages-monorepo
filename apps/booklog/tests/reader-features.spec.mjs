@@ -1010,8 +1010,6 @@ function paragraphStyle(page, text) {
 test('Changing font size, line spacing and margins keeps the same paragraph at the top of the screen', async ({
   page,
 }) => {
-  // 알려진 결함: 지금은 설정을 바꿀 때마다 스크롤 위치만 그대로 두어, 본문이 길어진 만큼 앞 문단으로 밀립니다. 고치면 이 줄을 지우세요.
-  test.fail()
   await openReader(page)
   await goToChapter(page, 3)
   await scrollReader(page, 1200)
@@ -1031,6 +1029,12 @@ test('Changing font size, line spacing and margins keeps the same paragraph at t
   await page.getByRole('button', { name: '넓게', exact: true }).last().click()
   await page.waitForTimeout(1000)
   expect(await readingSpot(page), 'after wider margins').toBe(spot)
+
+  const smaller = page.getByRole('button', { name: '글자 크기 줄이기' }).last()
+  await smaller.click()
+  await smaller.click()
+  await page.waitForTimeout(1200)
+  expect(await readingSpot(page), 'after quick repeated changes').toBe(spot)
 })
 
 test('A chapter drawn after the reading settings changed uses the same settings', async ({ page }) => {

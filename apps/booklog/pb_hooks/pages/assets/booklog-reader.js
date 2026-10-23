@@ -90,6 +90,8 @@ window.booklogReaderLogic = (function () {
   var lastPersistedProgressKey = ''
   var serverPositionKey = ''
   var pendingConflictPosition = null
+  var settingsRelayoutAnchor = ''
+  var settingsRelayoutToken = 0
   var speechSynthesisInstance = null
   var speechVoices = []
   var speechVoiceSyncHandler = null
@@ -3360,7 +3362,7 @@ window.booklogReaderLogic = (function () {
       return true
     }
 
-    if (!renditionInstance || isRestoringPosition || autoSaveInFlight || isLeavingPage) {
+    if (!renditionInstance || isRestoringPosition || settingsRelayoutAnchor || autoSaveInFlight || isLeavingPage) {
       return true
     }
 
@@ -3470,9 +3472,84 @@ window.booklogReaderLogic = (function () {
    * @param {{ skipStorage?: boolean, skipLayoutSync?: boolean }=} options 적용 옵션
    * @returns {types.ReaderSettings} 적용한 읽기 설정
    */
+  function readTopLocator() {
+    var location =
+      renditionInstance && typeof renditionInstance.currentLocation === 'function'
+        ? renditionInstance.currentLocation()
+        : null
+    var cfi = location && location.start && location.start.cfi ? String(location.start.cfi) : ''
+    var visibleTop = findVisibleTopPosition(cfi)
+
+    return visibleTop ? visibleTop.locator : cfi
+  }
+
+  function waitForStableReaderHeight() {
+    var container = renditionInstance && renditionInstance.manager ? renditionInstance.manager.container : null
+    var startedAt = Date.now()
+    var lastHeight = -1
+    var stableFrames = 0
+
+    return new Promise(function (resolve) {
+      function check() {
+        var height = container ? container.scrollHeight : 0
+
+        stableFrames = height === lastHeight ? stableFrames + 1 : 0
+        lastHeight = height
+
+        if (!container || stableFrames >= 6 || Date.now() - startedAt >= DISPLAY_SETTLE_TIMEOUT_MS) {
+          resolve()
+          return
+        }
+
+        window.requestAnimationFrame(check)
+      }
+
+      window.requestAnimationFrame(check)
+    })
+  }
+
+  // 글자 크기·줄 간격·여백을 바꾸면 본문 높이가 바뀌어도 스크롤 값은 그대로라, 읽던 문단을 다시 화면 맨 위로 맞춥니다.
+  function keepTopLocatorAfterRelayout(component) {
+    var token = (settingsRelayoutToken += 1)
+
+    if (!settingsRelayoutAnchor) {
+      return
+    }
+
+    prepareManualNavigation()
+
+    waitForStableReaderHeight()
+      .then(function () {
+        if (token !== settingsRelayoutToken) {
+          return
+        }
+
+        return settleDisplayedTarget(settingsRelayoutAnchor).then(function () {
+          if (token !== settingsRelayoutToken) {
+            return
+          }
+
+          settingsRelayoutAnchor = ''
+          updateCurrentLocation(component, renditionInstance.currentLocation())
+        })
+      })
+      .catch(function (exception) {
+        settingsRelayoutAnchor = ''
+        console.warn('page/books/[bookId]/read:settings-relayout:failed', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+      })
+  }
+
   function applyReaderSettings(component, settings, options) {
     var normalizedSettings = normalizeReaderSettings(settings)
     var fontSizeValue = String(normalizedSettings.fontSizePercent) + '%'
+    var keepPosition = !!(renditionInstance && component && !component.loading && (!options || !options.skipLayoutSync))
+
+    // 연달아 바꾸는 중이면 첫 변경 전 위치를 그대로 쓰고, 밀린 위치를 다시 기준으로 잡지 않습니다.
+    if (keepPosition && !settingsRelayoutAnchor) {
+      settingsRelayoutAnchor = readTopLocator()
+    }
 
     syncReaderSettingsState(component, normalizedSettings)
 
@@ -3491,6 +3568,10 @@ window.booklogReaderLogic = (function () {
         frameCount: 3,
         delayMs: 260,
       })
+    }
+
+    if (keepPosition) {
+      keepTopLocatorAfterRelayout(component)
     }
 
     return normalizedSettings
