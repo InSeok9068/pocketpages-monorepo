@@ -1,3 +1,4 @@
+/* global window, document */
 import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
 import {
@@ -15,7 +16,7 @@ import {
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { chromium } from '@playwright/test'
+import { chromium, expect } from '@playwright/test'
 import { startService } from '@pocketpages/test-support/service-harness'
 
 const require = createRequire(new URL('../package.json', import.meta.url))
@@ -89,7 +90,7 @@ async function signedInPage() {
   return page
 }
 
-function sampleEpub(title) {
+function sampleEpub(title, content) {
   return zipSync({
     'mimetype': strToU8('application/epub+zip'),
     'META-INF/container.xml': strToU8(
@@ -103,9 +104,9 @@ function sampleEpub(title) {
         + '</dc:title><dc:creator>테스트 저자</dc:creator><dc:language>ko</dc:language></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>'
     ),
     'OEBPS/c1.xhtml': strToU8(
-      '<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>1장</h1><p>'
-        + '업로드 화면을 확인하는 본문입니다. '.repeat(80)
-        + '</p></body></html>'
+      '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+        + (content || '<h1>1장</h1><p>' + '업로드 화면을 확인하는 본문입니다. '.repeat(80) + '</p>')
+        + '</body></html>'
     ),
   })
 }
@@ -169,4 +170,166 @@ test('Uploading an EPUB shows the loading screen and then the saved message on t
     assert.equal(await loading.isVisible(), false, fileName)
   }
   await page.close()
+})
+
+async function openReadingBook(page, title) {
+  const content = Array.from(
+    { length: 80 },
+    (_, index) =>
+      '<p id="reading-'
+      + (index + 1)
+      + '">'
+      + (index + 1)
+      + '번째 독서 문단입니다. '
+      + '읽던 문단이 서버에 저장되고 다시 열었을 때 복원되는지 확인합니다. '.repeat(5)
+      + '</p>'
+  ).join('')
+  const upload = await page.request.post(service.baseUrl + '/xapi/epub/upload', {
+    maxRedirects: 0,
+    multipart: {
+      epubFile: {
+        name: title + '.epub',
+        mimeType: 'application/epub+zip',
+        buffer: Buffer.from(sampleEpub(title, content)),
+      },
+    },
+  })
+  assert.equal(upload.status(), 303)
+  assert.match(decodeURIComponent(upload.headers().location || ''), /EPUB 파일과 도서 메타데이터를 저장했습니다/)
+  await page.goto(service.baseUrl + '/library?q=' + encodeURIComponent(title))
+  const href = await page.locator('a[data-book-detail]', { hasText: title }).getAttribute('href')
+  assert.ok(href)
+  const bookPath = href.split('?')[0]
+  await openReader(page, bookPath)
+  return bookPath
+}
+
+async function openReader(page, bookPath) {
+  await page.goto(service.baseUrl + bookPath + '/read')
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = window.Alpine?.$data(document.querySelector('section[x-data]'))
+        return !!state?.bookReady && state.progressLocationsStatus === 'ready'
+      })
+    )
+    .toBe(true)
+  // 진행률 생성 직후 보내는 최초 저장까지 끝낸 다음 사용자 동작을 시작합니다.
+  await page.waitForLoadState('networkidle')
+}
+
+function readingParagraph(page) {
+  return page.evaluate(() => {
+    const container = document.querySelector('#epub-reader .epub-container')
+    const bounds = container.getBoundingClientRect()
+    for (const frame of container.querySelectorAll('iframe')) {
+      for (const paragraph of frame.contentDocument?.querySelectorAll('p') || []) {
+        const rect = paragraph.getBoundingClientRect()
+        if (frame.getBoundingClientRect().top + rect.bottom > bounds.top + 4) return paragraph.id
+      }
+    }
+    return ''
+  })
+}
+
+async function moveToParagraph(page, number) {
+  await page.locator('#epub-reader .epub-container').evaluate((container, number) => {
+    for (const frame of container.querySelectorAll('iframe')) {
+      const paragraph = frame.contentDocument?.getElementById('reading-' + number)
+      if (paragraph) {
+        container.scrollTop +=
+          frame.getBoundingClientRect().top
+          + paragraph.getBoundingClientRect().top
+          - container.getBoundingClientRect().top
+        return
+      }
+    }
+    throw new Error('독서 문단을 찾지 못했습니다: ' + number)
+  }, number)
+  await expect.poll(() => readingParagraph(page)).toBe('reading-' + number)
+  await expect
+    .poll(() =>
+      page.evaluate(() => Number(window.Alpine.$data(document.querySelector('section[x-data]')).currentProgressPercent))
+    )
+    .toBeGreaterThan(Math.floor(((number - 1) / 80) * 100) - 5)
+}
+
+test('A new browser context restores the reading paragraph saved through the real server', async () => {
+  const first = await signedInPage()
+  let second
+  try {
+    const bookPath = await openReadingBook(first, '서버 위치 복원')
+    await moveToParagraph(first, 35)
+    const saved = first.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/books/save-progress' && response.request().method() === 'POST'
+    )
+    await first.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).saveCurrentPosition())
+    assert.equal((await saved).status(), 200)
+    await first.locator('a[aria-label="뒤로가기"]').click()
+    await first.waitForURL((url) => url.pathname === bookPath)
+    await first.context().close()
+
+    second = await signedInPage()
+    assert.equal(
+      await second.evaluate(async () =>
+        (await window.indexedDB.databases()).some((db) => db.name === 'booklog-reader-cache')
+      ),
+      false,
+      'the fresh browser context has no Booklog reader cache'
+    )
+    const download = second.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/xapi' + bookPath + '/read-file'
+    )
+    await openReader(second, bookPath)
+    assert.equal((await download).status(), 200, 'the fresh context downloads the EPUB instead of using a device copy')
+    await expect.poll(() => readingParagraph(second)).toBe('reading-35')
+  } finally {
+    await first.context().close()
+    if (second) await second.context().close()
+  }
+})
+
+test('Leaving while an earlier save response is delayed stores the latest reading paragraph', async () => {
+  const page = await signedInPage()
+  let releaseSave
+  const saveGate = new Promise((resolve) => {
+    releaseSave = resolve
+  })
+  try {
+    const bookPath = await openReadingBook(page, '저장 응답 지연')
+    await moveToParagraph(page, 20)
+    let firstStored
+    const stored = new Promise((resolve) => {
+      firstStored = resolve
+    })
+    const saves = []
+    await page.route('**/api/books/save-progress', async (route) => {
+      const isFirst = saves.length === 0
+      saves.push(route.request())
+      const response = await route.fetch()
+      assert.equal(response.status(), 200)
+      if (isFirst) {
+        firstStored()
+        await saveGate
+      }
+      await route.fulfill({ response })
+    })
+    await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).saveCurrentPosition())
+    await stored
+    await moveToParagraph(page, 60)
+    await page.locator('a[aria-label="뒤로가기"]').click()
+    assert.equal(saves.length, 1, 'the newer save waits until the earlier response is received')
+    assert.equal(new URL(page.url()).pathname, bookPath + '/read', 'leaving waits for the queued position save')
+    releaseSave()
+    await page.waitForURL((url) => url.pathname === bookPath)
+    assert.ok(saves.length >= 2, 'leaving sends the newer position after the first save')
+    await page.unroute('**/api/books/save-progress')
+    await openReader(page, bookPath)
+    await expect.poll(() => readingParagraph(page)).toBe('reading-60')
+    await expect(page.getByText('다른 기기에서 읽은 위치가 있어요.')).toBeHidden()
+  } finally {
+    releaseSave()
+    await page.context().close()
+  }
 })
