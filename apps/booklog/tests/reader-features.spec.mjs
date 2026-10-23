@@ -3,6 +3,19 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
+import {
+  badRequest,
+  bookmarkFromForm,
+  highlightFromForm,
+  listHighlightsPayload,
+  loadProgressPayload,
+  positionFromForm,
+  progressConflict,
+  readForm,
+  readerApiInputError,
+  readingSessionPayload,
+  saveProgressPayload,
+} from './fake-booklog-api.mjs'
 
 const require = createRequire(new URL('../package.json', import.meta.url))
 const { render } = require('pocketbase-ejs')
@@ -72,36 +85,31 @@ function buildBook(chapterCount) {
 
 const featureBook = buildBook(CHAPTER_COUNT)
 
-const readerBody = render(
-  readFileSync(new URL('(reader)/books/[bookId]/read.ejs', pagesRoot), 'utf8').replace(
-    /<script server>[\s\S]*?<\/script>/,
-    ''
-  ),
-  {
-    asset: (path) => path,
-    env: () => '',
-    bookId: 'book',
-    bookFileId: 'file',
-    userId: 'feature-user',
-    bookFileHash: 'feature-hash',
-    epubReaderUrl: '/test.epub',
-    initialShelfStatus: 'reading',
-    aiAudioAvailable: false,
-    bookTitle: '기능 확인',
-    showAudioDetail: false,
-  }
-)
-
-async function readForm(route) {
-  const request = route.request()
-  return new Request(request.url(), {
-    method: 'POST',
-    headers: request.headers(),
-    body: request.postDataBuffer(),
-  }).formData()
+function renderReaderBody(initialShelfStatus) {
+  return render(
+    readFileSync(new URL('(reader)/books/[bookId]/read.ejs', pagesRoot), 'utf8').replace(
+      /<script server>[\s\S]*?<\/script>/,
+      ''
+    ),
+    {
+      asset: (path) => path,
+      env: () => '',
+      bookId: 'book',
+      bookFileId: 'file',
+      userId: 'feature-user',
+      bookFileHash: 'feature-hash',
+      epubReaderUrl: '/test.epub',
+      initialShelfStatus,
+      aiAudioAvailable: false,
+      bookTitle: '기능 확인',
+      showAudioDetail: false,
+    }
+  )
 }
 
-async function mockReader(page, book) {
+const readerBody = renderReaderBody('reading')
+
+async function mockReader(page, book, body = readerBody) {
   const state = {
     bookmarks: [],
     highlights: [],
@@ -123,75 +131,55 @@ async function mockReader(page, book) {
         if (state.epubStatus !== 200) return route.fulfill({ status: state.epubStatus, body: 'unavailable' })
         return route.fulfill({ body: Buffer.from(book), contentType: 'application/epub+zip' })
       }
-      if (url.pathname === '/api/books/load-progress') {
-        const server = state.serverPosition
-        state.requests.push({ path: url.pathname, form: {} })
-        if (state.failures.has(url.pathname)) return route.abort('internetdisconnected')
-        return route.fulfill({
-          json: server
-            ? {
-                ok: true,
-                hasSavedPosition: true,
-                locator: server.locator,
-                href: server.href,
-                chapterLabel: server.chapterLabel,
-              }
-            : { ok: true, hasSavedPosition: false, locator: '', href: '' },
-        })
-      }
       if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/xapi/')) {
         const form = route.request().method() === 'POST' ? await readForm(route) : new FormData()
         state.requests.push({ path: url.pathname, form: Object.fromEntries(form.entries()) })
-        if (state.failures.has(url.pathname)) {
-          return route.fulfill({ status: 500, json: { ok: false, message: SAVE_FAILURE_MESSAGE } })
+        if (url.pathname === '/api/books/load-progress' && state.failures.has(url.pathname)) {
+          return route.abort('internetdisconnected')
+        }
+        if (state.failures.has(url.pathname)) return badRequest(route, SAVE_FAILURE_MESSAGE)
+        if (url.pathname.startsWith('/api/books/')) {
+          const inputError = readerApiInputError(url.pathname, form)
+          if (inputError) {
+            state.requests.at(-1).status = 400
+            return badRequest(route, inputError)
+          }
+        }
+        if (url.pathname === '/api/books/load-progress') {
+          return route.fulfill({ json: loadProgressPayload(state.serverPosition) })
         }
         if (url.pathname === '/api/books/save-progress') {
-          const server = state.serverPosition
-          if (server && form.get('force') !== 'true' && form.get('baseLocator') !== (server.locator || server.href)) {
+          const conflict = progressConflict(state.serverPosition, form)
+          if (conflict) {
             state.requests.at(-1).status = 409
-            return route.fulfill({ status: 409, json: { ok: false, conflict: true, ...server } })
+            return route.fulfill({ status: 409, json: conflict })
           }
-          state.serverPosition = {
-            locator: form.get('locator'),
-            href: form.get('href'),
-            chapterLabel: form.get('chapterLabel'),
-          }
+          state.serverPosition = positionFromForm(form)
           state.requests.at(-1).status = 200
-          return route.fulfill({ json: { ok: true } })
+          return route.fulfill({ json: saveProgressPayload() })
         }
         if (url.pathname === '/api/books/list-bookmarks')
           return route.fulfill({ json: { ok: true, bookmarks: state.bookmarks } })
         if (url.pathname === '/api/books/save-bookmark') {
-          const bookmark = {
-            id: 'bookmark' + (state.bookmarks.length + 1),
-            locator: form.get('locator'),
-            href: form.get('href'),
-            chapterLabel: form.get('chapterLabel'),
-            progressPercent: form.get('progressPercent'),
-          }
+          const bookmark = bookmarkFromForm('bookmark' + (state.bookmarks.length + 1), form)
           state.bookmarks.unshift(bookmark)
           return route.fulfill({ json: { ok: true, message: '책갈피를 저장했습니다.', bookmark } })
         }
         if (url.pathname === '/api/books/delete-bookmark') {
-          state.bookmarks = state.bookmarks.filter((bookmark) => bookmark.id !== form.get('bookmarkId'))
-          return route.fulfill({ json: { ok: true, message: '책갈피를 삭제했습니다.' } })
+          const bookmarkId = form.get('bookmarkId')
+          state.bookmarks = state.bookmarks.filter((bookmark) => bookmark.id !== bookmarkId)
+          return route.fulfill({ json: { ok: true, message: '책갈피를 삭제했습니다.', id: bookmarkId } })
         }
         if (url.pathname === '/api/books/list-highlights') {
-          return route.fulfill({ json: { ok: true, highlights: state.highlights } })
+          return route.fulfill({ json: listHighlightsPayload(state.highlights, form) })
         }
         if (url.pathname === '/api/books/save-highlight') {
-          state.highlights.unshift({
-            id: 'highlight' + (state.highlights.length + 1),
-            quoteText: form.get('quoteText'),
-            noteText: form.get('noteText'),
-            locator: form.get('locator'),
-            href: form.get('href'),
-            chapterLabel: form.get('chapterLabel'),
-          })
-          return route.fulfill({ json: { ok: true, message: '인상 깊은 문구를 저장했습니다.' } })
+          const highlight = highlightFromForm('highlight' + (state.highlights.length + 1), form)
+          state.highlights.unshift(highlight)
+          return route.fulfill({ json: { ok: true, message: '인상 깊은 문구를 저장했습니다.', id: highlight.id } })
         }
         if (url.pathname === '/api/books/save-reading-session') {
-          return route.fulfill({ json: { ok: true, id: form.get('sessionId') } })
+          return route.fulfill({ json: readingSessionPayload(form) })
         }
         return route.fulfill({ json: { ok: true, id: 'session00000001' } })
       }
@@ -199,7 +187,7 @@ async function mockReader(page, book) {
         contentType: 'text/html',
         body:
           '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>[x-cloak]{display:none!important}</style><link rel="stylesheet" href="/assets/uno.min.css"><link rel="stylesheet" href="/assets/style.css"><script defer src="/assets/vendor/alpine-3.17.4-cdn.min.js"></script></head><body class="m-0">'
-          + readerBody
+          + body
           + '</body></html>',
       })
     }
@@ -207,8 +195,8 @@ async function mockReader(page, book) {
   return state
 }
 
-async function openReader(page, book = featureBook) {
-  const state = await mockReader(page, book)
+async function openReader(page, book = featureBook, body = readerBody) {
+  const state = await mockReader(page, book, body)
   await page.goto('/books/book/read')
   await expect
     .poll(() =>
@@ -999,4 +987,171 @@ test('When the saved place arrives late, a reader who already moved on is asked 
 
   await page.getByRole('button', { name: '그 위치로 이동' }).click()
   await expectChapter(page, 4)
+})
+
+function paragraphStyle(page, text) {
+  return page.evaluate((text) => {
+    for (const frame of document.querySelectorAll('#epub-reader iframe')) {
+      const doc = frame.contentDocument
+      const paragraph = [...(doc?.querySelectorAll('p') || [])].find((node) => node.textContent.includes(text))
+      if (!paragraph) continue
+      const computed = frame.contentWindow.getComputedStyle(paragraph)
+      return {
+        fontSize: parseFloat(computed.fontSize),
+        lineRatio: Math.round((parseFloat(computed.lineHeight) / parseFloat(computed.fontSize)) * 100) / 100,
+        font: computed.fontFamily,
+        padding: frame.contentWindow.getComputedStyle(doc.body).paddingLeft,
+      }
+    }
+    return null
+  }, text)
+}
+
+test('Changing font size, line spacing and margins keeps the same paragraph at the top of the screen', async ({
+  page,
+}) => {
+  // 알려진 결함: 지금은 설정을 바꿀 때마다 스크롤 위치만 그대로 두어, 본문이 길어진 만큼 앞 문단으로 밀립니다. 고치면 이 줄을 지우세요.
+  test.fail()
+  await openReader(page)
+  await goToChapter(page, 3)
+  await scrollReader(page, 1200)
+  await page.waitForTimeout(800)
+  const spot = await readingSpot(page)
+  expect(spot).toMatch(/^3장 문단 \d+입니다/)
+
+  await page.getByRole('button', { name: '메뉴 열기', exact: true }).click()
+  await page.getByRole('button', { name: '글자 크기 키우기' }).first().click()
+  await page.waitForTimeout(1000)
+  expect(await readingSpot(page), 'after a larger font').toBe(spot)
+
+  await page.getByRole('button', { name: '상세 읽기 설정' }).click()
+  await page.getByRole('button', { name: '더 넓게', exact: true }).click()
+  await page.waitForTimeout(1000)
+  expect(await readingSpot(page), 'after wider line spacing').toBe(spot)
+  await page.getByRole('button', { name: '넓게', exact: true }).last().click()
+  await page.waitForTimeout(1000)
+  expect(await readingSpot(page), 'after wider margins').toBe(spot)
+})
+
+test('A chapter drawn after the reading settings changed uses the same settings', async ({ page }) => {
+  await openReader(page)
+  const before = await paragraphStyle(page, '1장 문단 1입니다')
+
+  await page.getByRole('button', { name: '메뉴 열기', exact: true }).click()
+  await page.getByRole('button', { name: '글자 크기 키우기' }).first().click()
+  await page.getByRole('button', { name: '상세 읽기 설정' }).click()
+  await page.getByRole('button', { name: '고딕', exact: true }).click()
+  await page.getByRole('button', { name: '더 넓게', exact: true }).click()
+  await page.getByRole('button', { name: '넓게', exact: true }).last().click()
+  await page.getByRole('button', { name: '완료', exact: true }).click()
+  const expected = { lineRatio: 2.3, padding: '48px' }
+  await expect.poll(() => paragraphStyle(page, '1장 문단 1입니다')).toMatchObject(expected)
+  const changed = await paragraphStyle(page, '1장 문단 1입니다')
+  expect(changed.fontSize).toBeGreaterThan(before.fontSize)
+  expect(await paragraphStyle(page, '4장 문단 1입니다'), 'chapter 4 is not drawn yet').toBeNull()
+
+  await goToChapter(page, 4)
+  await expect.poll(() => paragraphStyle(page, '4장 문단 1입니다')).toEqual(changed)
+})
+
+test('A reading-time save that failed is sent again later, so the time is not lost', async ({ page }) => {
+  const state = await openReaderWithMovableClock(page)
+  const sessionRequests = () => state.requests.filter((request) => request.path === '/api/books/save-reading-session')
+  state.failures.add('/api/books/save-reading-session')
+
+  await passTime(page, 100_000)
+  await touchReader(page)
+  await setScreen(page, 'hidden')
+  await expect.poll(() => sessionRequests().some((request) => Number(request.form.durationSeconds) >= 100)).toBe(true)
+  const failed = sessionRequests().at(-1).form
+  const afterFailure = state.requests.length
+  state.failures.clear()
+
+  await setScreen(page, 'visible')
+  await passTime(page, 4 * 60_000)
+  await touchReader(page)
+  await expect
+    .poll(() =>
+      state.requests
+        .slice(afterFailure)
+        .some(
+          (request) =>
+            request.path === '/api/books/save-reading-session'
+            && request.form.sessionId === failed.sessionId
+            && Number(request.form.durationSeconds) >= Number(failed.durationSeconds)
+        )
+    )
+    .toBe(true)
+})
+
+test('A book already marked finished does not ask again at the end', async ({ page }) => {
+  const state = await openReader(page, featureBook, renderReaderBody('finished'))
+  await goToChapter(page, CHAPTER_COUNT)
+
+  await page.evaluate(() => {
+    const container = document.querySelector('#epub-reader .epub-container')
+    container.scrollTop = container.scrollHeight
+  })
+  await page.waitForTimeout(3000)
+  await expect(page.getByText('마지막까지 읽은 것 같아요.')).toBeHidden()
+  expect(lastRequest(state, '/xapi/books/update-status')).toBeUndefined()
+})
+
+function cachedBookKeys(page) {
+  return page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        const request = indexedDB.open('booklog-reader-cache')
+        request.onerror = () => reject(request.error)
+        request.onsuccess = () => {
+          const db = request.result
+          const keys = db.transaction('epubBuffers').objectStore('epubBuffers').getAllKeys()
+          keys.onsuccess = () => {
+            db.close()
+            resolve(keys.result.map(String).sort())
+          }
+          keys.onerror = () => reject(keys.error)
+        }
+      })
+  )
+}
+
+test('The device keeps five books and drops the one opened longest ago when another is added', async ({ page }) => {
+  const state = await openReader(page)
+  await expect.poll(() => cachedBookKeys(page)).toHaveLength(1)
+  const [current] = await cachedBookKeys(page)
+  const older = ['older-book-1', 'older-book-2', 'older-book-3', 'older-book-4', 'older-book-5']
+
+  // 지금 책을 처음 여는 상황을 만들려고, 지금 책은 빼고 예전에 연 책 다섯 권을 시각 순서대로 넣어 둡니다.
+  await page.evaluate(
+    ([current, older]) =>
+      new Promise((resolve, reject) => {
+        const request = indexedDB.open('booklog-reader-cache')
+        request.onsuccess = () => {
+          const db = request.result
+          const transaction = db.transaction('epubBuffers', 'readwrite')
+          const store = transaction.objectStore('epubBuffers')
+          store.delete(current)
+          older.forEach((cacheKey, index) =>
+            store.put({ cacheKey, buffer: new ArrayBuffer(8), byteLength: 8, lastOpenedAt: 1000 + index })
+          )
+          transaction.oncomplete = () => {
+            db.close()
+            resolve()
+          }
+          transaction.onerror = () => reject(transaction.error)
+        }
+      }),
+    [current, older]
+  )
+
+  await page.reload()
+  await waitUntilLoaded(page)
+  expect(state.epubDownloads).toBe(2)
+  await expect.poll(() => cachedBookKeys(page)).toEqual([current, ...older.slice(1)].sort())
+
+  await page.reload()
+  await waitUntilLoaded(page)
+  expect(state.epubDownloads, 'the book just added is read from the device').toBe(2)
+  expect(await cachedBookKeys(page)).toEqual([current, ...older.slice(1)].sort())
 })

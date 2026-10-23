@@ -317,16 +317,38 @@ function findNextChunk(app, job, nowMs) {
 }
 
 /**
+ * 음성 길이를 `4시간 50분`, `12분` 형식으로 표시합니다.
+ * @param {number} seconds 길이(초)
+ * @returns {string} 표시 문자열
+ */
+function formatAudioDuration(seconds) {
+  const totalMinutes = Math.round(Number(seconds) / 60)
+  if (!(totalMinutes > 0)) return '1분 미만'
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (!hours) return minutes + '분'
+  return minutes ? hours + '시간 ' + minutes + '분' : hours + '시간'
+}
+
+/**
  * 작업을 관리자 화면 표시 값으로 만듭니다.
  * @param {core.Record} job 오디오북 작업
+ * @param {types.BookAudioDuration} [duration] 음성 길이, 있으면 진행률을 길이 기준으로 표시
  * @returns {types.BookAudioJobView} 진행 상태
  */
-function jobView(job) {
+function jobView(job, duration) {
   const status = String(job.get('status'))
   const total = Number(job.get('total_chunks') || 0)
   const ready = Number(job.get('ready_chunks') || 0)
   const failed = Number(job.get('failed_chunks') || 0)
-  const percent = total > 0 ? Math.floor((ready / total) * 100) : 0
+  // 구간은 나뉜 조각(수백 자)과 큰 구간(3천 자)이 섞여 개수로는 실제 분량과 어긋나므로, 길이를 알면 길이로 셉니다.
+  const timed = total > 0 && !!duration && duration.totalSeconds > 0
+  const percent = timed
+    ? Math.min(100, Math.floor((duration.readySeconds / duration.totalSeconds) * 100))
+    : total > 0
+      ? Math.floor((ready / total) * 100)
+      : 0
+  const failedLabel = failed > 0 ? ' · 실패 ' + failed : ''
   const nextRunMs = generation.toMs(job.get('next_run_at'))
   const labels = {
     queued: '생성 대기',
@@ -346,15 +368,24 @@ function jobView(job) {
         ? status === 'failed'
           ? '생성 실패'
           : '구간 준비 중 · 2분 안에 책을 분석해 생성을 시작합니다'
-        : (labels[status] || status)
-          + ' · '
-          + percent
-          + '% ('
-          + ready
-          + ' / '
-          + total
-          + ' 구간)'
-          + (failed > 0 ? ' · 실패 ' + failed : ''),
+        : timed
+          ? (labels[status] || status)
+            + ' · '
+            + formatAudioDuration(duration.readySeconds)
+            + ' / 약 '
+            + formatAudioDuration(duration.totalSeconds)
+            + ' ('
+            + percent
+            + '%)'
+          : (labels[status] || status) + ' · ' + percent + '% (' + ready + ' / ' + total + ' 구간)' + failedLabel,
+    chunkLabel: timed
+      ? ready
+        + ' / '
+        + total
+        + ' 구간'
+        + failedLabel
+        + (duration.deviceSeconds > 0 ? ' · 기기 음성 약 ' + formatAudioDuration(duration.deviceSeconds) : '')
+      : '',
     nextRunLabel:
       nextRunMs > Date.now() && (status === 'queued' || status === 'running')
         ? dateutil.formatDate(nextRunMs, dateutil.FORMATS.DATE_TIME_MINUTES) + ' 이후 이어서 생성'
@@ -462,4 +493,5 @@ module.exports = {
   syncJobProgress,
   findNextChunk,
   jobView,
+  formatAudioDuration,
 }

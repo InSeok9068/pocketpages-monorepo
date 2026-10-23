@@ -3,6 +3,15 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
+import {
+  audioChunkPayload,
+  audioPositionInputError,
+  audioProgressInputError,
+  audioProgressPayload,
+  badRequest,
+  listHighlightsPayload,
+  readForm,
+} from './fake-booklog-api.mjs'
 
 const require = createRequire(new URL('../package.json', import.meta.url))
 const { render } = require('pocketbase-ejs')
@@ -113,8 +122,10 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
       if (url.pathname === '/test.epub')
         return route.fulfill({ body: Buffer.from(epub), contentType: 'application/epub+zip' })
       if (url.pathname === '/api/books/audio-position') {
+        const inputError = audioPositionInputError(url)
+        if (inputError) return badRequest(route, inputError)
         anchors.push(url.searchParams.get('sectionIndex') + ':' + url.searchParams.get('anchor'))
-        return route.fulfill({ json: { ok: true, chunkIndex: 0 } })
+        return route.fulfill({ json: { ok: true, chunkIndex: 0, seconds: 0 } })
       }
       if (url.pathname === '/api/books/audio-chunk') {
         lookups.push(
@@ -125,21 +136,12 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
             + url.searchParams.get('chunkIndex')
         )
         return route.fulfill({
-          json: {
-            ok: true,
+          json: audioChunkPayload({
+            chunkId: 'chunk0000000000',
             chunkCount: 1,
-            configHash: 'settings',
-            chunkId: 'chunk-0-0',
             timeline: [10],
-            parts: [
-              {
-                audioUrl: '/xapi/books/audio-file?chunkId=chunk-0-0',
-                fallbackText: '',
-                text: '첫 번째 챕터\n\n책을 듣는 시간을 함께합니다.',
-                durationSeconds: 10,
-              },
-            ],
-          },
+            parts: [{ text: '첫 번째 챕터\n\n책을 듣는 시간을 함께합니다.', durationSeconds: 10 }],
+          }),
         })
       }
       if (url.pathname === '/xapi/books/audio-file') {
@@ -148,23 +150,24 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
       }
       if (url.pathname === '/api/books/audio-progress') {
         if (route.request().method() === 'POST') {
-          const request = route.request()
-          const form = await new Request(request.url(), {
-            method: 'POST',
-            headers: request.headers(),
-            body: request.postDataBuffer(),
-          }).formData()
+          const form = await readForm(route)
+          const inputError = audioProgressInputError(form)
+          if (inputError) return badRequest(route, inputError)
           savedProgress = {
             sectionIndex: 0,
             chunkIndex: 0,
-            seconds: Number(form.get('seconds')),
+            seconds: Math.min(Number(form.get('seconds')), 10),
             isCompleted: form.get('isCompleted') === 'true',
           }
           return route.fulfill({ json: { ok: true } })
         }
-        return route.fulfill({ json: { ok: true, configHash: 'settings', progress: savedProgress } })
+        return route.fulfill({ json: audioProgressPayload(savedProgress, [10]) })
       }
-      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, highlights: [], bookmarks: [] } })
+      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+      if (url.pathname === '/api/books/list-highlights') {
+        return route.fulfill({ json: listHighlightsPayload([], await readForm(route)) })
+      }
+      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, id: 'session00000001' } })
       return route.fulfill({ contentType: 'text/html', body: readerHtml(body) })
     }
   )
@@ -297,28 +300,13 @@ test('Seeking while paused keeps the audiobook paused, and device voice resumes 
   })
   const chunks = [
     {
-      chunkId: 'chunk-0-0',
+      chunkId: 'chunk0000000000',
       parts: [
-        {
-          audioUrl: '/xapi/books/audio-file?chunkId=chunk-0-0',
-          fallbackText: '',
-          text: '첫 조각',
-          durationSeconds: 10,
-        },
-        { audioUrl: '', fallbackText: '첫 문장입니다.\n둘째 문장입니다.', text: '', durationSeconds: 10 },
+        { text: '첫 조각', durationSeconds: 10 },
+        { text: '첫 문장입니다.\n둘째 문장입니다.', durationSeconds: 10, ready: false },
       ],
     },
-    {
-      chunkId: 'chunk-0-1',
-      parts: [
-        {
-          audioUrl: '/xapi/books/audio-file?chunkId=chunk-0-1',
-          fallbackText: '',
-          text: '둘째 구간',
-          durationSeconds: 10,
-        },
-      ],
-    },
+    { chunkId: 'chunk0000000001', parts: [{ text: '둘째 구간', durationSeconds: 10 }] },
   ]
   const body = renderReader(true)
   await page.route(
@@ -332,25 +320,24 @@ test('Seeking while paused keeps the audiobook paused, and device voice resumes 
         return route.fulfill({ body: Buffer.from(epub), contentType: 'application/epub+zip' })
       if (url.pathname === '/api/books/audio-chunk') {
         const chunk = chunks[Number(url.searchParams.get('chunkIndex'))]
-        return route.fulfill({
-          json: { ok: true, chunkCount: 2, configHash: 'settings', timeline: [20, 10], ...chunk },
-        })
+        return route.fulfill({ json: audioChunkPayload({ ...chunk, chunkCount: 2, timeline: [20, 10] }) })
       }
       if (url.pathname === '/xapi/books/audio-file') return route.fulfill({ body: wav, contentType: 'audio/wav' })
       if (url.pathname === '/api/books/audio-progress') {
         if (route.request().method() === 'POST') {
-          const request = route.request()
-          const form = await new Request(request.url(), {
-            method: 'POST',
-            headers: request.headers(),
-            body: request.postDataBuffer(),
-          }).formData()
+          const form = await readForm(route)
+          const inputError = audioProgressInputError(form)
+          if (inputError) return badRequest(route, inputError)
           saves.push({ chunkId: form.get('chunkId'), seconds: Number(form.get('seconds')) })
           return route.fulfill({ json: { ok: true } })
         }
-        return route.fulfill({ json: { ok: true, configHash: 'settings', progress: null } })
+        return route.fulfill({ json: audioProgressPayload(null, [20, 10]) })
       }
-      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, highlights: [], bookmarks: [] } })
+      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+      if (url.pathname === '/api/books/list-highlights') {
+        return route.fulfill({ json: listHighlightsPayload([], await readForm(route)) })
+      }
+      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, id: 'session00000001' } })
       return route.fulfill({ contentType: 'text/html', body: readerHtml(body) })
     }
   )
@@ -374,6 +361,7 @@ test('Seeking while paused keeps the audiobook paused, and device voice resumes 
   await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
   await page.getByRole('button', { name: '일시 정지', exact: true }).click()
   await expect.poll(() => player.evaluate((audio) => audio.paused)).toBe(true)
+  await expect(toggle).toHaveAccessibleName('재생')
 
   await page.evaluate(() => window.booklogAudio.seekTo(15))
   await expect.poll(async () => (await state()).deviceVoice).toBe(true)
@@ -395,10 +383,11 @@ test('Seeking while paused keeps the audiobook paused, and device voice resumes 
   await expect.poll(async () => (await state()).busy).toBe(false)
   await expect.poll(() => player.evaluate((audio) => audio.currentTime)).toBeGreaterThanOrEqual(4.9)
   expect(await player.evaluate((audio) => audio.paused), 'moving to another chunk stays paused').toBe(true)
-  expect(saves.at(-1).chunkId).toBe('chunk-0-1')
+  expect(saves.at(-1).chunkId).toBe('chunk0000000001')
 
   await toggle.click()
   await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
+  await expect(toggle).toHaveAccessibleName('일시 정지')
   await page.evaluate(() => window.booklogAudio.seekTo(15))
   await expect
     .poll(async () => (await state()).spoken, 'seeking while playing keeps playing')
@@ -416,5 +405,74 @@ test('Seeking while paused keeps the audiobook paused, and device voice resumes 
     '둘째 문장입니다.',
     '둘째 문장입니다.',
   ])
+  expect(errors).toEqual([])
+})
+
+test('A playback speed change applies to the voice playing now and stays for the next part', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit' && process.platform === 'win32',
+    'Windows Playwright WebKit rejects standalone PCM WAV playback; verify Safari on an Apple device.'
+  )
+  const errors = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const chunk = {
+    chunkId: 'chunk0000000000',
+    chunkCount: 1,
+    timeline: [20],
+    parts: [
+      { text: '첫 조각', durationSeconds: 10 },
+      { text: '둘째 조각', durationSeconds: 10 },
+    ],
+  }
+  const body = renderReader(true)
+  await page.route(
+    (url) => url.protocol === 'http:' || url.protocol === 'https:',
+    async (route) => {
+      const url = new URL(route.request().url())
+      if (url.pathname.startsWith('/assets/')) {
+        return route.fulfill({ path: fileURLToPath(new URL(url.pathname.slice(1), pagesRoot)) })
+      }
+      if (url.pathname === '/test.epub')
+        return route.fulfill({ body: Buffer.from(epub), contentType: 'application/epub+zip' })
+      if (url.pathname === '/api/books/audio-chunk') return route.fulfill({ json: audioChunkPayload(chunk) })
+      if (url.pathname === '/xapi/books/audio-file') return route.fulfill({ body: wav, contentType: 'audio/wav' })
+      if (url.pathname === '/api/books/audio-progress') {
+        if (route.request().method() === 'POST') {
+          const inputError = audioProgressInputError(await readForm(route))
+          return inputError ? badRequest(route, inputError) : route.fulfill({ json: { ok: true } })
+        }
+        return route.fulfill({ json: audioProgressPayload(null, chunk.timeline) })
+      }
+      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+      if (url.pathname === '/api/books/list-highlights') {
+        return route.fulfill({ json: listHighlightsPayload([], await readForm(route)) })
+      }
+      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, id: 'session00000001' } })
+      return route.fulfill({ contentType: 'text/html', body: readerHtml(body) })
+    }
+  )
+  const player = page.locator('#reader-cloud-audio')
+  const rate = () => player.evaluate((audio) => audio.playbackRate)
+  const speed = page.getByRole('button', { name: '재생 속도' })
+
+  await page.goto('/books/book/read')
+  await openReadAloudPanel(page)
+  await page.getByRole('button', { name: '이어 듣기', exact: true }).click()
+  await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
+  await expect(page.getByRole('button', { name: '일시 정지', exact: true })).toBeVisible()
+  expect(await rate()).toBe(1)
+
+  await speed.click()
+  await expect(speed).toHaveText('1.2x')
+  await expect.poll(rate, 'the voice playing now speeds up at once').toBe(1.2)
+  const firstSource = await player.evaluate((audio) => audio.src)
+
+  await page.evaluate(() => window.booklogAudio.seekTo(15))
+  await expect.poll(() => player.evaluate((audio) => audio.src)).not.toBe(firstSource)
+  await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
+  expect(await rate(), 'the next part keeps the chosen speed').toBe(1.2)
   expect(errors).toEqual([])
 })

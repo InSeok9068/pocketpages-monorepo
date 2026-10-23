@@ -3,6 +3,19 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
+import {
+  audioPositionInputError,
+  audioProgressPayload,
+  badRequest,
+  listHighlightsPayload,
+  loadProgressPayload,
+  positionFromForm,
+  progressConflict,
+  readForm,
+  readerApiInputError,
+  readingSessionPayload,
+  saveProgressPayload,
+} from './fake-booklog-api.mjs'
 
 const require = createRequire(new URL('../package.json', import.meta.url))
 const { render } = require('pocketbase-ejs')
@@ -53,8 +66,11 @@ function html(body) {
 
 async function mockSite(page, options) {
   const requests = { detail: 0, saveProgress: 0, saveForms: [], savedLocators: [] }
-  const savedHref = options && options.savedHref ? options.savedHref : ''
-  const savedLocator = options && options.savedLocator ? options.savedLocator : ''
+  let stored = {
+    locator: options && options.savedLocator ? options.savedLocator : '',
+    href: options && options.savedHref ? options.savedHref : '',
+    chapterLabel: '',
+  }
   const epubBytes = Buffer.from(options && options.epub ? options.epub : epub)
   await page.route(
     (url) => url.protocol === 'http:' || url.protocol === 'https:',
@@ -64,30 +80,48 @@ async function mockSite(page, options) {
         return route.fulfill({ path: fileURLToPath(new URL(url.pathname.slice(1), pagesRoot)) })
       }
       if (url.pathname === '/test.epub') return route.fulfill({ body: epubBytes, contentType: 'application/epub+zip' })
-      if (url.pathname === '/api/books/load-progress') {
+      if (url.pathname.startsWith('/api/books/audio-')) {
+        if (url.pathname === '/api/books/audio-position') {
+          const inputError = audioPositionInputError(url)
+          if (inputError) return badRequest(route, inputError)
+          return route.fulfill({ json: { ok: true, chunkIndex: 0, seconds: 0 } })
+        }
+        if (url.pathname === '/api/books/audio-progress') return route.fulfill({ json: audioProgressPayload(null, []) })
         return route.fulfill({
-          json: { ok: true, hasSavedPosition: !!(savedHref || savedLocator), locator: savedLocator, href: savedHref },
+          status: 404,
+          json: { ok: false, reason: 'not-ready', message: '이 구간을 찾지 못했습니다. 잠시 후 다시 시도해 주세요.' },
         })
       }
-      if (url.pathname === '/api/books/save-progress') {
-        requests.saveProgress += 1
-        const request = route.request()
-        const form = await new Request(request.url(), {
-          method: 'POST',
-          headers: request.headers(),
-          body: request.postDataBuffer(),
-        }).formData()
-        requests.saveForms.push({ baseLocator: form.get('baseLocator'), force: form.get('force') })
-        requests.savedLocators.push(form.get('locator'))
-        if (options && options.conflict && form.get('force') !== 'true') {
-          return route.fulfill({
-            status: 409,
-            json: { ok: false, conflict: true, locator: '', href: 'chapter.xhtml', chapterLabel: '다른 기기 챕터' },
-          })
+      if (url.pathname.startsWith('/api/')) {
+        const form = route.request().method() === 'POST' ? await readForm(route) : new FormData()
+        const inputError = readerApiInputError(url.pathname, form)
+        if (inputError) return badRequest(route, inputError)
+        if (url.pathname === '/api/books/load-progress') {
+          const payload = loadProgressPayload(stored)
+          // 리더가 위치를 받은 직후 다른 기기가 더 읽고 저장한 상황입니다.
+          if (options && options.conflict) {
+            stored = { locator: 'epubcfi(/6/2!/4/4/1:0)', href: 'chapter.xhtml', chapterLabel: '다른 기기 챕터' }
+          }
+          return route.fulfill({ json: payload })
         }
-        return route.fulfill({ json: { ok: true } })
+        if (url.pathname === '/api/books/save-progress') {
+          requests.saveProgress += 1
+          requests.saveForms.push({ baseLocator: form.get('baseLocator'), force: form.get('force') })
+          requests.savedLocators.push(form.get('locator'))
+          const conflict = progressConflict(stored, form)
+          if (conflict) return route.fulfill({ status: 409, json: conflict })
+          stored = positionFromForm(form)
+          return route.fulfill({ json: saveProgressPayload() })
+        }
+        if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+        if (url.pathname === '/api/books/list-highlights') {
+          return route.fulfill({ json: listHighlightsPayload([], form) })
+        }
+        if (url.pathname === '/api/books/save-reading-session') {
+          return route.fulfill({ json: readingSessionPayload(form) })
+        }
+        return route.fulfill({ json: { ok: true, id: 'session00000001' } })
       }
-      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, id: 'session00000001' } })
       if (url.pathname === '/books/book') {
         requests.detail += 1
         if (options && options.cancelDetailNavigation) return route.fulfill({ status: 204 })

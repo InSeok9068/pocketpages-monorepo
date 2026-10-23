@@ -161,6 +161,9 @@ test('Book-level model reservations, concurrent requests, resume, playback and r
   await request(1, 'start', lite)
 
   await control(flashBook, { playback: true })
+  const played = await detail(flashBook)
+  assert.match(played.text(), /생성 완료 · 1분 \/ 약 1분 \(100%\)/, 'progress is shown by the stored audio length')
+  assert.match(played.text(), /1 \/ 1 구간/)
   const query = new URLSearchParams({ bookId: bookId(flashBook), fileId: fileId(flashBook) })
   const headers = { Cookie: cookie }
   let response = await fetch(service.baseUrl + '/api/books/audio-progress?' + query, { headers })

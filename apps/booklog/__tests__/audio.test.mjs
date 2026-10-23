@@ -285,6 +285,41 @@ test('A chunk blocked once is replaced by two ordered parts and short chunks kee
   assert.equal(other.fields.status, 'failed', 'only policy blocks are split')
 })
 
+test('Job progress is shown by audio length, with chunk counts as a secondary line', () => {
+  const context = {
+    module: { exports: {} },
+    __hooks: '',
+    require: (name) => (name.startsWith('@') ? { dateutil: {} } : { toMs: () => NaN }),
+    Date,
+  }
+  vm.runInNewContext(
+    readFileSync(new URL('../pb_hooks/pages/_private/book-audio-job-service.js', import.meta.url), 'utf8'),
+    context
+  )
+  const service = context.module.exports
+  assert.equal(service.formatAudioDuration(20), '1분 미만')
+  assert.equal(service.formatAudioDuration(12 * 60), '12분')
+  assert.equal(service.formatAudioDuration(4 * 3600), '4시간')
+  assert.equal(service.formatAudioDuration(4 * 3600 + 50 * 60), '4시간 50분')
+  const job = {
+    fields: { status: 'running', total_chunks: 106, ready_chunks: 3, failed_chunks: 4, next_run_at: '' },
+    get(name) {
+      return this.fields[name] ?? ''
+    },
+  }
+  const timed = service.jobView(job, {
+    readySeconds: 4 * 3600 + 50 * 60,
+    totalSeconds: 7 * 3600 + 40 * 60,
+    deviceSeconds: 90,
+  })
+  assert.equal(timed.statusLabel, '생성 중 · 4시간 50분 / 약 7시간 40분 (63%)')
+  assert.equal(timed.chunkLabel, '3 / 106 구간 · 실패 4 · 기기 음성 약 2분')
+  assert.equal(timed.percent, 63, 'the progress bar follows audio length, not chunk count')
+  const untimed = service.jobView(job)
+  assert.equal(untimed.statusLabel, '생성 중 · 2% (3 / 106 구간) · 실패 4')
+  assert.equal(untimed.chunkLabel, '')
+})
+
 test('Restarting a job retries ordinary failures but not parts that policy blocks repeatedly', () => {
   const record = (fields) => ({
     fields: { ...fields },

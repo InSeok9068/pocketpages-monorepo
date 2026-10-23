@@ -59,7 +59,7 @@ routerAdd('POST', '/_test/audio-control', function (event) {
     const chunk = $app.findFirstRecordByFilter('book_audio_chunks', 'file_id = {:fileId}', { fileId: input.fileId })
     chunk.set('status', 'ready')
     chunk.set('audio_file', $filesystem.fileFromBytes([255, 251, 144, 0], 'test.mp3'))
-    chunk.set('duration_seconds', 60)
+    chunk.set('duration_seconds', 60.4)
     chunk.set('generated_at', new Date().toISOString())
     $app.save(chunk)
     service.syncJobProgress($app, $app.findRecordById('book_audio_jobs', job.id))

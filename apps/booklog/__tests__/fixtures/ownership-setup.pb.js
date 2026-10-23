@@ -45,6 +45,7 @@ onBootstrap(function (event) {
     mime_type: 'application/epub+zip',
     file_size: 4,
     file_hash: $security.sha256('owned'),
+    text_char_count: 32000,
   })
   const ownerShelf = save('book_shelves', {
     id: 'ownershelf00001',

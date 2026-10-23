@@ -35,6 +35,14 @@
             AI 오디오북 생성
           </h3>
           <p class="m-0 mt-1 truncate text-sm text-stone-500"><%= bookTitle %></p>
+          <% if (estimateLabel) { %>
+          <p class="m-0 mt-2 inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold text-[#8e5521]">
+            <span
+              class="i-lucide-clock-3 h-3.5 w-3.5"
+              aria-hidden="true"></span>
+            예상 길이 <%= estimateLabel %>
+          </p>
+          <% } %>
         </div>
         <button
           type="button"

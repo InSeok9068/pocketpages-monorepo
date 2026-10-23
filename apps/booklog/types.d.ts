@@ -135,13 +135,25 @@ declare namespace types {
     blocked: number
   }
 
+  interface BookAudioDuration {
+    /** 만든 음성의 실제 길이(초) */
+    readySeconds: number
+    /** 만든 음성 + 남은 본문 추정 길이(초) */
+    totalSeconds: number
+    /** 반복 차단으로 기기 음성으로 읽는 부분의 추정 길이(초) */
+    deviceSeconds: number
+  }
+
   interface BookAudioJobView {
     status: string
     totalChunks: number
     readyChunks: number
     failedChunks: number
+    /** 음성 길이 기준 진행률, 길이 정보가 없으면 구간 수 기준 */
     percent: number
     statusLabel: string
+    /** 구간 수·실패 수 보조 표시, 길이 정보가 없으면 빈 값 */
+    chunkLabel: string
     nextRunLabel: string
     errorMessage: string
     canStart: boolean

@@ -61,6 +61,8 @@ const DEFAULT_STYLE = STYLES.filter(function (entry) {
 })[0].key
 // 실측 Gemini 낭독 속도(공백 포함 초당 약 6.8자)로 아직 음성이 없는 구간의 재생 바 길이를 잡습니다.
 const ESTIMATED_CHARS_PER_SECOND = 6.8
+// 생성 요청 전에는 공백 제외 본문 글자 수(text_char_count)만 있어, 실측 공백 제외 낭독 속도(초당 5.1~5.8자)를 씁니다.
+const ESTIMATED_NONSPACE_CHARS_PER_SECOND = 5.3
 
 /**
  * EPUB에 등록된 최근 오디오북 작업을 찾습니다.
@@ -382,6 +384,44 @@ function countFileChunks(app, fileId) {
 }
 
 /**
+ * 만든 음성 길이와 책 전체 예상 길이를 계산합니다. 아직 음성이 없는 구간·조각은 재생 바와 같은 속도로 추정합니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} fileId EPUB 파일 ID
+ * @param {string} configHash 낭독 설정 해시
+ * @returns {types.BookAudioDuration} 음성 길이
+ */
+function getAudioDuration(app, fileId, configHash) {
+  const row = new DynamicModel({ readySeconds: 0, pendingChars: 0, deviceChars: 0 })
+  app
+    .db()
+    .newQuery(
+      // 음성 길이는 소수라 정수로 선언한 DynamicModel에 그대로 담기지 않아, 초 단위로 반올림해 받습니다.
+      "SELECT CAST(round(coalesce(sum(CASE WHEN status = 'ready' THEN duration_seconds ELSE 0 END), 0)) AS INTEGER) AS readySeconds,"
+        + " coalesce(sum(CASE WHEN status != 'ready' THEN length(input_text) ELSE 0 END), 0) AS pendingChars,"
+        + " coalesce(sum(CASE WHEN status = 'failed' AND error_message LIKE {:blocked} THEN length(input_text) ELSE 0 END), 0)"
+        + ' AS deviceChars'
+        + " FROM book_audio_chunks WHERE file_id = {:fileId} AND config_hash = {:configHash} AND status != 'split'"
+    )
+    .bind({ fileId, configHash, blocked: generation.BLOCKED_EXHAUSTED_MESSAGE + '%' })
+    .one(row)
+  const readySeconds = Number(row.readySeconds) || 0
+  return {
+    readySeconds,
+    totalSeconds: readySeconds + (Number(row.pendingChars) || 0) / ESTIMATED_CHARS_PER_SECOND,
+    deviceSeconds: (Number(row.deviceChars) || 0) / ESTIMATED_CHARS_PER_SECOND,
+  }
+}
+
+/**
+ * 생성 요청 전 본문 글자 수로 오디오북 길이를 추정합니다. 목차·주석처럼 낭독하지 않는 부분도 들어 있어 조금 길게 나옵니다.
+ * @param {number} textCharCount 공백 제외 본문 글자 수
+ * @returns {number} 예상 길이(초), 글자 수가 없으면 0
+ */
+function estimateSecondsFromText(textCharCount) {
+  return Number(textCharCount) > 0 ? Number(textCharCount) / ESTIMATED_NONSPACE_CHARS_PER_SECOND : 0
+}
+
+/**
  * 재시도를 끝내 관리자가 검토할 구간·조각을 책 순서대로 읽습니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {string} fileId EPUB 파일 ID
@@ -563,6 +603,8 @@ module.exports = {
   readBookSections,
   countSectionChunks,
   countFileChunks,
+  getAudioDuration,
+  estimateSecondsFromText,
   listFinalFailedChunks,
   findNextSectionIndex,
   readSectionOrder,

@@ -113,26 +113,6 @@
   }
 
   const currentPageCount = Number(bookRecord.get('estimated_page_count') || 0)
-
-  if (currentPageCount > 0) {
-    dbg('xapi/books/recalculate-page-count:already-calculated', {
-      userId: userId,
-      bookId: bookId,
-      estimatedPageCount: currentPageCount,
-    })
-    dbg('xapi/books/recalculate-page-count:redirect', {
-      status: 303,
-      redirectTo: bookDetailPath,
-      message: '페이지 정보가 이미 있습니다.',
-      bookId: bookId,
-    })
-    redirect(bookDetailPath, {
-      status: 303,
-      message: '페이지 정보가 이미 있습니다.',
-    })
-    return
-  }
-
   const bookFileId = String(shelfRecord.get('book_file_id') || '').trim()
   let bookFileRecord = null
 
@@ -164,6 +144,29 @@
     redirect(bookDetailPath, {
       status: 303,
       message: '계산할 EPUB 파일을 찾을 수 없습니다.',
+    })
+    return
+  }
+
+  const currentTextCharCount = Number(bookFileRecord.get('text_char_count') || 0)
+
+  // 초기 업로드 파일은 페이지 수만 있고 본문 글자 수(오디오북 예상 길이에 사용)가 비어 있을 수 있어, 둘 다 있을 때만 건너뜁니다.
+  if (currentPageCount > 0 && currentTextCharCount > 0) {
+    dbg('xapi/books/recalculate-page-count:already-calculated', {
+      userId: userId,
+      bookId: bookId,
+      estimatedPageCount: currentPageCount,
+      textCharCount: currentTextCharCount,
+    })
+    dbg('xapi/books/recalculate-page-count:redirect', {
+      status: 303,
+      redirectTo: bookDetailPath,
+      message: '페이지 정보가 이미 있습니다.',
+      bookId: bookId,
+    })
+    redirect(bookDetailPath, {
+      status: 303,
+      message: '페이지 정보가 이미 있습니다.',
     })
     return
   }
@@ -262,8 +265,34 @@
     estimatedPageCount: readingMetrics.estimatedPageCount,
   })
 
-  bookRecord.set('estimated_page_count', readingMetrics.estimatedPageCount)
-  $app.save(bookRecord)
+  try {
+    $app.runInTransaction(function (txApp) {
+      const book = txApp.findRecordById('books', bookId)
+      const file = txApp.findRecordById('book_files', bookFileId)
+      book.set('estimated_page_count', readingMetrics.estimatedPageCount)
+      file.set('text_char_count', readingMetrics.textCharCount)
+      txApp.save(book)
+      txApp.save(file)
+    })
+  } catch (exception) {
+    error('xapi/books/recalculate-page-count:save-failed', {
+      userId: userId,
+      bookId: bookId,
+      bookFileId: bookFileId,
+      error: String(exception.message || exception),
+    })
+    dbg('xapi/books/recalculate-page-count:redirect', {
+      status: 303,
+      redirectTo: bookDetailPath,
+      error: '계산한 페이지 수를 저장하지 못했습니다.',
+      bookId: bookId,
+    })
+    redirect(bookDetailPath, {
+      status: 303,
+      message: '계산한 페이지 수를 저장하지 못했습니다.',
+    })
+    return
+  }
 
   info('xapi/books/recalculate-page-count:success', {
     userId: userId,
