@@ -1292,3 +1292,131 @@ test('A bookmark cannot be saved while the list is still loading, so the new one
   expect(await listed()).toBe(1)
   expect(state.bookmarks).toHaveLength(1)
 })
+
+const searchBook = zipSync({
+  'mimetype': strToU8('application/epub+zip'),
+  'META-INF/container.xml': strToU8(
+    '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+  ),
+  'book.opf': strToU8(
+    '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">search</dc:identifier><dc:title>검색 순서</dc:title></metadata><manifest><item id="nav" href="nav.xhtml" properties="nav" media-type="application/xhtml+xml"/>'
+      + [1, 2, 3]
+        .map((n) => '<item id="c' + n + '" href="c' + n + '.xhtml" media-type="application/xhtml+xml"/>')
+        .join('')
+      + '</manifest><spine>'
+      + [1, 2, 3].map((n) => '<itemref idref="c' + n + '"/>').join('')
+      + '</spine></package>'
+  ),
+  'nav.xhtml': xhtml(
+    '<nav epub:type="toc"><ol>'
+      + [1, 2, 3].map((n) => '<li><a href="c' + n + '.xhtml">' + n + '장</a></li>').join('')
+      + '</ol></nav>'
+  ),
+  ...Object.fromEntries(
+    [1, 2, 3].map((n) => [
+      'c' + n + '.xhtml',
+      xhtml(
+        chapterBody(n)
+          .replace('문단 10입니다.', '문단 10입니다. ' + n + '장의 사과표지가 있습니다.')
+          .replace('문단 30입니다.', '문단 30입니다. ' + n + '장의 포도표지가 있습니다.')
+      ),
+    ])
+  ),
+})
+
+// 챕터마다 본문을 읽는 시간을 테스트에서 정할 수 있게, 리더가 만든 책 객체를 붙잡아 둡니다.
+async function openReaderWithSlowSections(page) {
+  await page.addInitScript(() => {
+    let realEpub = null
+    window.__sectionDelay = () => 0
+    Object.defineProperty(window, 'ePub', {
+      configurable: true,
+      get: () =>
+        realEpub
+        && function (...args) {
+          const book = realEpub(...args)
+          book.ready.then(() => {
+            book.spine.spineItems.forEach((section, index) => {
+              const load = section.load.bind(section)
+              section.load = (request) => {
+                const delay = window.__sectionDelay(index)
+                return delay
+                  ? new Promise((resolve) => setTimeout(resolve, delay)).then(() => load(request))
+                  : load(request)
+              }
+            })
+          })
+          return book
+        },
+      set: (value) => {
+        realEpub = value
+      },
+    })
+  })
+  await openReader(page, searchBook)
+  await openMenuItem(page, '검색')
+}
+
+function searchState(page) {
+  return page.evaluate(() => {
+    const data = window.Alpine.$data(document.querySelector('section[x-data]'))
+    return {
+      searching: data.searching,
+      message: data.searchMessage,
+      results: data.searchResults.map((result) => result.chapterLabel + ' ' + result.excerpt),
+    }
+  })
+}
+
+test('Search results are listed in book order even when an earlier chapter takes longer to read', async ({ page }) => {
+  await openReaderWithSlowSections(page)
+  const input = page.locator('#reader-search-input')
+
+  await page.evaluate(() => {
+    window.__sectionDelay = (index) => (index === 0 ? 700 : 0)
+  })
+  await input.fill('사과표지')
+  await input.press('Enter')
+  await expect(page.getByText('3개의 결과를 찾았습니다.')).toBeVisible()
+
+  const { results } = await searchState(page)
+  expect(results.map((result) => result.split(' ')[0])).toEqual(['1장', '2장', '3장'])
+  expect(results.every((result) => result.includes('사과표지'))).toBe(true)
+  await expect(page.getByRole('button', { name: /사과표지/ }).first()).toContainText('1장의 사과표지')
+})
+
+test('Searching again before the first search ends shows only the latest results, in book order', async ({ page }) => {
+  await openReaderWithSlowSections(page)
+  const input = page.locator('#reader-search-input')
+
+  await page.evaluate(() => {
+    window.__sectionDelay = () => 900
+  })
+  await input.fill('사과표지')
+  await input.press('Enter')
+  await expect.poll(async () => (await searchState(page)).searching).toBe(true)
+
+  await page.evaluate(() => {
+    window.__sectionDelay = () => 0
+  })
+  await input.fill('포도표지')
+  await input.press('Enter')
+  await expect(page.getByText('3개의 결과를 찾았습니다.')).toBeVisible()
+
+  // 첫 검색이 늦게 끝난 뒤에도 화면이 바뀌지 않는지 봅니다.
+  await page.waitForTimeout(1500)
+  const latest = await searchState(page)
+  expect(latest.searching).toBe(false)
+  expect(latest.message).toBe('3개의 결과를 찾았습니다.')
+  expect(latest.results.map((result) => result.split(' ')[0])).toEqual(['1장', '2장', '3장'])
+  expect(latest.results.every((result) => result.includes('포도표지'))).toBe(true)
+  await expect(page.getByRole('button', { name: /사과표지/ })).toHaveCount(0)
+
+  await input.fill('사과표지')
+  await input.press('Enter')
+  await expect(page.getByText('3개의 결과를 찾았습니다.')).toBeVisible()
+  expect(
+    (await searchState(page)).results.every((result) => result.includes('사과표지')),
+    'a later search still reads every chapter'
+  ).toBe(true)
+})

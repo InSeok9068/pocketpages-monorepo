@@ -92,6 +92,7 @@ window.booklogReaderLogic = (function () {
   var pendingConflictPosition = null
   var settingsRelayoutAnchor = ''
   var settingsRelayoutToken = 0
+  var searchToken = 0
   var speechSynthesisInstance = null
   var speechVoices = []
   var speechVoiceSyncHandler = null
@@ -5160,8 +5161,9 @@ window.booklogReaderLogic = (function () {
   function performSearch(component) {
     var query = normalizeText(component.searchQuery)
     var spineItems = null
-    var results = []
+    var resultsBySection = []
     var searchPromises = []
+    var token = 0
 
     if (!query) {
       component.searchResults = []
@@ -5183,14 +5185,19 @@ window.booklogReaderLogic = (function () {
       return
     }
 
+    // 늦게 끝난 이전 검색이 새 검색 결과를 덮지 않도록, 마지막 검색의 결과만 화면에 씁니다.
+    token = searchToken += 1
     component.searching = true
     component.searchMessage = ''
     component.searchResults = []
 
-    spineItems.forEach(function (section) {
+    spineItems.forEach(function (section, position) {
       if (!section || typeof section.find !== 'function') {
         return
       }
+
+      // 이어서 검색하면 같은 챕터를 두 검색이 함께 쓰므로, 마지막으로 쓰던 검색이 끝날 때만 본문을 비웁니다.
+      section.__booklogSearchUsers = (section.__booklogSearchUsers || 0) + 1
 
       searchPromises.push(
         Promise.resolve(section.load(bookInstance.load.bind(bookInstance)))
@@ -5198,13 +5205,13 @@ window.booklogReaderLogic = (function () {
             var found = section.find(query) || []
             var chapterLabel = getChapterLabelForSection(section)
 
-            found.forEach(function (item) {
-              results.push({
+            resultsBySection[position] = found.map(function (item) {
+              return {
                 cfi: String(item && item.cfi ? item.cfi : ''),
                 excerpt: normalizeText(item && item.excerpt ? item.excerpt : ''),
                 chapterLabel: chapterLabel,
                 excerptHtml: buildHighlightedTextHtml(item && item.excerpt ? item.excerpt : '', query),
-              })
+              }
             })
           })
           .catch(function (exception) {
@@ -5214,6 +5221,12 @@ window.booklogReaderLogic = (function () {
             })
           })
           .finally(function () {
+            section.__booklogSearchUsers -= 1
+
+            if (section.__booklogSearchUsers > 0) {
+              return
+            }
+
             try {
               section.unload()
             } catch (exception) {}
@@ -5223,11 +5236,28 @@ window.booklogReaderLogic = (function () {
 
     Promise.all(searchPromises)
       .then(function () {
+        var results = []
+
+        if (token !== searchToken) {
+          return
+        }
+
+        // 챕터마다 끝나는 순서가 달라, 모은 결과를 책 순서대로 이어 붙입니다.
+        resultsBySection.forEach(function (sectionResults) {
+          if (sectionResults) {
+            results = results.concat(sectionResults)
+          }
+        })
+
         component.searching = false
         component.searchResults = results
         component.searchMessage = results.length ? results.length + '개의 결과를 찾았습니다.' : '검색 결과가 없습니다.'
       })
       .catch(function (exception) {
+        if (token !== searchToken) {
+          return
+        }
+
         component.searching = false
         component.searchResults = []
         component.searchMessage = '검색 중 오류가 발생했습니다.'
