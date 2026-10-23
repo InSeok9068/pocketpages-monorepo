@@ -24,6 +24,64 @@
 
   dbg('page/admin/books:start', { userId, method: request.method, scope, queryText })
 
+  if (request.method === 'POST' && body().action === 'assign') {
+    const form = body()
+    const bookId = String(form.bookId || '').trim()
+    const targetUserId = String(form.targetUserId || '').trim()
+    let message = ''
+    try {
+      if (!bookId || !targetUserId) {
+        throw Object.assign(new Error('책과 배정할 사용자를 선택해 주세요.'), { userMessage: true })
+      }
+      $app.runInTransaction(function (txApp) {
+        txApp.findRecordById('books', bookId)
+        // 관리자 권한으로 선택한 사용자의 서재에 연결합니다.
+        const targetUser = txApp.findRecordById('users', targetUserId)
+        const existing = txApp.findRecordsByFilter(
+          'book_shelves',
+          'book_id = {:bookId} && user_id = {:targetUserId}',
+          '',
+          1,
+          0,
+          { bookId, targetUserId }
+        )
+        if (existing.length) {
+          throw Object.assign(new Error('이미 이 사용자에게 배정된 책입니다.'), { userMessage: true })
+        }
+        const customLimit = Number(targetUser.get('shelf_book_limit') || 0)
+        const shelfLimit = customLimit > 0 ? customLimit : 100
+        if (txApp.countRecords('book_shelves', $dbx.hashExp({ user_id: targetUserId })) >= shelfLimit) {
+          throw Object.assign(new Error('이 사용자의 도서함이 최대 ' + shelfLimit + '권으로 가득 찼습니다.'), {
+            userMessage: true,
+          })
+        }
+        const file = txApp.findFirstRecordByFilter('book_files', 'book_id = {:bookId} && stored_file != ""', { bookId })
+        const shelf = new Record(txApp.findCollectionByNameOrId('book_shelves'))
+        shelf.set('user_id', targetUserId)
+        shelf.set('book_id', bookId)
+        shelf.set('book_file_id', file.get('id'))
+        shelf.set('status', 'queued')
+        txApp.save(shelf)
+        message = String(targetUser.get('name') || targetUser.get('email')) + '님의 도서함에 책을 배정했습니다.'
+      })
+      info('page/admin/books:assigned', { userId, bookId, targetUserId })
+    } catch (exception) {
+      error('page/admin/books:assign-failed', {
+        userId,
+        bookId,
+        targetUserId,
+        error: String(exception.message || exception),
+      })
+      message = exception.userMessage
+        ? String(exception.message)
+        : '책을 배정하지 못했습니다. 사용자와 EPUB 파일을 확인한 뒤 다시 시도해 주세요.'
+    }
+    const redirectTo = buildPageHref(requestedPage)
+    dbg('page/admin/books:redirect', { status: 303, redirectTo, message })
+    redirect(redirectTo, { status: 303, message })
+    return
+  }
+
   if (request.method === 'POST' && body().action === 'audio-start') {
     const form = body()
     const bookId = String(form.bookId || '').trim()
@@ -390,6 +448,38 @@
   const previousHref = currentPage > 1 ? buildPageHref(currentPage - 1) : ''
   const nextHref = currentPage < pageCount ? buildPageHref(currentPage + 1) : ''
   const formAction = buildPageHref(currentPage)
+  const assignBookId = String(request.url.query.assignBookId || '').trim()
+  let assignmentBook = null
+  let assignmentMessage = ''
+  const assignmentCandidates = arrayOf(new DynamicModel({ userId: '', label: '' }))
+  if (assignBookId) {
+    try {
+      const assignmentRecord = $app.findRecordById('books', assignBookId)
+      $app.findFirstRecordByFilter('book_files', 'book_id = {:bookId} && stored_file != ""', { bookId: assignBookId })
+      $app
+        .db()
+        .newQuery(
+          "SELECT users.id AS userId, CASE WHEN users.name != '' THEN users.name || ' (' || users.email || ')' ELSE users.email END AS label "
+            + 'FROM users WHERE NOT EXISTS (SELECT 1 FROM book_shelves WHERE book_shelves.user_id = users.id AND book_shelves.book_id = {:bookId}) '
+            + "ORDER BY coalesce(nullif(users.name, ''), users.email) COLLATE NOCASE, users.id"
+        )
+        .bind({ bookId: assignBookId })
+        .all(assignmentCandidates)
+      assignmentBook = { bookId: assignBookId, title: String(assignmentRecord.get('title') || '제목 없음') }
+      dbg('page/admin/books:assignment-loaded', {
+        userId,
+        bookId: assignBookId,
+        candidateCount: assignmentCandidates.length,
+      })
+    } catch (exception) {
+      warn('page/admin/books:assignment-unavailable', {
+        userId,
+        bookId: assignBookId,
+        error: String(exception.message || exception),
+      })
+      assignmentMessage = '배정할 책이나 EPUB 파일을 찾을 수 없습니다.'
+    }
+  }
   const flashMessage = params.__flash ? String(params.__flash) : ''
   dbg('page/admin/books:loaded', { matchedCount: Number(matched.total), currentPage })
 </script>
@@ -415,6 +505,64 @@
 
   <% if (flashMessage) { %>
   <div><%- include('flash-alert.ejs') %></div>
+  <% } %>
+
+  <% if (assignmentBook || assignmentMessage) { %>
+  <section
+    id="book-assignment"
+    class="space-y-3 rounded-lg border border-solid border-stone-200 bg-white/90 p-3">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="m-0 text-base font-semibold text-stone-950">책 배정</h2>
+      <a
+        href="<%= formAction %>"
+        class="text-xs text-stone-500">
+        닫기
+      </a>
+    </div>
+    <% if (assignmentBook) { %>
+    <p class="m-0 text-sm text-stone-700">「<%= assignmentBook.title %>」을 배정할 사용자를 선택해 주세요.</p>
+    <% if (assignmentCandidates.length) { %>
+    <form
+      method="post"
+      action="<%= formAction %>"
+      class="flex flex-wrap items-end gap-2">
+      <input
+        type="hidden"
+        name="action"
+        value="assign" />
+      <input
+        type="hidden"
+        name="bookId"
+        value="<%= assignmentBook.bookId %>" />
+      <label
+        for="assignment-user"
+        class="block w-full space-y-1 text-xs text-stone-600 sm:max-w-sm">
+        <span>미배정 사용자 <%= assignmentCandidates.length %>명</span>
+        <select
+          id="assignment-user"
+          name="targetUserId"
+          required
+          class="box-border h-8 w-full rounded-md border border-solid border-stone-300 bg-white px-2 text-xs text-stone-900">
+          <option value="">사용자를 선택해 주세요</option>
+          <% assignmentCandidates.forEach(function (candidate) { %>
+          <option value="<%= candidate.userId %>"><%= candidate.label %></option>
+          <% }) %>
+        </select>
+      </label>
+      <button
+        type="submit"
+        class="inline-flex h-8 items-center justify-center rounded-md border-0 bg-[#efe2d2] px-3 text-xs font-semibold text-[#8e5521] hover:bg-[#ead9c4]">
+        배정
+      </button>
+    </form>
+    <p class="m-0 text-xs text-stone-500">선택한 사용자의 도서함에 읽기 대기 상태로 추가됩니다.</p>
+    <% } else { %>
+    <p class="m-0 text-sm text-stone-500">모든 사용자에게 이미 배정된 책입니다.</p>
+    <% } %>
+    <% } else { %>
+    <p class="m-0 text-sm text-stone-500"><%= assignmentMessage %></p>
+    <% } %>
+  </section>
   <% } %>
 
   <section class="overflow-hidden rounded-lg border border-solid border-stone-200 bg-white/90">
@@ -557,6 +705,13 @@
               <p class="m-0 break-all text-stone-500"><%= book.userNames %></p>
               <% } else { %>
               <span class="ml-1 rounded bg-[#efe2d2] px-1.5 py-0.5 text-[11px] text-[#8e5521]">미사용</span>
+              <% } %>
+              <% if (book.fileCount > 0) { %>
+              <a
+                href="<%= formAction %>&assignBookId=<%= book.bookId %>#book-assignment"
+                class="mt-2 inline-flex h-7 items-center justify-center rounded-md bg-[#efe2d2] px-2 text-xs font-semibold text-[#8e5521] no-underline hover:bg-[#ead9c4]">
+                책 배정
+              </a>
               <% } %>
             </td>
             <td class="px-3 py-2.5 text-right whitespace-nowrap tabular-nums">

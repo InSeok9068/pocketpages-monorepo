@@ -780,6 +780,47 @@ test('Administrators can search all books, see members and delete unused books',
   assert.equal((await (await request('/_test/admin-state')).json()).unusedBookCount, 0)
 })
 
+test('Administrators assign shared EPUBs only to users without the book', async () => {
+  const route = '/admin/books?scope=all&sort=size&q=' + encodeURIComponent('관리 저자')
+  const selection = route + '&assignBookId=adminbook000001'
+  const candidates = load(await (await request(selection, 4)).text())
+  assert.equal(candidates('#assignment-user option[value="reviewuser00001"]').length, 0)
+  assert.equal(candidates('#assignment-user option[value="reviewuser00004"]').length, 0)
+  assert.equal(candidates('#assignment-user option[value="reviewuser00002"]').length, 1)
+  const input = { action: 'assign', bookId: 'adminbook000001', targetUserId: 'reviewuser00002' }
+  const beforeState = await (await request('/_test/admin-state')).json()
+  for (const user of [0, 1, 2, 3]) {
+    assert.equal((await request(route, user, input)).status, 303)
+  }
+  assert.deepEqual((await (await request('/_test/admin-state')).json()).counts, beforeState.counts)
+  try {
+    const assigned = await request(route, 4, input)
+    assert.equal(assigned.status, 303)
+    const location = new URL(assigned.headers.get('location'), service.baseUrl)
+    assert.equal(location.searchParams.get('scope'), 'all')
+    assert.equal(location.searchParams.get('sort'), 'size')
+    assert.equal(location.searchParams.get('q'), '관리 저자')
+    assert.match(decodeURIComponent(assigned.headers.get('location')), /도서함에 책을 배정/)
+    const state = await (await request('/_test/admin-state')).json()
+    assert.equal(state.counts.book_shelves, beforeState.counts.book_shelves + 1)
+    assert.equal(state.counts.book_files, beforeState.counts.book_files)
+    const file = await request('/xapi/books/adminbook000001/read-file', 2)
+    assert.equal(file.status, 200)
+    assert.equal((await file.arrayBuffer()).byteLength, 4)
+    const refreshed = load(await (await request(selection, 4)).text())
+    assert.equal(refreshed('#assignment-user option[value="reviewuser00002"]').length, 0)
+    const duplicate = await request(route, 4, input)
+    assert.match(decodeURIComponent(duplicate.headers.get('location')), /이미 이 사용자에게 배정/)
+    assert.deepEqual((await (await request('/_test/admin-state')).json()).counts, state.counts)
+    const missing = await request(route, 4, { ...input, targetUserId: 'missinguser0001' })
+    assert.match(decodeURIComponent(missing.headers.get('location')), /책을 배정하지 못했습니다/)
+    assert.deepEqual((await (await request('/_test/admin-state')).json()).counts, state.counts)
+  } finally {
+    await request('/xapi/books/remove-from-shelf', 2, { bookId: input.bookId })
+  }
+  assert.deepEqual((await (await request('/_test/admin-state')).json()).counts, beforeState.counts)
+})
+
 test('Storage ordering covers all pages, preserves filters and escapes expandable audio errors', async () => {
   assert.equal((await request('/_test/storage-fixtures', 4, { action: 'create' })).status, 200)
   const query = '/admin/books?scope=all&q=' + encodeURIComponent('용량검증') + '&sort=size'
