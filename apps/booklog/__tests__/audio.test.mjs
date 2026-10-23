@@ -614,6 +614,7 @@ function createPlayerHarness(fetchAudio, options = {}) {
     ;(listeners[target][event] ||= []).push(callback)
   }
   const diagnosticButton = { disabled: false }
+  const diagnosticToggle = { textContent: '기록 시작', setAttribute() {} }
   const diagnosticStatus = { hidden: true, textContent: '' }
   const diagnosticField = { hidden: true, value: '', focus() {}, select() { this.selected = true } }
   const cachedAudio = new Map()
@@ -689,6 +690,7 @@ function createPlayerHarness(fetchAudio, options = {}) {
         if (!options.diagnostics) return null
         return {
           'reader-audio-diagnostics-copy': diagnosticButton,
+          'reader-audio-diagnostics-toggle': diagnosticToggle,
           'reader-audio-diagnostics-status': diagnosticStatus,
           'reader-audio-diagnostics-text': diagnosticField,
         }[id] || null
@@ -696,6 +698,8 @@ function createPlayerHarness(fetchAudio, options = {}) {
     },
     navigator: { mediaSession: options.mediaSession, clipboard: options.clipboard, onLine: true, userAgent: 'Test Android' },
     localStorage: {
+      get length() { return values.size },
+      key: (index) => [...values.keys()][index] ?? null,
       getItem: (key) => values.get(key) || null,
       setItem: (key, value) => {
         if (options.storageFailure) throw new Error('QuotaExceededError')
@@ -786,6 +790,7 @@ function createPlayerHarness(fetchAudio, options = {}) {
     readFileSync(new URL('../pb_hooks/pages/assets/booklog-audio.js', import.meta.url), 'utf8'),
     context
   )
+  if (options.diagnostics && options.recording !== false) context.window.booklogAudio.toggleDiagnostics()
   return {
     logic: context.window.booklogAudio, state, audio, values, requests, server,
     document: context.document,
@@ -879,6 +884,39 @@ test('Diagnostics do not affect playback when storage fails and stay off without
   assert.equal(report.storageAvailable, false)
   assert.ok(report.events.some((entry) => entry.event === 'play'))
   admin.logic.stop()
+})
+
+test('Diagnostic history expires, is limited across books, and recording stays off until requested', async () => {
+  const storage = new Map()
+  function saved(at) { return JSON.stringify([{ at: new Date(at).toISOString(), event: 'play' }]) }
+  for (let index = 0; index < 4; index += 1) {
+    storage.set('booklog-audio-diagnostics:user:book' + index, saved(Date.now() - index * 1000))
+  }
+  storage.set('booklog-audio-diagnostics:user:expired', saved(Date.now() - 8 * 86400000))
+  storage.set('booklog-audio-diagnostics:other:book', saved(Date.now() - 8 * 86400000))
+  storage.set('unrelated-setting', 'keep')
+  const player = createPlayerHarness(() => audioResponse(), { diagnostics: true, recording: false, storage })
+  assert.equal(JSON.parse(player.logic.exportDiagnostics()).events.length, 0)
+  assert.equal(storage.has('booklog-audio-diagnostics:user:expired'), false)
+  assert.equal(storage.has('booklog-audio-diagnostics:other:book'), true)
+  player.logic.start(player.state, 0)
+  await flushPlayback()
+  assert.equal(JSON.parse(player.logic.exportDiagnostics()).events.length, 0)
+  player.logic.toggleDiagnostics()
+  const keys = [...storage.keys()].filter((key) => key.startsWith('booklog-audio-diagnostics:user:'))
+  assert.equal(keys.length, 3)
+  assert.ok(keys.includes('booklog-audio-diagnostics:user:hash'))
+  player.logic.toggleDiagnostics()
+  const stopped = JSON.parse(player.logic.exportDiagnostics())
+  assert.equal(stopped.recording, false)
+  player.emit('window', 'online')
+  assert.equal(JSON.parse(player.logic.exportDiagnostics()).events.length, stopped.events.length)
+  player.logic.clearDiagnostics()
+  assert.equal(storage.has('booklog-audio-diagnostics:user:hash'), false)
+  assert.equal(JSON.parse(player.logic.exportDiagnostics()).events.length, 0)
+  assert.equal(player.state.cloudAudioActive, true)
+  assert.equal(storage.get('unrelated-setting'), 'keep')
+  player.logic.stop()
 })
 
 test('Replay uses browser audio cache and restores server progress without downloading audio again', async () => {

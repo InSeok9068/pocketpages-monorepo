@@ -11,7 +11,7 @@ onBootstrap(function (event) {
   user.set('admin_manager', true)
   user.set('booklog_enabled', true)
   $app.save(user)
-  for (let index = 1; index <= 6; index += 1) {
+  for (let index = 1; index <= 7; index += 1) {
     const suffix = ('00000000000' + index).slice(-11)
     const book = new Record($app.findCollectionByNameOrId('books'))
     book.set('id', 'book' + suffix)
@@ -154,6 +154,37 @@ routerAdd('POST', '/_test/audio-scenario', function (event) {
       { sectionIndex: 4, chunks: ['마 구간'] },
     ])
   }
+  if (input.name === 'browser-buffer') {
+    service.planJob($app, job.id, [
+      { sectionIndex: 0, chunks: ['조각으로 나뉘는 첫 번째 음성 구간입니다. '.repeat(20), '두 번째 음성 구간입니다.'] },
+      { sectionIndex: 2, chunks: ['다음 챕터의 음성 구간입니다.'] },
+    ])
+    $app.runInTransaction(function (txApp) {
+      const parent = txApp.findFirstRecordByFilter('book_audio_chunks', 'file_id = {:fileId} && section_index = 0 && chunk_index = 0', { fileId: input.fileId })
+      parent.set('status', 'failed')
+      parent.set('attempt_count', generation.MAX_ATTEMPTS)
+      parent.set('error_message', generation.BLOCKED_EXHAUSTED_MESSAGE)
+      if (!generation.splitBlockedChunk(txApp, parent)) throw new Error('브라우저용 조각 구간을 만들지 못했습니다.')
+      txApp.save(parent)
+    })
+    const frames = 150
+    const bytes = new Array(417 * frames).fill(0)
+    for (let index = 0; index < frames; index += 1) {
+      bytes[index * 417] = 255
+      bytes[index * 417 + 1] = 251
+      bytes[index * 417 + 2] = 144
+      bytes[index * 417 + 3] = 100
+    }
+    chunks().forEach(function (chunk) {
+      if (chunk.get('status') === 'split') return
+      chunk.set('status', 'ready')
+      chunk.set('audio_file', $filesystem.fileFromBytes(bytes, 'browser.mp3'))
+      chunk.set('duration_seconds', frames * 1152 / 44100)
+      chunk.set('generated_at', new Date().toISOString())
+      $app.save(chunk)
+    })
+    service.syncJobProgress($app, $app.findRecordById('book_audio_jobs', job.id))
+  }
   if (input.name === 'replan') {
     service.planJob($app, job.id, [
       { sectionIndex: 0, chunks: ['가 구간'] },
@@ -166,4 +197,21 @@ routerAdd('POST', '/_test/audio-scenario', function (event) {
       return { id: chunk.id, sectionIndex: chunk.get('section_index'), chunkIndex: chunk.get('chunk_index') }
     }),
   })
+})
+
+// 모의 API 없이 실제 권한 검사·파일 스트림·청취 DB를 거치는 브라우저용 최소 화면입니다.
+routerAdd('GET', '/_test/buffer-player', function (event) {
+  return event.html(200, '<!doctype html><meta charset="utf-8">'
+    + '<audio id="reader-cloud-audio" preload="metadata"></audio>'
+    + '<button id="start" onclick="booklogAudio.start(state,0)">start</button>'
+    + '<script>window.booklogReaderConfig={bookId:"book00000000007",bookFileId:"file00000000007",readerCacheKey:"browser-e2e"};'
+    + 'window.state={readAloudRate:"1",cloudAudioActive:false,cloudAudioBusy:false};</script>'
+    + '<script src="/assets/booklog-audio.js"></script>')
+})
+
+routerAdd('GET', '/_test/buffer-progress', function (event) {
+  const rows = $app.findRecordsByFilter('book_audio_progress', 'file_id = "file00000000007"', 'section_index', 0, 0)
+  return event.json(200, rows.map(function (row) {
+    return { section: row.get('section_index'), chunk: row.get('chunk_index'), seconds: row.get('position_seconds'), completed: row.get('is_completed') }
+  }))
 })

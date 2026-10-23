@@ -1,3 +1,4 @@
+/* global window */
 import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
 import {
@@ -17,6 +18,7 @@ import { fileURLToPath } from 'node:url'
 import { load } from 'cheerio'
 import { startService } from '@pocketpages/test-support/service-harness'
 import { readCookieHeader } from '@pocketpages/test-support/auth-cookie'
+import { chromium } from '@playwright/test'
 
 const serviceDir = fileURLToPath(new URL('../', import.meta.url))
 const appsDir = path.dirname(path.resolve(serviceDir))
@@ -403,4 +405,61 @@ test('Resuming after chunks were re-planned moves a stale position to the neares
     { sectionIndex: 4, chunkIndex: 0, seconds: 0 },
     'a removed chapter resumes from the next chapter that still has narration'
   )
+})
+
+test('Real Chrome buffers authenticated split MP3s, restores DB progress after reload and completes each chapter', async () => {
+  await scenario(7, 'browser-buffer')
+  const browser = await chromium.launch({ channel: 'chrome', headless: true })
+  const context = await browser.newContext()
+  try {
+    await context.addCookies(cookie.split('; ').map((pair) => {
+      const separator = pair.indexOf('=')
+      return { name: pair.slice(0, separator), value: pair.slice(separator + 1), url: service.baseUrl }
+    }))
+    const page = await context.newPage()
+    const errors = []
+    const apiFailures = []
+    const chunkRequests = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    page.on('response', (response) => {
+      if (response.url().includes('/api/books/audio-') && response.status() >= 400) apiFailures.push(response.status())
+    })
+    page.on('request', (request) => {
+      const url = new URL(request.url())
+      if (url.pathname === '/api/books/audio-chunk') chunkRequests.push([url.searchParams.get('sectionIndex'), url.searchParams.get('chunkIndex')])
+    })
+    await page.goto(service.baseUrl + '/_test/buffer-player')
+    await page.click('#start')
+    await page.waitForFunction(() => window.state.cloudAudioActive)
+    await page.evaluate(() => window.booklogAudio.seekTo(4.4))
+    await page.waitForFunction(() => !window.state.cloudAudioBusy && window.state.cloudAudioPosition >= 4.4)
+    await page.evaluate(() => window.booklogAudio.toggle())
+    await page.waitForFunction(() => !window.state.cloudAudioActive)
+    await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('booklog-audio-pending:browser-e2e') || '{}')).length === 0)
+    const query = new URLSearchParams({ bookId: bookId(7), fileId: fileId(7) })
+    const loaded = await (await fetch(service.baseUrl + '/api/books/audio-progress?' + query, { headers: { Cookie: cookie } })).json()
+    assert.equal(loaded.progress.sectionIndex, 0)
+    assert.equal(loaded.progress.chunkIndex, 0)
+    assert.ok(loaded.progress.seconds >= 4.4 && loaded.progress.seconds < 5.5, JSON.stringify(loaded.progress))
+    const savedChapterSeconds = loaded.progress.chapterSeconds
+    chunkRequests.length = 0
+    await page.reload()
+    await page.click('#start')
+    await page.waitForFunction(() => window.state.cloudAudioActive)
+    assert.deepEqual(chunkRequests[0], ['0', '0'])
+    assert.ok(Math.abs((await page.evaluate(() => window.state.cloudAudioPosition)) - savedChapterSeconds) < 0.5)
+    const src = await page.locator('audio').getAttribute('src')
+    await page.waitForFunction(() => window.state.cloudAudioDetail.startsWith('1 / 1'))
+    assert.equal(await page.locator('audio').getAttribute('src'), src)
+    await page.waitForFunction(() => window.state.cloudAudioSession === false)
+    await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('booklog-audio-pending:browser-e2e') || '{}')).length === 0)
+    const rows = await (await fetch(service.baseUrl + '/_test/buffer-progress')).json()
+    assert.deepEqual(rows.map((row) => [row.section, row.completed]), [[0, true], [2, true]])
+    assert.deepEqual(apiFailures, [])
+    assert.deepEqual(errors, [])
+    assert.equal(await page.locator('audio').getAttribute('src'), null)
+  } finally {
+    await context.close()
+    await browser.close()
+  }
 })

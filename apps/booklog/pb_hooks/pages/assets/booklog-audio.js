@@ -13,13 +13,17 @@ window.booklogAudio = (function () {
   var saveSequence = 0
   var SLEEP_MODES = ['', '15', '30', '60', 'chapter']
   var sleepTimer = { mode: '', endsAt: 0, timerId: 0 }
-  var diagnosticsEnabled = !!document.getElementById('reader-audio-diagnostics-copy')
+  var diagnosticsAvailable = !!document.getElementById('reader-audio-diagnostics-copy')
+  var diagnosticsEnabled = false
   var diagnosticsKey = 'booklog-audio-diagnostics:' + config.readerCacheKey
+  var diagnosticsUser = String(config.readerCacheKey || '').split(':')[0]
+  var diagnosticsPrefix = 'booklog-audio-diagnostics:' + diagnosticsUser + ':'
   var diagnostics = []
   var diagnosticsPage = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8)
   var diagnosticsStorage = true
   var diagnosticsLastProgress = 0
-  if (diagnosticsEnabled) {
+  if (diagnosticsAvailable) {
+    pruneDiagnostics()
     try {
       var storedDiagnostics = JSON.parse(localStorage.getItem(diagnosticsKey) || '[]')
       if (Array.isArray(storedDiagnostics)) diagnostics = storedDiagnostics.slice(-300)
@@ -31,6 +35,91 @@ window.booklogAudio = (function () {
     pendingSaves = JSON.parse(localStorage.getItem(outboxKey) || '{}') || {}
   } catch (_error) {
     /* 저장 없이 동기화합니다. */
+  }
+
+  // 같은 사용자의 진단만 최근 7일·최대 3권까지 남깁니다.
+  function pruneDiagnostics() {
+    try {
+      var records = []
+      var keys = []
+      for (var index = 0; index < localStorage.length; index += 1) {
+        var key = localStorage.key(index)
+        if (key === diagnosticsKey || key.indexOf(diagnosticsPrefix) === 0) keys.push(key)
+      }
+      keys.forEach(function (key) {
+        var at = 0
+        try {
+          var entries = JSON.parse(localStorage.getItem(key) || '[]')
+          if (Array.isArray(entries) && entries.length) at = Date.parse(entries[entries.length - 1].at) || 0
+        } catch (_error) {
+          /* 잘못 저장된 진단은 정리합니다. */
+        }
+        if (at < Date.now() - 7 * 86400000) localStorage.removeItem(key)
+        else records.push({ key: key, at: at })
+      })
+      records.sort(function (left, right) {
+        if (left.key === diagnosticsKey) return -1
+        if (right.key === diagnosticsKey) return 1
+        return right.at - left.at
+      })
+      records.slice(3).forEach(function (entry) {
+        localStorage.removeItem(entry.key)
+      })
+    } catch (_error) {
+      /* 저장소 접근이 막혀도 재생합니다. */
+    }
+  }
+
+  /**
+   * 이 화면의 진단 기록을 시작하거나 중지합니다.
+   * @returns {void}
+   */
+  function toggleDiagnostics() {
+    if (!diagnosticsAvailable) return
+    if (diagnosticsEnabled) recordDiagnostic('diagnostics-stop', activeSession)
+    diagnosticsEnabled = !diagnosticsEnabled
+    updateDiagnosticsButton()
+    if (diagnosticsEnabled) {
+      recordDiagnostic('diagnostics-start', activeSession, { wasDiscarded: !!document.wasDiscarded })
+      pruneDiagnostics()
+    }
+  }
+
+  function updateDiagnosticsButton() {
+    var button = document.getElementById('reader-audio-diagnostics-toggle')
+    if (button) {
+      button.textContent = diagnosticsEnabled ? '기록 중지' : '기록 시작'
+      button.setAttribute('aria-pressed', String(diagnosticsEnabled))
+    }
+  }
+
+  /**
+   * 이 기기의 현재 책 진단을 삭제하고 기록을 중지합니다.
+   * @returns {void}
+   */
+  function clearDiagnostics() {
+    if (!diagnosticsAvailable) return
+    diagnosticsEnabled = false
+    diagnostics = []
+    updateDiagnosticsButton()
+    try {
+      localStorage.removeItem(diagnosticsKey)
+      diagnosticsStorage = true
+    } catch (_error) {
+      diagnosticsStorage = false
+    }
+    var field = /** @type {HTMLTextAreaElement | null} */ (document.getElementById('reader-audio-diagnostics-text'))
+    if (field) {
+      field.value = ''
+      field.hidden = true
+    }
+    var status = document.getElementById('reader-audio-diagnostics-status')
+    if (status) {
+      status.hidden = false
+      status.textContent = diagnosticsStorage
+        ? '이 책의 진단 기록을 삭제하고 기록을 중지했습니다.'
+        : '기록은 중지했지만 기기에 저장된 기록을 삭제하지 못했습니다.'
+    }
   }
 
   // 진단 기록 실패가 재생을 방해하지 않도록 본문·URL 없이 상태만 기기에 보관합니다.
@@ -98,6 +187,7 @@ window.booklogAudio = (function () {
         fileId: config.bookFileId,
         userAgent: navigator.userAgent || '',
         storageAvailable: diagnosticsStorage,
+        recording: diagnosticsEnabled,
         events: diagnostics,
       },
       null,
@@ -269,7 +359,9 @@ window.booklogAudio = (function () {
               return { moved: moved }
             })
           }
-          throw new Error(result.message || '오디오북 요청에 실패했습니다.')
+          throw Object.assign(new Error(result.message || '오디오북 요청에 실패했습니다.'), {
+            retryable: response.status === 408 || response.status === 429 || response.status >= 500,
+          })
         })
       })
       .then(function (result) {
@@ -324,7 +416,7 @@ window.booklogAudio = (function () {
   // 이동 중 잠깐 끊긴 연결로 듣기가 끝나지 않도록, 연결·응답 오류만 몇 초 뒤 다시 받습니다.
   function loadChunkRetrying(session, sectionIndex, index, retries) {
     return loadChunk(session, sectionIndex, index).catch(function (error) {
-      var network = error && (error.name === 'TypeError' || error.name === 'SyntaxError')
+      var network = error && (error.retryable || error.name === 'TypeError' || error.name === 'SyntaxError')
       recordDiagnostic('chunk-request-error', session, {
         section: sectionIndex,
         chunk: index,
@@ -367,7 +459,10 @@ window.booklogAudio = (function () {
         return fetch(audioUrl, { signal: session.controller.signal })
           .then(function (response) {
             recordDiagnostic('audio-response', session, { audioId: audioId, status: response.status })
-            if (!response.ok) throw new Error('음성을 내려받지 못했습니다. 인터넷 연결을 확인해 주세요.')
+            if (!response.ok)
+              throw Object.assign(new Error('음성을 내려받지 못했습니다. 인터넷 연결을 확인해 주세요.'), {
+                retryable: response.status === 408 || response.status === 429 || response.status >= 500,
+              })
             return response.blob()
           })
           .then(function (blob) {
@@ -726,8 +821,17 @@ window.booklogAudio = (function () {
       partStart += session.parts[partIndex].duration
       partIndex += 1
     }
-    if (partIndex === session.partIndex && !session.fallback && session.positionReady) {
-      session.player.currentTime = (session.streamEntry ? session.streamEntry.start : 0) + within - partStart
+    var playerTarget = (session.streamEntry ? session.streamEntry.start : 0) + within - partStart
+    var canSeekInPlace = true
+    if (session.stream) {
+      canSeekInPlace = false
+      var ranges = session.stream.buffer.buffered
+      for (var range = 0; range < ranges.length; range += 1) {
+        if (ranges.start(range) <= playerTarget && playerTarget < ranges.end(range)) canSeekInPlace = true
+      }
+    }
+    if (partIndex === session.partIndex && !session.fallback && session.positionReady && canSeekInPlace) {
+      session.player.currentTime = playerTarget
       updateProgress(session)
       savePosition(session, true, false)
       return
@@ -1709,7 +1813,7 @@ window.booklogAudio = (function () {
     recordDiagnostic('visibilitychange', activeSession)
     if (activeSession) savePosition(activeSession, true, false)
   })
-  if (diagnosticsEnabled) {
+  if (diagnosticsAvailable) {
     recordDiagnostic('page-init', null, { wasDiscarded: !!document.wasDiscarded })
     ;['freeze', 'resume'].forEach(function (event) {
       document.addEventListener(event, function () {
@@ -1756,5 +1860,7 @@ window.booklogAudio = (function () {
     formatTime: formatTime,
     exportDiagnostics: exportDiagnostics,
     copyDiagnostics: copyDiagnostics,
+    toggleDiagnostics: toggleDiagnostics,
+    clearDiagnostics: clearDiagnostics,
   }
 })()

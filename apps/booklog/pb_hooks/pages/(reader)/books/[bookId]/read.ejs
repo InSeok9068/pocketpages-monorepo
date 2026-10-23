@@ -1338,17 +1338,45 @@
           </div>
           <div class="flex shrink-0 items-center gap-1">
             <% if (showAudioDetail) { %>
-            <button
-              id="reader-audio-diagnostics-copy"
-              type="button"
-              x-on:click="window.booklogAudio.copyDiagnostics($el)"
-              title="오디오 진단 기록 복사"
-              aria-label="오디오 진단 기록 복사"
-              class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-transparent text-stone-400 ring-0 outline-none hover:bg-stone-100 disabled:opacity-50">
-              <span
-                class="i-lucide-bug h-4 w-4"
-                aria-hidden="true"></span>
-            </button>
+            <details class="relative">
+              <summary
+                title="오디오 진단"
+                aria-label="오디오 진단"
+                class="inline-flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full text-stone-400 hover:bg-stone-100">
+                <span
+                  class="i-lucide-bug h-4 w-4"
+                  aria-hidden="true"></span>
+              </summary>
+              <div
+                class="absolute top-full right-0 z-10 w-56 space-y-2 rounded-lg border border-solid border-stone-200 bg-white p-3 shadow-lg">
+                <p class="m-0 text-xs leading-5 text-stone-500">
+                  필요할 때만 기록을 켜세요. 리더를 새로고침하면 기록은 꺼집니다.
+                </p>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    id="reader-audio-diagnostics-toggle"
+                    type="button"
+                    aria-pressed="false"
+                    x-on:click="window.booklogAudio.toggleDiagnostics()"
+                    class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700">
+                    기록 시작
+                  </button>
+                  <button
+                    id="reader-audio-diagnostics-copy"
+                    type="button"
+                    x-on:click="window.booklogAudio.copyDiagnostics($el)"
+                    class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700 disabled:opacity-50">
+                    기록 복사
+                  </button>
+                  <button
+                    type="button"
+                    x-on:click="window.booklogAudio.clearDiagnostics()"
+                    class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700">
+                    기록 삭제
+                  </button>
+                </div>
+              </div>
+            </details>
             <% } %>
             <button
               type="button"
