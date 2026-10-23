@@ -58,8 +58,9 @@ ENV APP_ROOT=/app/apps/booklog
 
 WORKDIR /app/apps/booklog
 
-# lame은 생성된 128kbps 오디오북 MP3를 더 낮은 비트레이트로 다시 압축할 때 씁니다.
-RUN apk add --no-cache ca-certificates lame
+# lame은 조각 압축, ffmpeg와 ffprobe는 완성본 통합·압축·검증에 사용합니다.
+RUN apk add --no-cache ca-certificates lame ffmpeg
+RUN ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libmp3lame && ffprobe -version >/dev/null
 
 COPY apps/booklog/. .
 COPY --from=deps /app/packages /app/packages

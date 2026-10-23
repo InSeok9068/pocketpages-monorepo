@@ -38,6 +38,44 @@ async function runSubtest(parent, name, body) {
   const { buildScriptServerMirrorText } = require('../packages/typescript-plugin/shared')
   const { extractServerBlocks } = require('../packages/language-core/script-server')
   const { shouldReuseLastCompletion } = require('../packages/language-server/services/completion-helpers')
+  test('Server request accepts HEAD and OPTIONS while retaining field checks and local bindings', () => {
+    const { PocketPagesLanguageServiceManager } = require('../packages/language-service/language-service')
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pocketpages-request-methods-'))
+    const page = path.join(root, 'pb_hooks/pages/index.ejs')
+    const manager = new PocketPagesLanguageServiceManager()
+    let service
+    try {
+      fs.mkdirSync(path.dirname(page), { recursive: true })
+      fs.writeFileSync(page, '<h1>Audio</h1>')
+      fs.writeFileSync(path.join(root, 'pocketpages-globals.d.ts'), `
+export {}
+declare global {
+  const api: { request: { method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH', auth: { id: string }, header(name: string): string } }
+  const request: typeof api.request
+}
+`)
+      service = manager.getServiceForFile(page)
+      const diagnostics = (body) => service.getDiagnostics(page, '<script server>\n' + body + '\n</script>')
+        .filter((entry) => entry.category === 1)
+      assert.deepEqual(diagnostics(`
+if (request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'OPTIONS') throw new Error('method')
+const userId = request.auth.id.toUpperCase()
+const range = request.header('Range').toLowerCase()
+`), [])
+      assert(diagnostics("if (request.method === 'INVALID') throw new Error('method')").some((entry) => Number(entry.code) === 2367))
+      assert(diagnostics('request.auth.id.toFixed(2)').some((entry) => Number(entry.code) === 2551 || Number(entry.code) === 2339))
+      for (const declaration of [
+        "const request = { method: 'custom' }",
+        "const { request } = { request: { method: 'custom' } }",
+        "const api = { request: { method: 'custom' } }; const request = api.request",
+      ]) {
+        assert.deepEqual(diagnostics(declaration + '; request.method.toUpperCase()'), [])
+      }
+    } finally {
+      if (service) service.dispose()
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
   test('Method loaders attach only to actual pages and runtime .js files', () => {
     const vm = require('node:vm')
     const { PocketPagesProjectIndex, normalizePath } = require('../packages/language-service/project-index')

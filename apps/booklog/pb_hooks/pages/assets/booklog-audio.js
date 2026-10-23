@@ -155,7 +155,7 @@ window.booklogAudio = (function () {
           bufferedEnd: player.buffered && player.buffered.length ? player.buffered.end(player.buffered.length - 1) : 0,
           rate: player.playbackRate,
           sleepMode: sleepTimer.mode,
-          playbackMode: session.stream ? 'buffer' : 'file',
+          playbackMode: session.complete ? 'complete' : session.stream ? 'buffer' : 'file',
           partSeconds: audioSeconds(session),
         })
       }
@@ -515,7 +515,7 @@ window.booklogAudio = (function () {
   }
 
   function prepareNextChunk(session) {
-    if (session.stream) return
+    if (session.stream || session.complete) return
     var next = nextPosition(session)
     var key = next ? next.sectionIndex + ':' + next.chunkIndex : ''
     if (!isActive(session) || !next || session.prefetchedKey === key) return
@@ -561,7 +561,7 @@ window.booklogAudio = (function () {
     session.state.cloudAudioMessage = session.fallback
       ? part && part.pending
         ? '이 부분은 아직 AI 음성을 만드는 중이라 기기 음성으로 읽고 있습니다.'
-        : '이 부분은 AI 음성을 만들지 못해 기기 음성으로 읽는 중입니다.'
+        : '이 부분은 AI 음성을 사용할 수 없어 기기 음성으로 읽는 중입니다.'
       : session.syncFailed
         ? '들은 위치를 아직 저장하지 못했습니다. 연결되면 자동으로 저장합니다.'
         : ''
@@ -743,6 +743,13 @@ window.booklogAudio = (function () {
     if (!(target >= 0)) return
     var wasPaused = !session.state.cloudAudioActive
     savePosition(session, true, false)
+    if (session.complete) {
+      var entry = session.complete.entries.find(function (item) {
+        return item.data.sectionIndex === target
+      })
+      seekCompleteAudio(session, entry.start)
+      return
+    }
     haltCurrent(session)
     session.completed = false
     session.failed = false
@@ -795,6 +802,10 @@ window.booklogAudio = (function () {
     syncBufferedPosition(session)
     if (!isActive(session)) return
     var target = Math.max(0, Math.min(Number(seconds) || 0, chapterDuration(session) - 0.5))
+    if (session.complete) {
+      seekCompleteAudio(session, session.completeEntry.chapterStart + target)
+      return
+    }
     var chunkIndex = 0
     var chunkStart = 0
     while (chunkIndex < session.timeline.length - 1 && target >= chunkStart + session.timeline[chunkIndex]) {
@@ -886,6 +897,8 @@ window.booklogAudio = (function () {
   function seekBy(seconds) {
     var session = activeSession
     if (!session) return
+    syncBufferedPosition(session)
+    if (!isActive(session)) return
     var position = chapterPosition(session)
     var target = position + seconds
     // 기기 음성은 문장 처음부터 다시 읽으므로, 앞으로 갈 때는 적어도 지금 문장 다음으로 넘어가게 합니다.
@@ -1043,7 +1056,7 @@ window.booklogAudio = (function () {
   }
 
   function audioSeconds(session) {
-    var entry = session.streamEntry
+    var entry = session.completeEntry || session.streamEntry
     var seconds = session.player.currentTime || 0
     return entry ? Math.max(0, Math.min(seconds - entry.start, entry.end - entry.start)) : seconds
   }
@@ -1072,6 +1085,10 @@ window.booklogAudio = (function () {
 
   // 버퍼의 전역 시간을 기존 챕터·구간·조각 위치로 바꿉니다.
   function syncBufferedPosition(session) {
+    if (session.complete) {
+      syncCompletePosition(session, false)
+      return
+    }
     var stream = session.stream
     if (!stream || !stream.started || stream.syncing) return
     stream.syncing = true
@@ -1113,6 +1130,193 @@ window.booklogAudio = (function () {
     } finally {
       stream.syncing = false
     }
+  }
+
+  // 완성본의 실제 시간을 기존 챕터·구간·조각의 저장 위치로 바꿉니다.
+  function prepareCompleteAudio(session, manifest) {
+    if (config.preferCompleteAudio === false || !manifest) return null
+    try {
+      if (
+        !manifest.url
+        || manifest.configHash !== session.configHash
+        || !Array.isArray(manifest.parts)
+        || !manifest.parts.length
+      )
+        throw new Error('Invalid complete audio manifest')
+      var url = new URL(manifest.url, window.location.origin)
+      if (url.origin !== window.location.origin || !/^https?:$/.test(url.protocol))
+        throw new Error('Invalid complete audio URL')
+      var chapters = []
+      var entries = []
+      var chunkIds = Object.create(null)
+      var end = 0
+      manifest.parts.forEach(function (part) {
+        var start = part.startSeconds
+        var stop = part.endSeconds
+        if (
+          !Number.isInteger(part.sectionIndex)
+          || part.sectionIndex < 0
+          || !Number.isInteger(part.chunkIndex)
+          || part.chunkIndex < 0
+          || !part.chunkId
+          || !Number.isFinite(start)
+          || !Number.isFinite(stop)
+          || start !== end
+          || stop <= start
+        )
+          throw new Error('Invalid complete audio position')
+        var chapter = chapters[chapters.length - 1]
+        if (!chapter || chapter.sectionIndex !== part.sectionIndex) {
+          if (chapter && chapter.sectionIndex >= part.sectionIndex) throw new Error('Invalid chapter order')
+          chapter = { sectionIndex: part.sectionIndex, start: start, chunks: [], timeline: [] }
+          chapters.push(chapter)
+        }
+        var chunk = chapter.chunks[part.chunkIndex]
+        if (!chunk) {
+          if (part.chunkIndex !== chapter.chunks.length || chunkIds[part.chunkId])
+            throw new Error('Invalid chunk order')
+          chunkIds[part.chunkId] = true
+          chunk = { sectionIndex: part.sectionIndex, chunkId: part.chunkId, parts: [], timeline: chapter.timeline }
+          chapter.chunks.push(chunk)
+          chapter.timeline.push(0)
+        }
+        if (chunk !== chapter.chunks[chapter.chunks.length - 1] || chunk.chunkId !== part.chunkId)
+          throw new Error('Invalid chunk identity')
+        entries.push({
+          data: chunk,
+          chunkIndex: part.chunkIndex,
+          partIndex: chunk.parts.length,
+          partOffset: chapter.timeline[part.chunkIndex],
+          chapterStart: chapter.start,
+          start: start,
+          end: stop,
+        })
+        chunk.parts.push({ text: String(part.text || ''), duration: stop - start })
+        chapter.timeline[part.chunkIndex] += stop - start
+        end = stop
+      })
+      chapters.forEach(function (chapter, index) {
+        chapter.chunks.forEach(function (chunk) {
+          chunk.count = chapter.chunks.length
+          chunk.nextSectionIndex = index + 1 < chapters.length ? chapters[index + 1].sectionIndex : -1
+          chunk.previousSectionIndex = index ? chapters[index - 1].sectionIndex : -1
+          chunk.chapterOrder = index + 1 + ' / ' + chapters.length
+        })
+      })
+      return { url: url.href, entries: entries, duration: end, syncing: false }
+    } catch (_error) {
+      recordDiagnostic('complete-unavailable', session)
+      return null
+    }
+  }
+
+  function applyCompleteEntry(session, entry) {
+    session.completeEntry = entry
+    session.sectionIndex = entry.data.sectionIndex
+    session.chunkIndex = entry.chunkIndex
+    session.chunkId = entry.data.chunkId
+    session.chunkCount = entry.data.count
+    session.parts = entry.data.parts
+    session.partIndex = entry.partIndex
+    session.partOffset = entry.partOffset
+    session.timeline = entry.data.timeline
+    session.nextSectionIndex = entry.data.nextSectionIndex
+    session.previousSectionIndex = entry.data.previousSectionIndex
+    session.state.cloudAudioChapter = chapterLabel(session)
+    session.state.cloudAudioChapterOrder = entry.data.chapterOrder
+    showPlayback(session)
+    updateMediaSession(session)
+  }
+
+  function syncCompletePosition(session, seeking) {
+    var complete = session.complete
+    if (!complete || !session.positionReady || complete.syncing) return
+    complete.syncing = true
+    try {
+      var time = session.player.currentTime || 0
+      var entries = complete.entries
+      var target = 0
+      while (target + 1 < entries.length && entries[target + 1].start <= time + 0.001) target += 1
+      var current = entries.indexOf(session.completeEntry)
+      if (target === current) return
+      if (seeking || target < current) {
+        session.restartPending = true
+        applyCompleteEntry(session, entries[target])
+        return
+      }
+      // 백그라운드 이벤트가 늦어 여러 경계를 지나도 챕터 완료를 순서대로 저장합니다.
+      for (var index = current + 1; index <= target; index += 1) {
+        var entry = entries[index]
+        var previous = session.completeEntry
+        var chapterChanged = previous && previous.data.sectionIndex !== entry.data.sectionIndex
+        if (previous) {
+          savePosition(session, true, !!chapterChanged)
+          if (chapterChanged && sleepTimer.mode === 'chapter') {
+            session.player.currentTime = previous.chapterStart + chapterDuration(session)
+            sleepNow(
+              session,
+              '챕터를 끝까지 들어 잠자기 타이머로 멈췄습니다. 이어 듣기로 다음 챕터부터 들을 수 있습니다.'
+            )
+            return
+          }
+        }
+        if (chapterChanged) session.restartPending = true
+        applyCompleteEntry(session, entry)
+        recordDiagnostic('complete-boundary', session)
+        savePosition(session, true, false)
+      }
+    } finally {
+      complete.syncing = false
+    }
+  }
+
+  function seekCompleteAudio(session, seconds) {
+    session.player.currentTime = Math.max(0, Math.min(seconds, session.complete.duration - 0.1))
+    syncCompletePosition(session, true)
+    session.restartPending = true
+    updateProgress(session)
+    savePosition(session, true, false)
+  }
+
+  function playRequestedAudio(session) {
+    if (!session.complete) return playChunk(session)
+    var entries = session.complete.entries
+    var first =
+      entries.find(function (entry) {
+        return entry.data.sectionIndex === session.sectionIndex && entry.chunkIndex === session.chunkIndex
+      })
+      || entries.find(function (entry) {
+        return entry.data.sectionIndex >= session.sectionIndex
+      })
+    if (!first) {
+      session.complete = null
+      return playChunk(session)
+    }
+    session.completeResume =
+      first.start
+      + Math.max(0, Math.min(session.resumeSeconds, Math.max(0, first.data.timeline[first.chunkIndex] - 0.1)))
+    session.resumeSeconds = 0
+    session.startAnchor = ''
+    applyCompleteEntry(session, first)
+    session.player.src = session.complete.url
+    session.player.playbackRate = Number(session.state.readAloudRate || 1)
+    recordDiagnostic('complete-start', session)
+    return Promise.resolve()
+  }
+
+  function fallbackFromCompleteAudio(session) {
+    var seconds = session.positionReady
+      ? session.partOffset + audioSeconds(session)
+      : session.completeResume - session.completeEntry.start
+    var paused = session.positionReady && session.player.paused && !session.player.error
+    recordDiagnostic('complete-fallback', session)
+    session.positionReady = false
+    session.complete = null
+    session.completeEntry = null
+    session.player.pause()
+    session.resumeSeconds = Math.max(0, seconds)
+    session.holdPaused = paused
+    playChunk(session)
   }
 
   function mutateAudioBuffer(session, stream, mutate) {
@@ -1633,6 +1837,23 @@ window.booklogAudio = (function () {
     player.onloadedmetadata = function () {
       if (!isActive(session)) return
       if (session.stream) return
+      if (session.complete) {
+        if (!isFinite(player.duration) || Math.abs(player.duration - session.complete.duration) > 0.5) {
+          recordDiagnostic('complete-duration-mismatch', session, {
+            expected: session.complete.duration,
+            actual: player.duration,
+          })
+          fallbackFromCompleteAudio(session)
+          return
+        }
+        player.currentTime = session.completeResume
+        session.positionReady = true
+        session.state.cloudAudioBusy = false
+        syncCompletePosition(session, true)
+        updateProgress(session)
+        playAudio(session)
+        return
+      }
       if (session.resumeSeconds > 0 && isFinite(player.duration)) {
         player.currentTime = Math.min(session.resumeSeconds, Math.max(0, player.duration - 0.1))
       }
@@ -1676,7 +1897,12 @@ window.booklogAudio = (function () {
       savePosition(session, true, false)
     }
     player.onerror = function () {
+      if (!isActive(session)) return
       recordDiagnostic('media-error', session, { code: player.error ? player.error.code : 0 })
+      if (session.complete) {
+        fallbackFromCompleteAudio(session)
+        return
+      }
       if (session.stream) {
         useFilePlayback(session, session.stream, new Error('MediaSource playback failed'))
         return
@@ -1687,6 +1913,12 @@ window.booklogAudio = (function () {
       syncBufferedPosition(session)
       if (!isActive(session)) return
       recordDiagnostic('ended', session)
+      if (session.complete) {
+        savePosition(session, true, true)
+        session.completed = true
+        endSession(session, '책의 마지막 챕터까지 들었습니다. 다시 들으려면 현재 챕터 처음부터를 눌러 주세요.')
+        return
+      }
       if (session.stream && session.stream.error) {
         setError(session, session.stream.error)
         return
@@ -1711,6 +1943,7 @@ window.booklogAudio = (function () {
       .then(function (result) {
         if (!isActive(session)) return
         session.configHash = result.configHash
+        session.complete = prepareCompleteAudio(session, result.completeAudio)
         if (!fromBeginning && result.progress) {
           session.sectionIndex = result.progress.sectionIndex
           session.chunkIndex = result.progress.chunkIndex
@@ -1725,7 +1958,7 @@ window.booklogAudio = (function () {
             return
           }
         }
-        if (!anchorText) return playChunk(session)
+        if (!anchorText) return playRequestedAudio(session)
         var position = new URLSearchParams({
           bookId: config.bookId,
           fileId: config.bookFileId,
@@ -1743,7 +1976,7 @@ window.booklogAudio = (function () {
             session.chunkIndex = located.chunkIndex >= 0 ? located.chunkIndex : 0
             session.resumeSeconds = located.chunkIndex >= 0 ? Number(located.seconds) || 0 : 0
             session.startAnchor = located.chunkIndex >= 0 ? anchorText : ''
-            return playChunk(session).then(function () {
+            return playRequestedAudio(session).then(function () {
               if (!isActive(session) || located.chunkIndex >= 0 || session.failed) return
               state.cloudAudioMessage =
                 session.sectionIndex !== requestedSection

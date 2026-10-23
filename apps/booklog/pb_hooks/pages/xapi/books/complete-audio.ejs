@@ -1,0 +1,45 @@
+<script server>
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    response.html(405, 'GET 또는 HEAD 요청만 가능합니다.')
+    return
+  }
+  if (!request.auth) {
+    response.html(401, '로그인이 필요합니다.')
+    return
+  }
+  const query = request.url.query
+  const bookId = String(query.bookId || ''),
+    fileId = String(query.fileId || ''),
+    editionId = String(query.editionId || '')
+  let edition = null
+  try {
+    resolve('book-audio-data').findAuthorizedFile($app, String(request.auth.get('id')), bookId, fileId)
+    edition = $app.findFirstRecordByFilter(
+      'book_audio_complete',
+      "id = {:editionId} && file_id = {:fileId} && (status = 'ready' || status = 'retired') && audio_file != ''",
+      { editionId, fileId }
+    )
+  } catch (_error) {
+    response.html(404, '접근할 수 있는 완성본이 없습니다.')
+    return
+  }
+  response.header('Cache-Control', 'private, max-age=0, must-revalidate')
+  response.header('Content-Type', 'audio/mpeg')
+  response.header('ETag', '"' + $security.sha256(editionId + ':' + edition.get('audio_file')) + '"')
+  const fsys = $app.newFilesystem()
+  try {
+    dbg('xapi/books/complete-audio:serve', {
+      userId: request.auth.get('id'),
+      editionId,
+      range: request.header('Range'),
+    })
+    fsys.serve(
+      request.event.response,
+      request.event.request,
+      edition.baseFilesPath() + '/' + edition.get('audio_file'),
+      'audio.mp3'
+    )
+  } finally {
+    fsys.close()
+  }
+</script>

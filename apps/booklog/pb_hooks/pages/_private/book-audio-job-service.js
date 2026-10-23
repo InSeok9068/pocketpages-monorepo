@@ -217,6 +217,13 @@ function pauseJob(app, fileId, configHash) {
 function deleteAudioBook(app, fileId) {
   const deleted = { chunks: 0, jobs: 0, progress: 0 }
   app.runInTransaction(function (txApp) {
+    const complete = require(__hooks + '/pages/_private/book-audio-complete-service.js')
+    if (complete.available(txApp))
+      txApp
+        .findRecordsByFilter('book_audio_complete', 'file_id = {:fileId}', '', 0, 0, { fileId })
+        .forEach(function (record) {
+          txApp.delete(record)
+        })
     // 청취 기록이 구간을 참조하므로 먼저 지웁니다. 음성 파일은 구간 레코드 삭제 시 함께 지워집니다.
     ;[
       ['book_audio_progress', 'progress'],
@@ -409,9 +416,25 @@ function applyRegenerateRequests(app, nowMs) {
     app.runInTransaction(function (txApp) {
       const chunk = txApp.findRecordById('book_audio_chunks', String(record.get('id')))
       if (!chunk.get('regenerate_requested')) return
+      const completeService = require(__hooks + '/pages/_private/book-audio-complete-service.js')
+      const complete = completeService.findReady(txApp, String(chunk.get('file_id')), String(chunk.get('config_hash')))
+      if (complete && complete.get('cleanup_done') && complete.get('cleanup_mode') !== 'keep') {
+        chunk.set('regenerate_requested', false)
+        chunk.set(
+          'error_message',
+          '조각 정리가 끝난 완성본은 개별 재생성할 수 없습니다. 오디오북 삭제 후 전체 생성을 이용해 주세요.'
+        )
+        txApp.save(chunk)
+        return
+      }
       // 생성 중인 구간은 결과 저장과 겹치지 않도록 끝난 뒤 다음 실행에서 초기화합니다.
       if (chunk.get('status') === 'generating' && !generation.isClaimable(chunk, nowMs)) return
       const fileId = String(chunk.get('file_id'))
+      require(__hooks + '/pages/_private/book-audio-complete-service.js').invalidate(
+        txApp,
+        fileId,
+        String(chunk.get('config_hash'))
+      )
       const job = findJob(txApp, fileId, String(chunk.get('config_hash')))
       if (job && (job.get('status') === 'completed' || job.get('status') === 'failed')) {
         const occupied = audioData.getModelOptions(txApp, fileId).some(function (option) {

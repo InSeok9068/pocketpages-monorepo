@@ -1,4 +1,6 @@
 <script server>
+  const bookTitleService = resolve('book-title')
+  const bookAuthorView = resolve('book-author-view')
   meta('title', '도서 관리')
   meta('description', '북로그 도서와 연결된 사용자를 관리합니다.')
 
@@ -138,6 +140,36 @@
     return
   }
 
+  if (request.method === 'POST' && body().action === 'audio-complete') {
+    const form = body()
+    const bookId = String(form.bookId || ''),
+      fileId = String(form.fileId || '')
+    let message = ''
+    try {
+      $app.findFirstRecordByFilter('book_files', 'id = {:fileId} && book_id = {:bookId}', { fileId, bookId })
+      const settings = resolve('book-audio-data').getFileSettings($app, fileId)
+      const id = resolve('book-audio-complete-service').request(
+        $app,
+        fileId,
+        settings.configHash,
+        userId,
+        String(form.operation),
+        Number(form.kbps),
+        String(form.cleanup),
+        form.reviewed === 'yes'
+      )
+      info('page/admin/books:complete-requested', { userId, fileId, id })
+      message = '완성본 작업을 예약했습니다. 5분마다 예약을 확인합니다.'
+    } catch (exception) {
+      warn('page/admin/books:complete-rejected', { userId, fileId, error: String(exception.message || exception) })
+      message = String(exception.message || '완성본을 예약하지 못했습니다.').slice(0, 300)
+    }
+    const redirectTo = buildPageHref(requestedPage)
+    dbg('page/admin/books:redirect', { status: 303, redirectTo, message })
+    redirect(redirectTo, { status: 303, message })
+    return
+  }
+
   if (request.method === 'POST' && body().action === 'audio-compress') {
     const form = body()
     const bookId = String(form.bookId || '').trim()
@@ -151,6 +183,8 @@
       }
       const job = resolve('book-audio-data').findFileJob($app, fileId)
       if (!job) throw new Error('압축할 AI 오디오북이 없습니다.')
+      if (resolve('book-audio-complete-service').findReady($app, fileId, String(job.get('config_hash'))))
+        throw new Error('완성본 압축 예약을 이용해 주세요.')
       job.set('compress_kbps', kbps)
       $app.save(job)
       info('page/admin/books:audio-compress-requested', { userId, bookId, fileId, kbps })
@@ -275,7 +309,7 @@
       title: '',
       author: '',
       userCount: 0,
-      userNames: '',
+      userEmails: '',
       fileCount: 0,
       fileBytes: 0,
       audioCount: 0,
@@ -286,7 +320,7 @@
     .newQuery(
       'SELECT books.id AS bookId, books.title AS title, books.author AS author, '
         + '(SELECT count(DISTINCT user_id) FROM book_shelves WHERE book_id = books.id) AS userCount, '
-        + "coalesce((SELECT group_concat(coalesce(nullif(users.name, ''), users.email), ', ') FROM book_shelves JOIN users ON users.id = book_shelves.user_id WHERE book_shelves.book_id = books.id), '') AS userNames, "
+        + "coalesce((SELECT group_concat(users.email, char(10)) FROM book_shelves JOIN users ON users.id = book_shelves.user_id WHERE book_shelves.book_id = books.id), '') AS userEmails, "
         + '(SELECT count(*) FROM book_files WHERE book_id = books.id) AS fileCount, '
         + '(SELECT coalesce(sum(file_size), 0) FROM book_files WHERE book_id = books.id) AS fileBytes, '
         + "(SELECT count(*) FROM book_audio_chunks JOIN book_files ON book_files.id = book_audio_chunks.file_id WHERE book_files.book_id = books.id AND book_audio_chunks.audio_file != '') AS audioCount "
@@ -342,6 +376,40 @@
       }
     }
   }
+  if (storageIds.length && resolve('book-audio-complete-service').available($app)) {
+    const completeRows = arrayOf(new DynamicModel({ bookId: '', editionId: '', audioFile: '' }))
+    $app
+      .db()
+      .newQuery(
+        "SELECT book_files.book_id AS bookId, book_audio_complete.id AS editionId, book_audio_complete.audio_file AS audioFile FROM book_audio_complete JOIN book_files ON book_files.id = book_audio_complete.file_id WHERE book_audio_complete.audio_file != '' AND book_files.book_id IN ("
+          + storageIds.join(',')
+          + ')'
+      )
+      .bind(storageBindings)
+      .all(completeRows)
+    const completeCollectionId = $app.findCollectionByNameOrId('book_audio_complete').id
+    const fsys = $app.newFilesystem()
+    try {
+      completeRows.forEach(function (completeRow) {
+        const bookId = String(completeRow.bookId)
+        const row = rows.filter(function (r) {
+          return String(r.bookId) === bookId
+        })[0]
+        if (row) row.audioCount += 1
+        try {
+          const attributes = fsys.attributes(
+            completeCollectionId + '/' + completeRow.editionId + '/' + completeRow.audioFile
+          )
+          audioBytesByBook[bookId] = (audioBytesByBook[bookId] || 0) + Number(attributes.size)
+        } catch (exception) {
+          audioSizeUnknown[bookId] = true
+          warn('page/admin/books:complete-size-unavailable', { bookId, error: String(exception) })
+        }
+      })
+    } finally {
+      fsys.close()
+    }
+  }
   if (sort === 'size') {
     // 집계하지 못한 도서는 정확한 용량으로 비교할 수 없어 뒤에 표시합니다.
     rows.sort(function (left, right) {
@@ -371,6 +439,7 @@
   const audioJobService = resolve('book-audio-job-service')
   const voiceStyleOptions = audioData.getVoiceStyleOptions()
   const audioCompress = resolve('book-audio-compress-service')
+  const audioComplete = resolve('book-audio-complete-service')
   const compressBitrates = audioCompress.getBitrateOptions()
   const audioFilesByBook = {}
   const fileBindings = {}
@@ -391,6 +460,7 @@
       const modelOptions = job ? [] : audioData.getModelOptions($app, fileId)
       const availableModel = job ? null : audioData.pickAvailableModel(modelOptions)
       const compression = job ? audioCompress.getCompressionProgress($app, job) : { kbps: 0, done: 0, total: 0 }
+      const completeView = job ? audioComplete.adminView($app, fileId, String(job.get('config_hash'))) : null
       const bookId = String(file.get('book_id'))
       ;(audioFilesByBook[bookId] = audioFilesByBook[bookId] || []).push({
         fileId,
@@ -405,10 +475,11 @@
         canDelete: !!job || audioData.countFileChunks($app, fileId) > 0,
         failedChunks: job ? audioData.listFinalFailedChunks($app, fileId, String(job.get('config_hash')), 50) : [],
         hasJob: !!job,
+        complete: completeView,
         modelOptions: job ? [] : modelOptions,
         selectedModel: availableModel ? availableModel.model : '',
         canRequestModel: !!availableModel,
-        canCompress: compression.total > 0,
+        canCompress: compression.total > 0 && (!completeView || (!completeView.readyId && !completeView.busy)),
         compressKbps: compression.kbps,
         compressLabel:
           compression.kbps > 0
@@ -419,15 +490,15 @@
   }
 
   const books = rows.map(function (row) {
-    const title = String(row.title || '제목 없음')
+    const title = bookTitleService.getMainTitle(String(row.title || '제목 없음'))
     const userCount = Number(row.userCount || 0)
     return {
       audioFiles: audioFilesByBook[String(row.bookId)] || [],
       bookId: String(row.bookId),
       title,
-      author: String(row.author || '저자 정보 없음'),
+      author: bookAuthorView.formatDisplayAuthor(String(row.author || '').trim()),
       userCount,
-      userNames: String(row.userNames || ''),
+      userEmails: String(row.userEmails || '').split('\n').filter(Boolean).sort(),
       fileCount: Number(row.fileCount || 0),
       fileSizeLabel: formatBytes(Number(row.fileBytes || 0)),
       audioSizeLabel: audioSizeUnknown[String(row.bookId)]
@@ -696,13 +767,16 @@
               scope="row"
               class="px-3 py-2.5 text-left font-normal">
               <h2 class="m-0 text-[13px] leading-5 font-semibold break-words text-stone-950"><%= book.title %></h2>
+              <% if (book.author) { %>
               <p class="m-0 break-words text-stone-500"><%= book.author %></p>
-              <p class="m-0 font-mono text-[11px] text-stone-400"><%= book.bookId %></p>
+              <% } %>
             </th>
             <td class="px-3 py-2.5">
               <span class="font-semibold tabular-nums"><%= book.userCount %>명</span>
-              <% if (book.userNames) { %>
-              <p class="m-0 break-all text-stone-500"><%= book.userNames %></p>
+              <% if (book.userEmails.length) { %>
+              <% for (const email of book.userEmails) { %>
+              <p class="m-0 break-all text-stone-500"><%= email %></p>
+              <% } %>
               <% } else { %>
               <span class="ml-1 rounded bg-[#efe2d2] px-1.5 py-0.5 text-[11px] text-[#8e5521]">미사용</span>
               <% } %>
@@ -732,6 +806,95 @@
                   <% } %>
                   <% if (file.compressLabel) { %>
                   <p class="m-0 text-[11px] text-stone-500"><%= file.compressLabel %></p>
+                  <% } %>
+                  <% if (file.complete) { %>
+                  <details class="rounded-md bg-stone-100 px-2 py-1 text-xs text-stone-700">
+                    <summary class="cursor-pointer font-medium">완성본 · <%= file.complete.statusLabel %></summary>
+                    <% for (const warning of file.complete.warnings) { %>
+                    <p class="m-0 mt-1 text-amber-800">
+                      <a
+                        href="<%= warning.href %>"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="underline">
+                        <%= warning.position %>
+                      </a>
+                      · <%= warning.message %>
+                    </p>
+                    <% } %>
+                    <% if (file.complete.available && (file.complete.canMerge || file.complete.readyId) && !file.complete.busy) { %>
+                    <form
+                      method="post"
+                      action="<%= formAction %>"
+                      class="mt-2 space-y-2">
+                      <input
+                        type="hidden"
+                        name="action"
+                        value="audio-complete" />
+                      <input
+                        type="hidden"
+                        name="bookId"
+                        value="<%= book.bookId %>" />
+                      <input
+                        type="hidden"
+                        name="fileId"
+                        value="<%= file.fileId %>" />
+                      <label class="block">
+                        완성본 비트레이트
+                        <select
+                          name="kbps"
+                          class="h-9 w-full rounded-md border border-solid border-stone-300 bg-white px-2">
+                          <option value="0">원본 유지 · 재인코딩 없이 통합</option>
+                          <% for (const bitrate of compressBitrates) { %>
+                          <option value="<%= bitrate %>"><%= bitrate %>kbps · 모노</option>
+                          <% } %>
+                        </select>
+                      </label>
+                      <label class="block">
+                        전환 24시간 후 기존 조각 정리
+                        <select
+                          name="cleanup"
+                          class="h-9 w-full rounded-md border border-solid border-stone-300 bg-white px-2">
+                          <option value="files">MP3만 삭제 · 구간 레코드 유지</option>
+                          <option value="records">MP3와 구간 레코드 모두 삭제</option>
+                          <option value="keep">보관 · 저장 공간 추가 사용</option>
+                        </select>
+                      </label>
+                      <p class="m-0 text-stone-500">
+                        조각 정리 후 개별 재생성은 사용할 수 없습니다. 수정하려면 오디오북 삭제 후 전체 생성이
+                        필요합니다. 청취 기록과 완성본의 본문·시간표는 유지합니다. 완성본 압축은 기존 정리 설정을
+                        유지합니다.
+                      </p>
+                      <% if (file.complete.warningCount) { %>
+                      <label class="block">
+                        <input
+                          type="checkbox"
+                          name="reviewed"
+                          value="yes" />
+                        짧은 음성 등 경고 <%= file.complete.warningCount %>개를 확인했습니다.
+                      </label>
+                      <% } %>
+                      <% if (file.complete.canMerge) { %>
+                      <button
+                        type="submit"
+                        name="operation"
+                        value="merge"
+                        class="rounded-md border-0 bg-stone-800 px-3 py-2 text-white">
+                        완성본 통합 예약
+                      </button>
+                      <% } %>
+                      <% if (file.complete.readyId) { %>
+                      <button
+                        type="submit"
+                        name="operation"
+                        value="compress"
+                        class="rounded-md border-0 bg-stone-800 px-3 py-2 text-white">
+                        완성본 압축 예약
+                      </button>
+                      <% } %>
+                    </form>
+                    <% } %>
+                  </details>
                   <% } %>
                   <% if (book.audioFiles.length > 1) { %>
                   <p class="m-0 text-[11px] break-all text-stone-500"><%= file.name %></p>

@@ -3,12 +3,14 @@ import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
 import {
   copyFileSync,
+  existsSync,
   cpSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
+  renameSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -29,6 +31,19 @@ const fileId = (index) => 'file' + String(index).padStart(11, '0')
 let fixtureDir
 let service
 let cookie
+const mediaCache = fileURLToPath(new URL('../../../.cache/booklog-media-tools/node_modules/', import.meta.url))
+const ffmpegBin =
+  process.env.BOOKLOG_FFMPEG_BIN
+  || path.join(mediaCache, 'ffmpeg-static', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
+const ffprobeBin =
+  process.env.BOOKLOG_FFPROBE_BIN
+  || path.join(
+    mediaCache,
+    'ffprobe-static/bin',
+    process.platform === 'win32' ? 'win32/x64/ffprobe.exe' : 'linux/x64/ffprobe'
+  )
+const hasMediaTools = existsSync(ffmpegBin) && existsSync(ffprobeBin)
+let fixtureFfmpeg
 
 before(async () => {
   // 실데이터·API 키·cron을 복사하지 않고 기존 HTTP harness로 실제 JSVM/DB를 검증합니다.
@@ -53,6 +68,10 @@ before(async () => {
     (collection) => collection.name !== '_superusers'
   )
   writeFileSync(path.join(fixtureDir, 'pb_hooks/test-schema.json'), JSON.stringify(schema))
+  if (hasMediaTools) {
+    fixtureFfmpeg = path.join(fixtureDir, path.basename(ffmpegBin))
+    copyFileSync(ffmpegBin, fixtureFfmpeg)
+  }
   copyFileSync(
     new URL('./fixtures/audio-jobs-setup.pb.js', import.meta.url),
     path.join(fixtureDir, 'pb_hooks/test-setup.pb.js')
@@ -67,6 +86,12 @@ before(async () => {
       'GEMINI_AI_KEY=',
       'ONESIGNAL_API_KEY=',
       'ONESIGNAL_APPID=',
+      ...(hasMediaTools
+        ? [
+            'BOOKLOG_FFMPEG_BIN=' + fixtureFfmpeg.replace(/\\/g, '/'),
+            'BOOKLOG_FFPROBE_BIN=' + ffprobeBin.replace(/\\/g, '/'),
+          ]
+        : []),
     ].join('\n')
   )
   service = await startService({ serviceName: path.basename(fixtureDir), port: 18094, timeoutMs: 30000 })
@@ -131,7 +156,7 @@ test('Book-level model reservations, concurrent requests, resume, playback and r
   assert.equal($('select[name=model] option[disabled]').length, 0)
   await request(1)
   $ = await detail(2)
-  assert.ok($(`select[name=model] option[value="${lite}"]`).is("[disabled]"))
+  assert.ok($(`select[name=model] option[value="${lite}"]`).is('[disabled]'))
   assert.equal($('select[name=model] option[selected]').val(), flash)
   assert.ok($.text().includes('테스트 책 1 <제목>'))
   await request(2, 'start', lite)
@@ -151,14 +176,14 @@ test('Book-level model reservations, concurrent requests, resume, playback and r
 
   const originalHash = registered.find((job) => job.model === lite).config_hash
   await request(1, 'pause')
-  assert.ok((await detail(4))(`select[name=model] option[value="${lite}"]`).is("[disabled]"))
+  assert.ok((await detail(4))(`select[name=model] option[value="${lite}"]`).is('[disabled]'))
   await request(1, 'start', flash)
   assert.equal((await jobs()).find((job) => job.file_id === fileId(1)).status, 'paused')
   await request(1, 'start', lite)
   assert.equal((await jobs()).find((job) => job.file_id === fileId(1)).config_hash, originalHash)
   await control(1, { status: 'failed' })
   assert.ok(
-    !(await detail(4))(`select[name=model] option[value="${lite}"]`).is("[disabled]"),
+    !(await detail(4))(`select[name=model] option[value="${lite}"]`).is('[disabled]'),
     'a job that failed before registering chunks releases its model'
   )
   await request(1, 'start', lite)
@@ -182,12 +207,16 @@ test('Book-level model reservations, concurrent requests, resume, playback and r
   const adminQuery = '/admin/books?scope=all&q=' + encodeURIComponent('테스트 책 ' + flashBook)
   let admin = load(await (await fetch(service.baseUrl + adminQuery, { headers: { Cookie: cookie } })).text())
   assert.deepEqual(
-    admin('select[name=kbps] option')
+    admin('dialog[id^=audio-compress-dialog] select[name=kbps] option')
       .toArray()
       .map((option) => admin(option).val()),
     ['96', '64', '48']
   )
-  assert.equal(admin('select[name=kbps] option[selected]').val(), '64', '64kbps is offered by default')
+  assert.equal(
+    admin('dialog[id^=audio-compress-dialog] select[name=kbps] option[selected]').val(),
+    '64',
+    '64kbps is offered by default'
+  )
   assert.equal((await compressRequest(32)).status, 303)
   assert.equal(Number((await jobs()).find((job) => job.file_id === fileId(flashBook)).compress_kbps || 0), 0)
   await compressRequest(64)
@@ -269,7 +298,11 @@ test('Book-level model reservations, concurrent requests, resume, playback and r
       })
     ).text()
   )
-  assert.equal(adminList('dialog select[name=voice] option[selected]').val(), 'Sulafat', 'the admin list offers the same choices')
+  assert.equal(
+    adminList('dialog select[name=voice] option[selected]').val(),
+    'Sulafat',
+    'the admin list offers the same choices'
+  )
   assert.equal(adminList('dialog select[name=style] option[selected]').val(), 'calm')
   assert.equal(adminList('dialog input[name=action]').val(), 'audio-start')
   await request(4, 'pause')
@@ -365,7 +398,8 @@ test('A job whose only missing parts were blocked by policy is completed and rel
     headers: { Cookie: cookie },
   })
   const admin = load(await adminResponse.text())
-  assert.equal(admin(`a[href="${failed.attr('href')}"]`).length, 1, 'the admin book list links the same part')})
+  assert.equal(admin(`a[href="${failed.attr('href')}"]`).length, 1, 'the admin book list links the same part')
+})
 
 test('Resuming after chunks were re-planned moves a stale position to the nearest remaining chunk', async () => {
   const headers = { Cookie: cookie }
@@ -412,10 +446,12 @@ test('Real Chrome buffers authenticated split MP3s, restores DB progress after r
   const browser = await chromium.launch({ channel: 'chrome', headless: true })
   const context = await browser.newContext()
   try {
-    await context.addCookies(cookie.split('; ').map((pair) => {
-      const separator = pair.indexOf('=')
-      return { name: pair.slice(0, separator), value: pair.slice(separator + 1), url: service.baseUrl }
-    }))
+    await context.addCookies(
+      cookie.split('; ').map((pair) => {
+        const separator = pair.indexOf('=')
+        return { name: pair.slice(0, separator), value: pair.slice(separator + 1), url: service.baseUrl }
+      })
+    )
     const page = await context.newPage()
     const errors = []
     const apiFailures = []
@@ -426,7 +462,8 @@ test('Real Chrome buffers authenticated split MP3s, restores DB progress after r
     })
     page.on('request', (request) => {
       const url = new URL(request.url())
-      if (url.pathname === '/api/books/audio-chunk') chunkRequests.push([url.searchParams.get('sectionIndex'), url.searchParams.get('chunkIndex')])
+      if (url.pathname === '/api/books/audio-chunk')
+        chunkRequests.push([url.searchParams.get('sectionIndex'), url.searchParams.get('chunkIndex')])
     })
     await page.goto(service.baseUrl + '/_test/buffer-player')
     await page.click('#start')
@@ -435,9 +472,13 @@ test('Real Chrome buffers authenticated split MP3s, restores DB progress after r
     await page.waitForFunction(() => !window.state.cloudAudioBusy && window.state.cloudAudioPosition >= 4.4)
     await page.evaluate(() => window.booklogAudio.toggle())
     await page.waitForFunction(() => !window.state.cloudAudioActive)
-    await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('booklog-audio-pending:browser-e2e') || '{}')).length === 0)
+    await page.waitForFunction(
+      () => Object.keys(JSON.parse(localStorage.getItem('booklog-audio-pending:browser-e2e') || '{}')).length === 0
+    )
     const query = new URLSearchParams({ bookId: bookId(7), fileId: fileId(7) })
-    const loaded = await (await fetch(service.baseUrl + '/api/books/audio-progress?' + query, { headers: { Cookie: cookie } })).json()
+    const loaded = await (
+      await fetch(service.baseUrl + '/api/books/audio-progress?' + query, { headers: { Cookie: cookie } })
+    ).json()
     assert.equal(loaded.progress.sectionIndex, 0)
     assert.equal(loaded.progress.chunkIndex, 0)
     assert.ok(loaded.progress.seconds >= 4.4 && loaded.progress.seconds < 5.5, JSON.stringify(loaded.progress))
@@ -452,9 +493,17 @@ test('Real Chrome buffers authenticated split MP3s, restores DB progress after r
     await page.waitForFunction(() => window.state.cloudAudioDetail.startsWith('1 / 1'))
     assert.equal(await page.locator('audio').getAttribute('src'), src)
     await page.waitForFunction(() => window.state.cloudAudioSession === false)
-    await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('booklog-audio-pending:browser-e2e') || '{}')).length === 0)
+    await page.waitForFunction(
+      () => Object.keys(JSON.parse(localStorage.getItem('booklog-audio-pending:browser-e2e') || '{}')).length === 0
+    )
     const rows = await (await fetch(service.baseUrl + '/_test/buffer-progress')).json()
-    assert.deepEqual(rows.map((row) => [row.section, row.completed]), [[0, true], [2, true]])
+    assert.deepEqual(
+      rows.map((row) => [row.section, row.completed]),
+      [
+        [0, true],
+        [2, true],
+      ]
+    )
     assert.deepEqual(apiFailures, [])
     assert.deepEqual(errors, [])
     assert.equal(await page.locator('audio').getAttribute('src'), null)
@@ -462,4 +511,353 @@ test('Real Chrome buffers authenticated split MP3s, restores DB progress after r
     await context.close()
     await browser.close()
   }
+})
+
+async function completeControl(index, options = {}) {
+  const response = await fetch(service.baseUrl + '/_test/complete-control', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileId: fileId(index), ...options }),
+  })
+  const body = await response.json()
+  assert.equal(response.status, 200, JSON.stringify(body))
+  return body
+}
+
+async function completeRequest(index, options = {}, authCookie = cookie) {
+  return fetch(service.baseUrl + '/admin/books?scope=all', {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { Cookie: authCookie },
+    body: new URLSearchParams({
+      action: 'audio-complete',
+      bookId: bookId(index),
+      fileId: fileId(index),
+      operation: 'merge',
+      kbps: '0',
+      cleanup: 'files',
+      ...options,
+    }),
+  })
+}
+
+async function prepareComplete(index) {
+  await scenario(index, 'browser-buffer')
+  const sourcePath = path.join(fixtureDir, 'complete-tone.mp3')
+  const generated = spawnSync(ffmpegBin, [
+    '-nostdin',
+    '-y',
+    '-v',
+    'error',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=frequency=440:duration=3',
+    '-ar',
+    '24000',
+    '-ac',
+    '1',
+    '-c:a',
+    'libmp3lame',
+    '-b:a',
+    '128k',
+    sourcePath,
+  ])
+  assert.equal(generated.status, 0, String(generated.stderr))
+  return completeControl(index, { sourcePath })
+}
+
+test(
+  'Admin queues a real FFmpeg merge; authenticated Range playback and progress survive deleting every chunk record',
+  { skip: hasMediaTools ? false : 'ffmpeg and ffprobe are required' },
+  async () => {
+    await prepareComplete(8)
+    const html = await (await fetch(service.baseUrl + '/admin/books?scope=all', { headers: { Cookie: cookie } })).text()
+    assert.match(html, /완성본 통합 예약/)
+    const queueBrowser = await chromium.launch({ channel: 'chrome', headless: true })
+    const queueContext = await queueBrowser.newContext()
+    try {
+      await queueContext.addCookies(
+        cookie.split('; ').map((pair) => {
+          const at = pair.indexOf('=')
+          return { name: pair.slice(0, at), value: pair.slice(at + 1), url: service.baseUrl }
+        })
+      )
+      const page = await queueContext.newPage()
+      await page.goto(service.baseUrl + '/admin/books?scope=all&q=' + encodeURIComponent('테스트 책 8'))
+      await page.locator('summary').filter({ hasText: '완성본 ·' }).click()
+      const form = page.locator('form').filter({ has: page.locator('input[name=action][value=audio-complete]') })
+      await form.locator('select[name=cleanup]').selectOption('records')
+      await Promise.all([
+        page.waitForNavigation(),
+        form.getByRole('button', { name: '완성본 통합 예약', exact: true }).click(),
+      ])
+    } finally {
+      await queueContext.close()
+      await queueBrowser.close()
+    }
+    assert.equal((await completeControl(8)).records[0].status, 'queued')
+    await completeRequest(8, { cleanup: 'records' })
+    assert.equal((await completeControl(8)).records.length, 1, 'duplicate queue is rejected')
+    const merged = await completeControl(8, { run: true })
+    assert.equal(merged.result.status, 'ready', JSON.stringify(merged))
+    assert.equal(merged.records[0].exists, true)
+    assert.ok(merged.audioChunks > 0, 'originals stay during the grace period')
+    assert.ok(merged.chunkKeys.every((key) => existsSync(path.join(merged.storageDir, key))))
+    const collectionId = JSON.parse(readFileSync(path.join(serviceDir, 'pb_schema.json'))).find(
+      (c) => c.name === 'book_audio_complete'
+    ).id
+    const bypass =
+      service.baseUrl + '/api/files/' + collectionId + '/' + merged.records[0].id + '/' + merged.records[0].filename
+    assert.equal(
+      (await fetch(bypass)).status,
+      404,
+      'the protected PocketBase file URL cannot bypass shelf authorization'
+    )
+    const query = new URLSearchParams({ bookId: bookId(8), fileId: fileId(8) })
+    const loadProgress = async () =>
+      await (
+        await fetch(service.baseUrl + '/api/books/audio-progress?' + query, { headers: { Cookie: cookie } })
+      ).json()
+    const metadata = await loadProgress()
+    assert.equal(metadata.completeAudio.parts.length, 4)
+    const url = service.baseUrl + metadata.completeAudio.url
+    const headers = { Cookie: cookie, Range: 'bytes=10-99' }
+    const partial = await fetch(url, { headers })
+    assert.equal(partial.status, 206)
+    assert.match(partial.headers.get('content-range'), /^bytes 10-99\//)
+    assert.equal((await partial.arrayBuffer()).byteLength, 90)
+    assert.equal(
+      (await fetch(url, { headers: { 'Cookie': cookie, 'If-None-Match': partial.headers.get('etag') } })).status,
+      304
+    )
+    assert.equal((await fetch(url.replace(bookId(8), bookId(9)), { headers: { Cookie: cookie } })).status, 404)
+    assert.equal((await fetch(url, { method: 'HEAD', headers: { Cookie: cookie } })).status, 200)
+    assert.equal((await fetch(url, { headers: { Cookie: cookie, Range: 'bytes=9999999999-' } })).status, 416)
+    const suffix = await fetch(url, { headers: { Cookie: cookie, Range: 'bytes=-20' } })
+    assert.equal(suffix.status, 206)
+    assert.equal((await suffix.arrayBuffer()).byteLength, 20)
+    const signedOut = await fetch(url, { redirect: 'manual' })
+    assert.equal(signedOut.status, 303)
+    assert.match(signedOut.headers.get('location'), /auth/)
+    const login = await fetch(service.baseUrl + '/xapi/auth/sign-in', {
+      method: 'POST',
+      redirect: 'manual',
+      body: new URLSearchParams({ email: 'other@example.com', password: 'test-password-1234' }),
+    })
+    const otherCookie = readCookieHeader(login.headers)
+    assert.equal((await fetch(url, { headers: { Cookie: otherCookie } })).status, 404)
+    await completeRequest(8, {}, otherCookie)
+    assert.equal((await completeControl(8)).records.length, 1)
+    const browser = await chromium.launch({ channel: 'chrome', headless: true })
+    const context = await browser.newContext()
+    try {
+      await context.addCookies(
+        cookie.split('; ').map((pair) => {
+          const at = pair.indexOf('=')
+          return { name: pair.slice(0, at), value: pair.slice(at + 1), url: service.baseUrl }
+        })
+      )
+      const page = await context.newPage(),
+        errors = [],
+        ranges = []
+      page.on('pageerror', (e) => errors.push(e.message))
+      page.on('response', (r) => {
+        if (r.url().includes('/complete-audio')) ranges.push(r.status())
+      })
+      await page.goto(service.baseUrl + '/_test/buffer-player?complete=1')
+      await page.click('#start')
+      await page.waitForFunction(() => window.state.cloudAudioActive)
+      assert.match(await page.locator('audio').getAttribute('src'), /\/complete-audio\?/)
+      await page.evaluate(() => {
+        window.booklogAudio.seekTo(4.4)
+        window.booklogAudio.toggle()
+      })
+      await page.waitForFunction(() => !window.state.cloudAudioActive)
+      await page.evaluate(() => window.booklogAudio.stop())
+      await page.waitForFunction(
+        () => Object.keys(JSON.parse(localStorage.getItem('booklog-audio-pending:browser-e2e') || '{}')).length === 0
+      )
+      const before = (await loadProgress()).progress
+      assert.ok(before.seconds >= 4.3 && before.seconds < 5.3)
+      const cleaned = await completeControl(8, { expire: true, run: true })
+      assert.equal(cleaned.chunks, 0, JSON.stringify(cleaned))
+      assert.equal(cleaned.records[0].cleanupDone, true)
+      assert.ok(
+        merged.chunkKeys.every((key) => !existsSync(path.join(merged.storageDir, key))),
+        'chunk files are physically removed'
+      )
+      const restored = (await loadProgress()).progress
+      assert.equal(restored.chunkIndex, before.chunkIndex)
+      assert.ok(Math.abs(restored.seconds - before.seconds) < 0.1)
+      const position = await (
+        await fetch(
+          service.baseUrl
+            + '/api/books/audio-position?'
+            + query
+            + '&sectionIndex=0&anchor='
+            + encodeURIComponent('조각으로 나뉘는 첫 번째'),
+          { headers: { Cookie: cookie } }
+        )
+      ).json()
+      assert.equal(position.ok, true)
+      assert.equal(position.chunkIndex, 0)
+      await page.reload()
+      await page.click('#start')
+      await page.waitForFunction(() => window.state.cloudAudioActive)
+      assert.ok(Math.abs((await page.evaluate(() => window.state.cloudAudioPosition)) - before.seconds) < 0.5)
+      const src = await page.locator('audio').getAttribute('src')
+      await page.waitForFunction(() => window.state.cloudAudioDetail.startsWith('1 / 1'))
+      assert.equal(await page.locator('audio').getAttribute('src'), src)
+      await page.waitForFunction(() => !window.state.cloudAudioSession)
+      await page.waitForFunction(
+        () => Object.keys(JSON.parse(localStorage.getItem('booklog-audio-pending:browser-e2e') || '{}')).length === 0
+      )
+      assert.equal((await loadProgress()).progress.isCompleted, true)
+      assert.ok(ranges.includes(206))
+      assert.deepEqual(errors, [])
+    } finally {
+      await context.close()
+      await browser.close()
+    }
+  }
+)
+
+test(
+  'A complete MP3 can be recompressed after chunk deletion; old URLs stay valid until their grace period expires',
+  { skip: hasMediaTools ? false : 'ffmpeg and ffprobe are required' },
+  async () => {
+    if (!(await completeControl(8)).records.some((r) => r.status === 'ready')) {
+      await prepareComplete(8)
+      await completeRequest(8, { cleanup: 'records' })
+      await completeControl(8, { run: true })
+      await completeControl(8, { expire: true, run: true })
+    }
+    const original = (await completeControl(8)).records.find((r) => r.status === 'ready')
+    await completeRequest(8, { operation: 'compress', kbps: '64' })
+    const compressed = await completeControl(8, { run: true })
+    const current = compressed.records.find((r) => r.status === 'ready')
+    assert.equal(compressed.result.status, 'ready', JSON.stringify(compressed))
+    assert.equal(current.kbps, 64)
+    assert.ok(current.size < original.size * 0.7)
+    const oldUrl =
+      service.baseUrl
+      + '/xapi/books/complete-audio?bookId='
+      + bookId(8)
+      + '&fileId='
+      + fileId(8)
+      + '&editionId='
+      + original.id
+    assert.equal((await fetch(oldUrl, { headers: { Cookie: cookie, Range: 'bytes=0-20' } })).status, 206)
+    const after = await completeControl(8, { expire: true, run: true })
+    assert.equal(after.records.length, 1)
+    assert.equal(after.records[0].id, current.id)
+    assert.equal((await fetch(oldUrl, { headers: { Cookie: cookie } })).status, 404)
+    assert.equal(after.chunks, 0)
+  }
+)
+
+test(
+  'Merge rejects incomplete audio and unreviewed short-audio warnings; source changes and encoder errors preserve originals',
+  { skip: hasMediaTools ? false : 'ffmpeg and ffprobe are required' },
+  async () => {
+    await scenario(9, 'plan')
+    await completeRequest(9)
+    assert.equal((await completeControl(9)).records.length, 0)
+    await prepareComplete(10)
+    await completeControl(10, { warning: true })
+    await completeRequest(10)
+    assert.equal((await completeControl(10)).records.length, 0)
+    await completeRequest(10, { reviewed: 'yes' })
+    await completeControl(10, { mutate: true })
+    const stale = await completeControl(10, { run: true })
+    assert.equal(stale.result.status, 'failed')
+    assert.ok(stale.audioChunks > 0)
+    await prepareComplete(11)
+    await completeRequest(11)
+    const hidden = fixtureFfmpeg + '.disabled'
+    renameSync(fixtureFfmpeg, hidden)
+    let failed
+    try {
+      failed = await completeControl(11, { run: true })
+    } finally {
+      renameSync(hidden, fixtureFfmpeg)
+    }
+    assert.equal(failed.result.status, 'failed')
+    assert.ok(failed.audioChunks > 0)
+    assert.ok(failed.records[0].error)
+  }
+)
+
+test(
+  'File-only cleanup removes MP3 bytes, preserves metadata, and prevents destructive per-chunk regeneration',
+  { skip: hasMediaTools ? false : 'ffmpeg and ffprobe are required' },
+  async () => {
+    await prepareComplete(10)
+    await completeRequest(10, { reviewed: 'yes', cleanup: 'files' })
+    const merged = await completeControl(10, { run: true })
+    assert.equal(merged.result.status, 'ready', JSON.stringify(merged))
+    const keys = merged.chunkKeys
+    assert.ok(keys.length > 0)
+    const cleaned = await completeControl(10, { expire: true, run: true })
+    assert.equal(cleaned.audioChunks, 0)
+    assert.equal(cleaned.chunks, merged.chunks)
+    assert.ok(keys.every((key) => !existsSync(path.join(merged.storageDir, key))))
+    const regenerated = await control(10, { regenerate: true, apply: true })
+    assert.equal(regenerated.reset, 0)
+    assert.equal(
+      (await completeControl(10)).records.find((r) => r.status === 'ready').id,
+      merged.records.find((r) => r.status === 'ready').id
+    )
+  }
+)
+
+test(
+  'Deleting the audiobook also deletes complete editions and leaves no archived progress',
+  { skip: hasMediaTools ? false : 'ffmpeg and ffprobe are required' },
+  async () => {
+    let before = await completeControl(8)
+    if (!before.records.length) {
+      await prepareComplete(8)
+      await completeRequest(8)
+      before = await completeControl(8, { run: true })
+    }
+    assert.ok(before.records.length > 0)
+    await request(8, 'delete')
+    assert.equal((await completeControl(8)).records.length, 0)
+    assert.equal((await completeControl(8)).chunks, 0)
+  }
+)
+
+test(
+  'Cleanup preserves originals if the published complete file has disappeared',
+  { skip: hasMediaTools ? false : 'ffmpeg and ffprobe are required' },
+  async () => {
+    await prepareComplete(11)
+    await completeRequest(11, { cleanup: 'records' })
+    const merged = await completeControl(11, { run: true })
+    assert.equal(merged.result.status, 'ready', JSON.stringify(merged))
+    const after = await completeControl(11, { hideComplete: true, expire: true, run: true })
+    assert.equal(after.chunks, merged.chunks)
+    assert.equal(after.audioChunks, merged.audioChunks)
+    assert.equal(after.records.find((r) => r.status === 'ready').cleanupDone, false)
+  }
+)
+
+test('Before the complete schema is imported, cron and existing reader/admin routes remain usable', async () => {
+  await scenario(7, 'browser-buffer')
+  const response = await completeControl(7, { dropSchema: true })
+  assert.equal(response.result.status, 'schema-missing')
+  const headers = { Cookie: cookie }
+  const query = new URLSearchParams({ bookId: bookId(7), fileId: fileId(7) })
+  const progress = await (await fetch(service.baseUrl + '/api/books/audio-progress?' + query, { headers })).json()
+  assert.equal(progress.ok, true)
+  assert.equal(progress.completeAudio, null)
+  const chunks = await fetch(service.baseUrl + '/api/books/audio-chunk?' + query + '&sectionIndex=0&chunkIndex=0', {
+    headers,
+  })
+  assert.equal(chunks.status, 200)
+  const admin = await fetch(service.baseUrl + '/admin/books?scope=all', { headers })
+  assert.equal(admin.status, 200)
+  assert.match(await admin.text(), /완성본 스키마 import 필요/)
 })

@@ -1,6 +1,25 @@
 const epubReadingMetrics = require(__hooks + '/pages/_private/epub-reading-metrics.js')
 const generation = require(__hooks + '/pages/_private/book-audio-generation-service.js')
 const bookTitleService = require(__hooks + '/pages/_private/book-title.js')
+const completeAudio = require(__hooks + '/pages/_private/book-audio-complete-service.js')
+
+function completeParts(app, fileId, configHash) {
+  const ready = completeAudio.findReady(app, fileId, configHash)
+  return ready ? completeAudio.manifest(ready).parts : []
+}
+
+/**
+ * 완성본 재생 정보를 읽습니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} fileId EPUB ID
+ * @param {string} configHash 낭독 설정
+ * @param {string} bookId 책 ID
+ * @returns {types.BookAudioCompleteView | null} 재생 정보
+ */
+function getCompleteView(app, fileId, configHash, bookId) {
+  const ready = completeAudio.findReady(app, fileId, configHash)
+  return ready ? completeAudio.view(ready, bookId) : null
+}
 
 // 새 모델은 여기 한 줄만 추가합니다. 화면 순서대로 두고, 기본 모델은 하나만 둡니다.
 /** @type {types.BookAudioModelEntry[]} */
@@ -286,9 +305,19 @@ function readEpubBytes(app, file, readBytes) {
  * @returns {number} 챕터의 구간 수
  */
 function countSectionChunks(app, fileId, configHash, sectionIndex) {
-  return app.countRecords(
+  const count = app.countRecords(
     'book_audio_chunks',
     $dbx.hashExp({ file_id: fileId, config_hash: configHash, section_index: sectionIndex, split_path: '' })
+  )
+  return (
+    count
+    || completeParts(app, fileId, configHash)
+      .filter(function (p) {
+        return p.sectionIndex === sectionIndex
+      })
+      .reduce(function (max, p) {
+        return Math.max(max, p.chunkIndex + 1)
+      }, 0)
   )
 }
 
@@ -309,7 +338,11 @@ function findNextSectionIndex(app, fileId, configHash, sectionIndex) {
     0,
     { fileId, configHash, sectionIndex }
   )[0]
-  return next ? Number(next.get('section_index')) : -1
+  if (next) return Number(next.get('section_index'))
+  const later = completeParts(app, fileId, configHash).filter(function (p) {
+    return p.sectionIndex > sectionIndex
+  })
+  return later.length ? later[0].sectionIndex : -1
 }
 
 /**
@@ -333,6 +366,10 @@ function readSectionOrder(app, fileId, configHash) {
     .forEach(function (record) {
       const sectionIndex = Number(record.get('section_index'))
       if (order.indexOf(sectionIndex) < 0) order.push(sectionIndex)
+    })
+  if (!order.length)
+    completeParts(app, fileId, configHash).forEach(function (p) {
+      if (order.indexOf(p.sectionIndex) < 0) order.push(p.sectionIndex)
     })
   return order
 }
@@ -358,6 +395,18 @@ function findChunkPositionByText(app, fileId, configHash, sectionIndex, anchorTe
     0,
     { fileId, configHash, sectionIndex }
   )
+  if (!chunks.length) {
+    const parts = completeParts(app, fileId, configHash).filter(function (p) {
+      return p.sectionIndex === sectionIndex
+    })
+    const indices = []
+    parts.forEach(function (p) {
+      if (indices.indexOf(p.chunkIndex) < 0) indices.push(p.chunkIndex)
+    })
+    indices.forEach(function (index) {
+      chunks.push(findChunk(app, fileId, configHash, sectionIndex, index))
+    })
+  }
   const texts = chunks.map(function (chunk) {
     return String(chunk.get('input_text')).replace(/[\s\u00ad]+/g, '')
   })
@@ -391,6 +440,13 @@ function countFileChunks(app, fileId) {
  * @returns {types.BookAudioDuration} 음성 길이
  */
 function getAudioDuration(app, fileId, configHash) {
+  const complete = completeAudio.findReady(app, fileId, configHash)
+  if (complete)
+    return {
+      readySeconds: Number(complete.get('duration_seconds')),
+      totalSeconds: Number(complete.get('duration_seconds')),
+      deviceSeconds: 0,
+    }
   const row = new DynamicModel({ readySeconds: 0, pendingChars: 0, deviceChars: 0 })
   app
     .db()
@@ -471,7 +527,7 @@ function listFinalFailedChunks(app, fileId, configHash, limit) {
  * @returns {core.Record | null} 원래 구간
  */
 function findChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
-  return (
+  const found =
     app.findRecordsByFilter(
       'book_audio_chunks',
       'file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex}'
@@ -481,7 +537,28 @@ function findChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
       0,
       { fileId, configHash, sectionIndex, chunkIndex }
     )[0] || null
+  if (found) return found
+  const parts = completeParts(app, fileId, configHash).filter(function (p) {
+    return p.sectionIndex === sectionIndex && p.chunkIndex === chunkIndex
+  })
+  if (!parts.length) return null
+  const record = new Record(app.findCollectionByNameOrId('book_audio_chunks'))
+  record.set('id', parts[0].chunkId)
+  record.set('file_id', fileId)
+  record.set('config_hash', configHash)
+  record.set('section_index', sectionIndex)
+  record.set('chunk_index', chunkIndex)
+  record.set('status', 'ready')
+  record.set(
+    'input_text',
+    parts
+      .map(function (p) {
+        return p.text
+      })
+      .join('\n\n')
   )
+  record.set('duration_seconds', parts[parts.length - 1].endSeconds - parts[0].startSeconds)
+  return record
 }
 
 /**
@@ -525,6 +602,14 @@ function partDuration(record) {
  */
 function sectionTimeline(app, fileId, configHash, sectionIndex) {
   const timeline = []
+  const complete = completeParts(app, fileId, configHash)
+  if (complete.length) {
+    complete.forEach(function (p) {
+      if (p.sectionIndex === sectionIndex)
+        timeline[p.chunkIndex] = (timeline[p.chunkIndex] || 0) + p.endSeconds - p.startSeconds
+    })
+    return timeline
+  }
   app
     .findRecordsByFilter(
       'book_audio_chunks',
@@ -579,7 +664,7 @@ function chunkView(chunk, parts, bookId, chunkCount, order, timeline) {
           ? '/xapi/books/audio-file?' + query + '&v=' + $security.sha256(String(part.get('generated_at')))
           : '',
         fallbackText: ready ? '' : String(part.get('input_text')),
-        pending: !ready && !exhausted,
+        pending: !ready && !exhausted && String(part.get('status')) !== 'ready',
         text: String(part.get('input_text')),
         durationSeconds: partDuration(part),
       }
@@ -588,6 +673,7 @@ function chunkView(chunk, parts, bookId, chunkCount, order, timeline) {
 }
 
 module.exports = {
+  getCompleteView,
   DEFAULT_MODEL,
   findFileJob,
   getFileSettings,

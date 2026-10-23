@@ -1,4 +1,4 @@
-/* global onBootstrap, $app, $os, __hooks, Record, $filesystem, $security, routerAdd, DynamicModel, require */
+/* global onBootstrap, $app, $os, $dbx, __hooks, Record, $filesystem, $security, routerAdd, DynamicModel, require */
 // 격리된 HTTP 테스트 서비스에만 복사하는 초기 데이터와 제어 경로입니다.
 onBootstrap(function (event) {
   event.next()
@@ -11,7 +11,13 @@ onBootstrap(function (event) {
   user.set('admin_manager', true)
   user.set('booklog_enabled', true)
   $app.save(user)
-  for (let index = 1; index <= 7; index += 1) {
+  const other = new Record($app.findCollectionByNameOrId('users'))
+  other.set('email', 'other@example.com')
+  other.set('password', 'test-password-1234')
+  other.set('verified', true)
+  other.set('booklog_enabled', true)
+  $app.save(other)
+  for (let index = 1; index <= 11; index += 1) {
     const suffix = ('00000000000' + index).slice(-11)
     const book = new Record($app.findCollectionByNameOrId('books'))
     book.set('id', 'book' + suffix)
@@ -33,6 +39,112 @@ onBootstrap(function (event) {
     shelf.set('status', 'reading')
     $app.save(shelf)
   }
+})
+
+routerAdd('POST', '/_test/complete-control', function (event) {
+  const input = new DynamicModel({
+    fileId: '',
+    sourcePath: '',
+    run: false,
+    expire: false,
+    warning: false,
+    mutate: false,
+    failTool: false,
+    dropSchema: false,
+    hideComplete: false,
+  })
+  event.bindBody(input)
+  const service = require(__hooks + '/pages/_private/book-audio-complete-service.js')
+  if (input.dropSchema) {
+    $app.delete($app.findCollectionByNameOrId('book_audio_complete'))
+    return event.json(200, { result: service.run($app) })
+  }
+  if (input.hideComplete) {
+    const r = $app.findFirstRecordByFilter('book_audio_complete', "file_id = {:fileId} && status = 'ready'", {
+      fileId: input.fileId,
+    })
+    const files = $app.newFilesystem()
+    try {
+      files.delete(r.baseFilesPath() + '/' + r.get('audio_file'))
+    } finally {
+      files.close()
+    }
+  }
+  if (input.sourcePath)
+    $app
+      .findRecordsByFilter('book_audio_chunks', "file_id = {:fileId} && status != 'split'", '', 0, 0, {
+        fileId: input.fileId,
+      })
+      .forEach(function (chunk) {
+        chunk.set('audio_file', $filesystem.fileFromPath(input.sourcePath))
+        const bytes = new Uint8Array(/** @type {any} */ ($os.readFile(input.sourcePath)))
+        chunk.set(
+          'duration_seconds',
+          require(__hooks + '/pages/_private/book-audio-generation-service.js').mp3Duration(bytes)
+        )
+        chunk.set('status', 'ready')
+        chunk.set('generated_at', new Date().toISOString())
+        $app.save(chunk)
+      })
+  if (input.warning || input.mutate) {
+    const chunk = $app.findFirstRecordByFilter('book_audio_chunks', "file_id = {:fileId} && status = 'ready'", {
+      fileId: input.fileId,
+    })
+    chunk.set(
+      'error_message',
+      input.warning ? '음성이 원문보다 짧게 생성됐습니다. 확인해 주세요.' : '예약 후 원본 변경'
+    )
+    $app.save(chunk)
+  }
+  if (input.expire)
+    $app
+      .findRecordsByFilter('book_audio_complete', 'file_id = {:fileId}', '', 0, 0, { fileId: input.fileId })
+      .forEach(function (r) {
+        r.set('cleanup_at', '2000-01-01 00:00:00.000Z')
+        $app.save(r)
+      })
+  let result = null
+  if (input.run) result = require(__hooks + '/jobs/audio-complete-job.js').run()
+  const files = $app.newFilesystem()
+  const chunkKeys = $app
+    .findRecordsByFilter('book_audio_chunks', "file_id = {:fileId} && audio_file != ''", '', 0, 0, {
+      fileId: input.fileId,
+    })
+    .map(function (r) {
+      return r.baseFilesPath() + '/' + r.get('audio_file')
+    })
+  let records
+  try {
+    records = $app
+      .findRecordsByFilter('book_audio_complete', 'file_id = {:fileId}', 'created,id', 0, 0, { fileId: input.fileId })
+      .map(function (r) {
+        return {
+          id: r.id,
+          status: r.get('status'),
+          kbps: r.get('kbps'),
+          cleanupDone: r.get('cleanup_done'),
+          size: r.get('file_size'),
+          error: r.get('error_message'),
+          manifest: service.manifest(r),
+          filename: r.get('audio_file'),
+          exists: r.get('audio_file') ? files.exists(r.baseFilesPath() + '/' + r.get('audio_file')) : false,
+        }
+      })
+  } finally {
+    files.close()
+  }
+  return event.json(200, {
+    result,
+    records,
+    chunkKeys,
+    storageDir: $app.dataDir() + '/storage',
+    chunks: $app.countRecords('book_audio_chunks', $dbx.hashExp({ file_id: input.fileId })),
+    audioChunks: $app.countRecords(
+      'book_audio_chunks',
+      $dbx.hashExp({ file_id: input.fileId }),
+      $dbx.exp("audio_file != ''")
+    ),
+  })
 })
 
 routerAdd('GET', '/_test/audio-state', function (event) {
@@ -155,12 +267,22 @@ routerAdd('POST', '/_test/audio-scenario', function (event) {
     ])
   }
   if (input.name === 'browser-buffer') {
+    // 같은 시나리오를 다시 준비할 때 이전 분할 자식을 중복 생성하지 않습니다.
+    $app
+      .findRecordsByFilter('book_audio_chunks', 'file_id = {:fileId}', '', 0, 0, { fileId: input.fileId })
+      .forEach(function (r) {
+        $app.delete(r)
+      })
     service.planJob($app, job.id, [
       { sectionIndex: 0, chunks: ['조각으로 나뉘는 첫 번째 음성 구간입니다. '.repeat(20), '두 번째 음성 구간입니다.'] },
       { sectionIndex: 2, chunks: ['다음 챕터의 음성 구간입니다.'] },
     ])
     $app.runInTransaction(function (txApp) {
-      const parent = txApp.findFirstRecordByFilter('book_audio_chunks', 'file_id = {:fileId} && section_index = 0 && chunk_index = 0', { fileId: input.fileId })
+      const parent = txApp.findFirstRecordByFilter(
+        'book_audio_chunks',
+        'file_id = {:fileId} && section_index = 0 && chunk_index = 0',
+        { fileId: input.fileId }
+      )
       parent.set('status', 'failed')
       parent.set('attempt_count', generation.MAX_ATTEMPTS)
       parent.set('error_message', generation.BLOCKED_EXHAUSTED_MESSAGE)
@@ -179,7 +301,7 @@ routerAdd('POST', '/_test/audio-scenario', function (event) {
       if (chunk.get('status') === 'split') return
       chunk.set('status', 'ready')
       chunk.set('audio_file', $filesystem.fileFromBytes(bytes, 'browser.mp3'))
-      chunk.set('duration_seconds', frames * 1152 / 44100)
+      chunk.set('duration_seconds', (frames * 1152) / 44100)
       chunk.set('generated_at', new Date().toISOString())
       $app.save(chunk)
     })
@@ -201,17 +323,33 @@ routerAdd('POST', '/_test/audio-scenario', function (event) {
 
 // 모의 API 없이 실제 권한 검사·파일 스트림·청취 DB를 거치는 브라우저용 최소 화면입니다.
 routerAdd('GET', '/_test/buffer-player', function (event) {
-  return event.html(200, '<!doctype html><meta charset="utf-8">'
-    + '<audio id="reader-cloud-audio" preload="metadata"></audio>'
-    + '<button id="start" onclick="booklogAudio.start(state,0)">start</button>'
-    + '<script>window.booklogReaderConfig={bookId:"book00000000007",bookFileId:"file00000000007",readerCacheKey:"browser-e2e"};'
-    + 'window.state={readAloudRate:"1",cloudAudioActive:false,cloudAudioBusy:false};</script>'
-    + '<script src="/assets/booklog-audio.js"></script>')
+  const index = event.request.url.query().get('complete') === '1' ? '08' : '07'
+  return event.html(
+    200,
+    '<!doctype html><meta charset="utf-8">'
+      + '<audio id="reader-cloud-audio" preload="metadata"></audio>'
+      + '<button id="start" onclick="booklogAudio.start(state,0)">start</button>'
+      + '<script>window.booklogReaderConfig={bookId:"book000000000'
+      + index
+      + '",bookFileId:"file000000000'
+      + index
+      + '",readerCacheKey:"browser-e2e"};'
+      + 'window.state={readAloudRate:"1",cloudAudioActive:false,cloudAudioBusy:false};</script>'
+      + '<script src="/assets/booklog-audio.js"></script>'
+  )
 })
 
 routerAdd('GET', '/_test/buffer-progress', function (event) {
   const rows = $app.findRecordsByFilter('book_audio_progress', 'file_id = "file00000000007"', 'section_index', 0, 0)
-  return event.json(200, rows.map(function (row) {
-    return { section: row.get('section_index'), chunk: row.get('chunk_index'), seconds: row.get('position_seconds'), completed: row.get('is_completed') }
-  }))
+  return event.json(
+    200,
+    rows.map(function (row) {
+      return {
+        section: row.get('section_index'),
+        chunk: row.get('chunk_index'),
+        seconds: row.get('position_seconds'),
+        completed: row.get('is_completed'),
+      }
+    })
+  )
 })

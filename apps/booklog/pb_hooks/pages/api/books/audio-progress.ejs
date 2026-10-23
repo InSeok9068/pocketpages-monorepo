@@ -27,6 +27,7 @@
   }
   try {
     const settings = audioData.getFileSettings($app, fileId)
+    const completeAudio = audioData.getCompleteView($app, fileId, settings.configHash, bookId)
     const bindings = { userId, fileId, configHash: settings.configHash }
     const filter = 'user_id = {:userId} && file_id = {:fileId} && config_hash = {:configHash}'
     if (request.method === 'GET') {
@@ -53,7 +54,7 @@
           startsNextSection = true
         }
       }
-      if (progress && !progress.get('is_completed') && progress.get('audio_chunk_id')) {
+      if (progress && !progress.get('is_completed')) {
         // 구간 끝까지 들은 위치는 다음 구간 처음으로 복원합니다.
         const previous = $app.findRecordsByFilter(
           'book_audio_chunks',
@@ -63,7 +64,10 @@
           0,
           { chunkId: String(progress.get('audio_chunk_id')), fileId }
         )[0]
-        const duration = previous ? Number(previous.get('duration_seconds')) : 0
+        const duration =
+          !completeAudio && previous && Number(previous.get('duration_seconds')) > 0
+            ? Number(previous.get('duration_seconds'))
+            : audioData.sectionTimeline($app, fileId, settings.configHash, sectionIndex)[chunkIndex] || 0
         if (duration > 0 && seconds >= duration) {
           const chunkCount = audioData.countSectionChunks($app, fileId, settings.configHash, sectionIndex)
           if (chunkIndex + 1 < chunkCount) {
@@ -102,6 +106,7 @@
       response.json(200, {
         ok: true,
         configHash: settings.configHash,
+        completeAudio,
         progress: progress
           ? { sectionIndex, chunkIndex, seconds, chapterSeconds, isCompleted, startsNextSection }
           : null,
@@ -124,7 +129,7 @@
       response.json(400, { ok: false, message: '청취 위치를 확인해 주세요.' })
       return
     }
-    const chunk = $app.findRecordsByFilter(
+    const storedRecord = $app.findRecordsByFilter(
       'book_audio_chunks',
       // 생성 중인 구간도 기기 음성으로 들을 수 있어, 상태와 관계없이 원래 구간이면 위치를 저장합니다.
       "id = {:chunkId} && file_id = {:fileId} && config_hash = {:configHash} && split_path = ''",
@@ -133,13 +138,27 @@
       0,
       { chunkId, fileId, configHash: savedConfigHash }
     )[0]
+    const storedChunk = !!storedRecord
+    const archived =
+      completeAudio && savedConfigHash === settings.configHash
+        ? completeAudio.parts.filter(function (p) {
+            return p.chunkId === chunkId
+          })
+        : []
+    const chunk =
+      storedRecord
+      || (archived.length
+        ? audioData.findChunk($app, fileId, savedConfigHash, archived[0].sectionIndex, archived[0].chunkIndex)
+        : null)
     if (!chunk) {
       response.json(409, { ok: false, message: '청취하던 음성 구간이 변경됐습니다. 현재 저장된 위치로 이어 듣습니다.' })
       return
     }
     const sectionIndex = Number(chunk.get('section_index'))
     const chunkIndex = Number(chunk.get('chunk_index'))
-    const duration = Number(chunk.get('duration_seconds') || 0)
+    const duration = archived.length
+      ? archived[archived.length - 1].endSeconds - archived[0].startSeconds
+      : Number(chunk.get('duration_seconds') || 0)
     const chunkCount = audioData.countSectionChunks($app, fileId, savedConfigHash, sectionIndex)
     // 구간 구성이 바뀐 뒤 늦게 도착한 완료 저장은 위치만 남기고, 거절해서 재생 시작을 막지 않습니다.
     const markCompleted = completed && chunkIndex === chunkCount - 1
@@ -171,7 +190,7 @@
       progress.set('config_hash', savedConfigHash)
       progress.set('section_index', sectionIndex)
       progress.set('chunk_index', chunkIndex)
-      progress.set('audio_chunk_id', chunkId)
+      progress.set('audio_chunk_id', storedChunk ? chunkId : '')
       progress.set('position_seconds', duration > 0 ? Math.min(seconds, duration) : seconds)
       progress.set('is_completed', markCompleted)
       progress.set('last_listened_at', listenedAt)

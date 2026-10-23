@@ -96,6 +96,14 @@ if (String(process.env.APP_ENV || '').trim() === 'production') {
     }
   })
 
+  cronAdd('booklog-audio-complete', '*/5 * * * *', function () {
+    try {
+      require(__hooks + '/jobs/audio-complete-job.js').run()
+    } catch (exception) {
+      $app.logger().error('jobs/audio-complete:failed', 'error', String(exception.message || exception))
+    }
+  })
+
   cronAdd('booklog-reading-session-merge', '30 18 * * *', function () {
     try {
       const readingSessionMergeJob = require(__hooks + '/jobs/reading-session-merge-job.js')

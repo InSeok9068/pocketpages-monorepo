@@ -94,7 +94,42 @@
 
 ## 재생 회귀 테스트
 
-`node --test apps/booklog/__tests__/audio-buffer.test.mjs apps/booklog/__tests__/audio.test.mjs apps/booklog/__tests__/audio-jobs.test.mjs apps/booklog/__tests__/route-health.test.mjs`로 재생·서버 작업·접근 권한을 함께 확인합니다. 브라우저 테스트는 설치된 Chrome을 사용합니다.
+### 선택적 완성본 재생
+
+클라이언트는 `GET /api/books/audio-progress` 응답에 `completeAudio`가 있으면 완성본 URL을 `<audio src>`에 직접 연결합니다. `window.booklogReaderConfig.preferCompleteAudio = false`이면 완성본을 선택하지 않습니다. 검증을 마친 완성본이 없으면 기존 조각 재생을 사용합니다.
+
+관리자는 `/admin/books`의 **완성본**을 열어 통합을 예약합니다. 모든 원래 구간과 분할 조각이 빠짐없이 준비되어야 하며, `ready`에 짧은 음성 경고가 남았으면 확인 체크가 필요합니다. 원본 유지(스트림 복사) 또는 96·64·48kbps 모노 24kHz를 고릅니다. `booklog-audio-complete` cron이 운영 환경(`APP_ENV=production`)에서 5분마다 한 건씩 처리합니다. 조각 재압축 cron과는 별개이며, 완성본 예약·제공 중에는 조각 재압축을 건너뜁니다.
+
+서버에는 **ffmpeg와 ffprobe**가 필요합니다. Booklog Docker 이미지에는 함께 설치하며 빌드 시 MP3 인코더와 ffprobe를 확인합니다. 직접 실행하는 환경에서는 PATH에 설치하거나 `BOOKLOG_FFMPEG_BIN`, `BOOKLOG_FFPROBE_BIN`에 실행 파일 절대 경로를 지정합니다. 스키마는 `pb_schema.json`의 새 `book_audio_complete` 컬렉션을 관리자에서 import합니다. 스키마가 없으면 완성본 cron은 건너뛰고 기존 기능을 유지합니다. API 규칙은 잠겨 있고 MP3 필드도 protected입니다. `/xapi/books/complete-audio`가 서재 소유권을 확인한 뒤 PocketBase filesystem의 `serve`로 GET·HEAD·Range·조건부 요청을 처리하므로 로컬 저장소와 S3 추상화를 유지합니다.
+
+통합은 임시 파일에서 수행합니다. 조각 전체를 JS 메모리에 올리지 않고 스트리밍 복사하고, FFmpeg 결합·전체 디코딩 검증·길이 확인을 마친 뒤 트랜잭션으로 공개 버전을 전환합니다. 예약·공개 시 원본 지문을 비교해 그사이 변경된 조각을 통합하거나 삭제하지 않습니다. 실패하면 원본은 유지하고 실패 사유를 표시합니다. 실행 중인 작업은 중복 처리하지 않으며, 2시간 넘게 남은 작업은 실패로 전환해 관리자가 다시 예약할 수 있습니다.
+
+정리 옵션은 **MP3만 삭제(기본)**, **MP3와 구간 레코드 삭제**, **보관**입니다. 선택한 정리는 전환 24시간 후 cron에서 실행합니다. 완성본이 실제로 존재하고 크기가 맞는지 다시 확인한 뒤에만 정리합니다. 구간 레코드를 삭제해도 완성본에 원래 구간 ID·본문·시간표가 남으므로 기존 청취 기록과 문장 찾기를 복원합니다. 조각 정리가 끝나면 개별 구간 재생성은 제한되며, 수정하려면 오디오북 삭제 후 전체 생성이 필요합니다. 조각 MP3가 없는 상태에서 완성본 재생이 실패하면 원문을 기기 음성으로 읽을 수 있지만 기존 MP3 파일 재생으로는 돌아갈 수 없습니다.
+
+완성본 압축은 조각이 없어도 현재 완성본만으로 예약할 수 있습니다. 원래 비트레이트보다 낮은 값만 허용하며 새 파일이 검증되기 전에는 기존 파일을 유지합니다. 구버전 URL은 24시간 유지한 뒤 새 완성본이 실제 존재할 때 정리합니다. 평상시에는 최종 MP3 하나만 남길 수 있지만, 통합·압축·전환 유예 동안은 임시 중복 공간이 필요합니다. 24시간보다 오래 멈춘 세션의 구버전 URL까지 영구 유지하는 구조는 아닙니다.
+
+`completeAudio`는 `types.BookAudioCompleteView` 형태이며, 예시는 다음과 같습니다. `configHash`는 청취 위치 응답과 같아야 하고, `chunkId`는 자식 조각이 아닌 원래 구간 ID입니다.
+
+```json
+{
+  "url": "/xapi/books/complete-audio?bookId=BOOK&fileId=FILE&editionId=EDITION",
+  "configHash": "CURRENT_CONFIG_HASH",
+  "parts": [
+    { "sectionIndex": 5, "chunkIndex": 0, "chunkId": "ROOT_ID", "startSeconds": 0, "endSeconds": 180, "text": "첫 조각의 본문" },
+    { "sectionIndex": 5, "chunkIndex": 0, "chunkId": "ROOT_ID", "startSeconds": 180, "endSeconds": 360, "text": "둘째 조각의 본문" }
+  ]
+}
+```
+
+주소는 같은 출처의 HTTP(S) URL이며, 서버가 사용자 권한을 확인하고 버전별로 고정된 파일을 제공해야 합니다. `parts`에는 완성본 전체의 실제 시간 순서가 필요합니다. 첫 조각은 0에서 시작하고 틈·겹침 없이 이어지며, 챕터와 구간 번호는 기존 API와 일치해야 합니다. 조각 MP3를 바이트로만 연결한 파일은 길이·탐색 정보가 부정확할 수 있으므로, 완성본은 정확한 길이 정보(Xing 등)를 갖춰야 합니다. 파일의 보고 길이가 지도와 0.5초 넘게 다르거나 미디어 오류가 발생하면 기존 조각 재생으로 전환합니다.
+
+완성본 재생 중에는 조각 다운로드·CacheStorage·MediaSource를 사용하지 않고 브라우저가 직접 Range 요청을 처리합니다. 기존 챕터 재생 바·청취 위치·문장 추정·Media Session·잠자기 타이머는 전체 파일 시간에서 변환하며, 탐색과 챕터 전환 시 파일 주소를 바꾸지 않습니다. 실제 백그라운드 재생이 경계를 넘어선 뒤 JS가 재개되면 위치와 완료 기록을 갱신합니다. 챕터 끝 타이머도 JS 이벤트가 필요하므로, OS가 JS를 멈추면 정확한 시점의 정지는 보장하지 않습니다.
+
+`node --test apps/booklog/__tests__/audio-complete.test.mjs`는 실제 로컬 HTTP 서버의 MP3·206·Content-Range와 인증 쿠키를 사용해 클라이언트를 검증합니다. MediaSource는 끈 채 재생하며 API·저장 응답은 테스트 대역입니다. 페이지 JS를 3초간 막아도 재생 시간이 조각 경계를 넘어 진행하는지 확인하지만, OS의 화면 잠금·앱 중단을 재현하는 테스트는 아닙니다. `BOOKLOG_AUDIO_BROWSER=webkit`으로 같은 시나리오를 WebKit에서 실행할 수 있으며, 네이티브 MP3 디코딩이 없는 빌드는 사전 확인에서 명시적으로 실패합니다. Windows WebKit의 이 제한을 Safari 재생 실패로 해석하지 않습니다.
+
+`audio-jobs.test.mjs`에는 실제 FFmpeg·ffprobe, 격리된 PocketBase DB·파일 저장소와 Chrome을 함께 쓰는 통합 시나리오가 있습니다. 관리자 화면의 예약, 중복·미완료·경고 거절, 실제 Range·소유권, 조각 정리와 실제 파일 삭제, 레코드 삭제 후 위치 복원·챕터 완료, 완성본 단독 재압축, 구버전 유예, 작업 실패 시 원본 보존, 스키마 미적용 호환성을 확인합니다. 도구는 위 환경 변수 또는 테스트용 `.cache/booklog-media-tools/node_modules/{ffmpeg-static,ffprobe-static}`에서 찾으며, 없으면 해당 미디어 서버 시나리오를 제외합니다.
+
+`node --test apps/booklog/__tests__/audio-buffer.test.mjs apps/booklog/__tests__/audio-complete.test.mjs apps/booklog/__tests__/audio.test.mjs apps/booklog/__tests__/audio-jobs.test.mjs apps/booklog/__tests__/route-health.test.mjs`로 재생·서버 작업·접근 권한을 함께 확인합니다. 브라우저 테스트는 설치된 Chrome을 사용합니다.
 
 | 범위 | 검증 |
 | --- | --- |

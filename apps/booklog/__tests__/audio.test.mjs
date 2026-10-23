@@ -407,7 +407,9 @@ test('Regenerating a repeatedly blocked part splits it down to 80 chars, while o
     return sandbox.module.exports
   }
   context.require = (name) =>
-    name === generationPath ? load(generationPath) : name.startsWith('@') ? { dateutil: {} } : {}
+    name === generationPath ? load(generationPath)
+      : name.endsWith('book-audio-complete-service.js') ? { findReady: () => null, invalidate() {} }
+      : name.startsWith('@') ? { dateutil: {} } : {}
   const service = load('/pages/_private/book-audio-job-service.js')
   const exhausted = 'Gemini 정책 필터에 반복 차단되어 이 부분은 기기 음성으로 읽습니다. reason'
   const chunk = (id, fields) =>

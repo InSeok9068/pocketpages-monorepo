@@ -121,6 +121,18 @@ function compressNextChunks(app) {
   const jobs = app.findRecordsByFilter('book_audio_jobs', 'compress_kbps > 0', 'updated,id', 50, 0)
   for (let index = 0; index < jobs.length; index += 1) {
     const job = jobs[index]
+    const complete = require(__hooks + '/pages/_private/book-audio-complete-service.js')
+    if (complete.available(app)) {
+      const pending = app.findRecordsByFilter(
+        'book_audio_complete',
+        "file_id = {:fileId} && (status = 'queued' || status = 'running' || status = 'ready')",
+        '',
+        1,
+        0,
+        { fileId: job.get('file_id') }
+      )
+      if (pending.length) continue
+    }
     const kbps = Number(job.get('compress_kbps'))
     if (!isSupportedBitrate(kbps)) continue
     const chunks = app.findRecordsByFilter(

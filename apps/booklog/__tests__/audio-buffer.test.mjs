@@ -694,6 +694,11 @@ test('An append failure after crossing a chunk boundary falls back at the curren
         (entry) => entry.event === 'play' && entry.playbackMode === 'file'
       )
     )
+    // play 이벤트가 메타데이터의 위치 복원보다 먼저 올 수 있어 탐색 완료까지 기다립니다.
+    await player.page.waitForFunction(() => {
+      const audio = document.querySelector('audio')
+      return audio.readyState >= 2 && !audio.seeking && audio.currentTime >= 29
+    })
     assert.ok((await player.page.evaluate(() => window.state.cloudAudioPosition)) >= 119.9)
     assert.ok((await player.page.evaluate(() => window.state.cloudAudioPosition)) < 122)
     assert.equal(await player.page.evaluate(() => window.state.cloudAudioActive), true)

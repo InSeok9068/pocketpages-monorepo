@@ -187,6 +187,8 @@ const GET_WITHOUT_INPUT = [
   '/api/books/audio-progress',
   '/xapi/books/audio-file',
   '/xapi/books/audio-file?chunkId=nothing',
+  '/xapi/books/complete-audio',
+  '/xapi/books/complete-audio?editionId=nothing',
   '/xapi/books/barebook0000001/read-file',
   '/xapi/books/barebook0000001/download-file',
   '/xapi/books/unshelvedbook01/read-file',

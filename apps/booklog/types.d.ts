@@ -110,6 +110,42 @@ declare namespace types {
     parts: BookAudioPartView[]
   }
 
+  /** 청취 위치 응답에 선택적으로 제공하는 완성본입니다. */
+  interface BookAudioCompleteView {
+    /** 권한 확인과 HTTP Range를 지원하는 같은 출처의 파일 주소 */
+    url: string
+    configHash: string
+    /** 완성본 파일의 실제 시간 순서. 첫 시작은 0이고 틈·중복이 없어야 합니다. */
+    parts: BookAudioCompletePart[]
+  }
+
+  interface BookAudioCompletePart {
+    sectionIndex: number
+    chunkIndex: number
+    /** 기존 청취 기록에 쓰는 원래 구간 ID */
+    chunkId: string
+    startSeconds: number
+    endSeconds: number
+    text: string
+  }
+
+  interface BookAudioCompleteAdminView {
+    available: boolean
+    canMerge: boolean
+    readyId: string
+    statusLabel: string
+    warningCount: number
+    warnings: BookAudioCompleteWarning[]
+    kbps: number
+    busy: boolean
+  }
+
+  interface BookAudioCompleteWarning {
+    position: string
+    message: string
+    href: string
+  }
+
   interface PopularBook {
     isbn13: string
     title: string

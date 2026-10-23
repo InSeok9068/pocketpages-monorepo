@@ -5252,6 +5252,29 @@ class ProjectLanguageService {
       parts.push(routeParamLines.join("\n"));
     }
 
+    // PocketPages 0.22 accepts HEAD/OPTIONS at runtime but omits them from PagesMethods.
+    // Keep every request field typed while correcting the server-script global.
+    if (isEjsFile(filePath) && /\brequest\b/.test(analysisText)) {
+      const sourceFile = createSourceFileForText(filePath, analysisText);
+      const localNames = new Set();
+      for (const statement of sourceFile.statements) {
+        if (ts.isVariableStatement(statement)) {
+          for (const declaration of statement.declarationList.declarations) {
+            collectBindingNames(declaration.name, localNames);
+          }
+        } else if (statement.name && ts.isIdentifier(statement.name)) {
+          localNames.add(statement.name.text);
+        }
+      }
+      if (!localNames.has("request") && !localNames.has("api")) {
+        parts.push([
+          'declare const request: Omit<typeof api.request, "method"> & {',
+          '  method: typeof api.request.method | "HEAD" | "OPTIONS";',
+          '};',
+        ].join("\n"));
+      }
+    }
+
     // PocketPages-specific path and caller analysis stays in custom code.
     // Once those semantics are resolved, we hand ambient declarations to TS so
     // hover/completion/definition/rename/diagnostics come from one type engine.
