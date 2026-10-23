@@ -285,6 +285,12 @@ window.booklogAudio = (function () {
     )
   }
 
+  // 리더가 화면이 꺼진 동안 기기 음성 구간을 독서 시간에서 빼도록 화면 상태에도 함께 알립니다.
+  function setDeviceVoice(session, value) {
+    session.fallback = value
+    session.state.cloudAudioDeviceVoice = value
+  }
+
   function playAudio(session) {
     return session.player.play().catch(function (error) {
       if (!isActive(session)) return
@@ -517,7 +523,7 @@ window.booklogAudio = (function () {
   function haltCurrent(session) {
     session.positionReady = false
     if (session.fallback && window.speechSynthesis) {
-      session.fallback = false
+      setDeviceVoice(session, false)
       session.speechToken += 1
       window.speechSynthesis.cancel()
       window.speechSynthesis.resume()
@@ -526,7 +532,7 @@ window.booklogAudio = (function () {
   }
 
   /**
-   * 현재 챕터의 재생 위치로 이동합니다. 다른 구간·조각이면 그 음성을 불러와 이어 재생합니다.
+   * 현재 챕터의 재생 위치로 이동합니다. 재생 중이었으면 옮긴 곳에서 이어 재생하고, 멈춰 있었으면 멈춘 채로 둡니다.
    * @param {number} seconds 챕터 처음부터의 시간(초)
    * @returns {void}
    */
@@ -543,12 +549,14 @@ window.booklogAudio = (function () {
     var within = target - chunkStart
     session.completed = false
     session.failed = false
+    var wasPaused = !session.state.cloudAudioActive
     if (chunkIndex !== session.chunkIndex) {
       haltCurrent(session)
       session.chunkIndex = chunkIndex
       session.resumeSeconds = within
       session.nextChunk = null
       session.prefetchedKey = ''
+      session.holdPaused = wasPaused
       playChunk(session)
       return
     }
@@ -568,6 +576,7 @@ window.booklogAudio = (function () {
     session.partIndex = partIndex
     session.partOffset = partStart
     session.resumeSeconds = within - partStart
+    session.holdPaused = wasPaused
     playPart(session)
   }
 
@@ -637,9 +646,9 @@ window.booklogAudio = (function () {
         setMediaPlaybackState('paused')
         savePosition(session, true, false)
       } else {
-        window.speechSynthesis.resume()
-        session.state.cloudAudioActive = true
-        setMediaPlaybackState('playing')
+        // 오래 멈춘 발화는 iOS가 버려 resume으로는 소리가 나지 않을 수 있어, 멈춘 문장부터 다시 읽습니다.
+        session.resumeSeconds = session.fallbackElapsed
+        speakFallback(session, session.parts[session.partIndex].fallbackText, false)
       }
       return true
     }
@@ -756,14 +765,18 @@ window.booklogAudio = (function () {
         return playPart(session)
       })
       .catch(function (error) {
-        if (token === session.loadToken) setError(session, error)
+        if (token !== session.loadToken) return
+        session.holdPaused = false
+        setError(session, error)
       })
   }
 
   function playPart(session) {
     var part = session.parts[session.partIndex]
-    session.fallback = false
-    if (part.fallbackText) return speakFallback(session, part.fallbackText)
+    var hold = !!session.holdPaused
+    session.holdPaused = false
+    setDeviceVoice(session, false)
+    if (part.fallbackText) return speakFallback(session, part.fallbackText, hold)
     session.startAnchor = ''
     session.positionReady = false
     if (session.objectUrl) URL.revokeObjectURL(session.objectUrl)
@@ -774,6 +787,12 @@ window.booklogAudio = (function () {
     showPlayback(session)
     updateMediaSession(session)
     updateProgress(session)
+    if (hold) {
+      session.saveWhenReady = true
+      session.state.cloudAudioActive = false
+      setMediaPlaybackState('paused')
+      return
+    }
     return playAudio(session)
   }
 
@@ -844,7 +863,7 @@ window.booklogAudio = (function () {
     return null
   }
 
-  function speakFallback(session, text) {
+  function speakFallback(session, text, hold) {
     var synth = window.speechSynthesis
     if (!synth || typeof window.SpeechSynthesisUtterance !== 'function') {
       setError(session, new Error('이 구간은 AI 음성을 만들지 못했고, 이 브라우저는 기기 음성을 지원하지 않습니다.'))
@@ -884,10 +903,22 @@ window.booklogAudio = (function () {
     }
     var speaking = -1
     session.resumeSeconds = 0
-    session.fallback = true
+    setDeviceVoice(session, true)
     session.fallbackElapsed = elapsed
     session.positionReady = true
     session.state.cloudAudioBusy = false
+    if (hold) {
+      session.speechToken += 1
+      synth.cancel()
+      synth.resume()
+      session.state.cloudAudioActive = false
+      showPlayback(session)
+      updateMediaSession(session)
+      setMediaPlaybackState('paused')
+      updateProgress(session)
+      savePosition(session, true, false)
+      return
+    }
     session.state.cloudAudioActive = true
     showPlayback(session)
     updateMediaSession(session)
@@ -932,7 +963,7 @@ window.booklogAudio = (function () {
     var chapterDone = session.chunkIndex + 1 >= session.chunkCount
     savePosition(session, true, chapterDone)
     session.positionReady = false
-    session.fallback = false
+    setDeviceVoice(session, false)
     if (!next) {
       session.completed = true
       endSession(
@@ -1016,6 +1047,8 @@ window.booklogAudio = (function () {
       previousSectionIndex: -1,
       prefetchedKey: '',
       startAnchor: '',
+      holdPaused: false,
+      saveWhenReady: false,
       fallback: false,
       cacheUnavailable: false,
       lastSavedAt: 0,
@@ -1034,6 +1067,10 @@ window.booklogAudio = (function () {
       session.resumeSeconds = 0
       session.positionReady = true
       updateProgress(session)
+      if (session.saveWhenReady) {
+        session.saveWhenReady = false
+        savePosition(session, true, false)
+      }
     }
     player.ontimeupdate = function () {
       updateProgress(session)
@@ -1140,7 +1177,7 @@ window.booklogAudio = (function () {
       // 일시 정지한 채 멈추면 Chrome은 그 상태가 남아 리더의 기기 읽어주기가 소리 없이 멈춥니다.
       window.speechSynthesis.resume()
     }
-    session.fallback = false
+    setDeviceVoice(session, false)
     var player = session.player
     player.onpause = null
     player.onended = null

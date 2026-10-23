@@ -14,8 +14,6 @@
   const {
     MAX_EPUB_BYTES,
     normalizePreview,
-    dirname,
-    joinPath,
     readArchiveText,
     readUploadedFileBytes,
     readUploadedEpubArchiveSnapshot,
@@ -652,7 +650,11 @@
       }
 
       if (manifestItem.mediaType === 'application/xhtml+xml' || /\.(xhtml|html|htm)$/i.test(manifestItem.href)) {
-        firstContentPath = joinPath(dirname(packageDocumentPath), manifestItem.href)
+        firstContentPath = epubReadingMetrics.resolveManifestEntryPath(
+          archiveEntries,
+          packageDocumentPath,
+          manifestItem.href
+        )
         break
       }
     }

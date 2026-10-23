@@ -6,6 +6,7 @@
   const bookTitleService = resolve('book-title')
   const flashMessage = params.__flash ? String(params.__flash) : ''
   const queryText = String(request.url.query.q || '').trim()
+  const requestedBookId = String(request.url.query.book || '').trim()
   const requestedLimit = Number(request.url.query.limit || 30)
   const maxHighlightLimit = 5000
   const visibleLimit =
@@ -28,6 +29,12 @@
     return
   }
 
+  const filterBook = /^[a-z0-9]{15}$/.test(requestedBookId)
+    ? $app.findRecordsByFilter('books', 'id = {:bookId}', '', 1, 0, { bookId: requestedBookId })[0] || null
+    : null
+  const bookId = filterBook ? filterBook.id : ''
+  const bookTitle = filterBook ? bookTitleService.getMainTitle(String(filterBook.get('title') || '제목 없음')) : ''
+
   /**
    * 문구 조회 조건을 붙입니다.
    *
@@ -36,6 +43,10 @@
    */
   function applyHighlightWhere(query) {
     query.where($dbx.exp('book_highlights.user_id = {:userId}', { userId: request.auth.get('id') }))
+
+    if (bookId) {
+      query.andWhere($dbx.exp('book_highlights.book_id = {:bookId}', { bookId: bookId }))
+    }
 
     if (normalizedQuery) {
       query.andWhere(
@@ -62,6 +73,10 @@
     const nextVisibleLimit = typeof options.limit === 'number' ? options.limit : visibleLimit
     const pairs = []
 
+    if (bookId) {
+      pairs.push('book=' + encodeURIComponent(bookId))
+    }
+
     if (nextQuery) {
       pairs.push('q=' + encodeURIComponent(nextQuery))
     }
@@ -81,6 +96,10 @@
    */
   function buildHighlightsMoreHref(offset) {
     const pairs = ['offset=' + encodeURIComponent(String(offset)), 'limit=30']
+
+    if (bookId) {
+      pairs.push('book=' + encodeURIComponent(bookId))
+    }
 
     if (queryText) {
       pairs.push('q=' + encodeURIComponent(queryText))
@@ -136,14 +155,25 @@
 <section class="space-y-7">
   <div class="space-y-3">
     <a
-      href="/"
+      href="<%= bookId ? '/books/' + bookId : '/' %>"
       class="inline-flex items-center gap-2 rounded-full border-none bg-white/78 px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] ring-0 outline-none">
       <span
         class="i-lucide-arrow-left h-4 w-4"
         aria-hidden="true"></span>
-      메인으로
+      <%= bookId ? '책으로' : '메인으로' %>
     </a>
     <h1 class="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">인상 깊은 문구 리스트</h1>
+    <% if (bookId) { %>
+    <div class="flex flex-wrap items-center gap-2 text-sm text-stone-600">
+      <span class="font-semibold text-stone-800"><%= bookTitle %></span>
+      <span>의 문구만 보고 있어요.</span>
+      <a
+        href="/highlights"
+        class="font-semibold text-stone-900 underline underline-offset-4">
+        전체 문구 보기
+      </a>
+    </div>
+    <% } %>
   </div>
 
   <% if (flashMessage) { %>
@@ -159,6 +189,12 @@
       action="/highlights"
       method="get"
       class="mb-4 space-y-2">
+      <% if (bookId) { %>
+      <input
+        type="hidden"
+        name="book"
+        value="<%= bookId %>" />
+      <% } %>
       <div class="flex gap-2">
         <label class="relative block min-w-0 flex-1">
           <span class="sr-only">문구 검색</span>
@@ -180,7 +216,7 @@
       </div>
       <% if (queryText) { %>
       <a
-        href="/highlights"
+        href="<%= buildHighlightsHref({ q: '', limit: 30 }) %>"
         class="inline-flex h-11 items-center justify-center rounded-full bg-white/88 px-4 text-sm font-semibold text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
         검색 해제
       </a>

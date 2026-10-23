@@ -38,7 +38,7 @@ function findWeeklyReadingNudgeSettings() {
     'user_settings',
     'push_enabled = true && weekly_reading_nudge_enabled = true',
     '-updated',
-    500,
+    0,
     0
   )
 }

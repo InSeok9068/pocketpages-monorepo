@@ -64,7 +64,9 @@
   let shelfRecord = null
   let reviewRecord = null
   let bookFileRecord = null
+  const highlightPreviewLimit = 20
   let highlightRecords = []
+  let highlightTotalCount = 0
   let highlightCards = []
   let readingDurationSeconds = 0
 
@@ -267,7 +269,7 @@
       'book_highlights',
       'user_id = {:userId} && book_id = {:bookId}',
       '-highlighted_at,-updated',
-      20,
+      highlightPreviewLimit + 1,
       0,
       {
         userId: userId,
@@ -276,6 +278,11 @@
     )
   } catch (exception) {
     highlightRecords = []
+  }
+
+  if (highlightRecords.length > highlightPreviewLimit) {
+    highlightRecords = highlightRecords.slice(0, highlightPreviewLimit)
+    highlightTotalCount = $app.countRecords('book_highlights', $dbx.hashExp({ user_id: userId, book_id: bookId }))
   }
 
   const selectedHighlightId = String(request.url.query.highlight || '').trim()
@@ -782,6 +789,15 @@
           </div>
         </form>
       </article>
+      <% } %>
+      <% if (highlightTotalCount) { %>
+      <div class="flex justify-center pt-1">
+        <a
+          href="/highlights?book=<%= bookId %>"
+          class="inline-flex items-center rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)]">
+          이 책 문구 전체 <%= highlightTotalCount %>개 보기
+        </a>
+      </div>
       <% } %>
     </div>
     <% } else { %>

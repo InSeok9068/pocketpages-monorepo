@@ -140,6 +140,47 @@ test('Lists and HTMX fragments link to the selected record and preserve list con
   }
 })
 
+test('A book with more than 20 quotes links to a list of only its quotes, which keeps the filter while paging', async () => {
+  const bookHighlights = '/highlights?book=book00000000001'
+  let $ = await html(bookPath)
+  assert.equal($('article[id^="highlight-"]').length, 20)
+  assert.equal($(`a[href="${bookHighlights}"]`).text().trim(), '이 책 문구 전체 55개 보기')
+  $ = await html('/books/book00000000002')
+  assert.equal($('a[href^="/highlights?book="]').length, 0, 'a book with few quotes shows them all without the link')
+
+  $ = await html('/highlights')
+  assert.ok($('body').text().includes('다른 책의 문구'), 'the unfiltered list shows every book')
+
+  $ = await html(bookHighlights)
+  assert.equal($('main a').first().attr('href'), bookPath, 'the back link returns to the book')
+  assert.ok($('body').text().includes('의 문구만 보고 있어요.'))
+  assert.equal($('a[href="/highlights"]').text().trim(), '전체 문구 보기')
+  assert.equal($('input[type=hidden][name=book]').val(), 'book00000000001', 'searching stays within the book')
+  let links = $('a[data-book-detail]')
+  assert.equal(links.length, 30)
+  assert.ok(!$('body').text().includes('다른 책의 문구'))
+  const from = new URL(links.first().attr('href'), service.baseUrl).searchParams.get('from')
+  assert.equal(from, bookHighlights, 'a quote opened from here comes back to the filtered list')
+  const more = $('#highlights-more-control a')
+  assert.equal(more.attr('hx-push-url'), bookHighlights + '&limit=60')
+
+  $ = await html(more.attr('hx-get'))
+  links = $('a[data-book-detail]')
+  assert.equal(links.length, 25, 'the second page holds the remaining quotes of this book only')
+  assert.ok(
+    links.toArray().every((link) =>
+      $(link)
+        .attr('href')
+        .startsWith(bookPath + '?')
+    )
+  )
+  assert.equal($('#highlights-more-control').length, 0)
+
+  $ = await html('/highlights?book=' + encodeURIComponent("x' OR 1=1"))
+  assert.ok($('body').text().includes('다른 책의 문구'), 'an invalid book filter is ignored')
+  assert.ok(!$('body').text().includes('의 문구만 보고 있어요.'))
+})
+
 test('Browser restores drafts, clears them after successful saves, updates expanded-list links and reveals records', async () => {
   browser = await chromium.launch({ channel: 'chrome', headless: true })
   const context = await browser.newContext()

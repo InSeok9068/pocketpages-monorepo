@@ -16,7 +16,7 @@ function findReadingReminderSettings() {
     'user_settings',
     'push_enabled = true && reading_reminder_cycle > 0',
     '-updated',
-    500,
+    0,
     0
   )
 }

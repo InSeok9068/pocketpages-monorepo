@@ -125,9 +125,17 @@ async function mockReader(page, book) {
       }
       if (url.pathname === '/api/books/load-progress') {
         const server = state.serverPosition
+        state.requests.push({ path: url.pathname, form: {} })
+        if (state.failures.has(url.pathname)) return route.abort('internetdisconnected')
         return route.fulfill({
           json: server
-            ? { ok: true, hasSavedPosition: true, locator: server.locator, href: server.href }
+            ? {
+                ok: true,
+                hasSavedPosition: true,
+                locator: server.locator,
+                href: server.href,
+                chapterLabel: server.chapterLabel,
+              }
             : { ok: true, hasSavedPosition: false, locator: '', href: '' },
         })
       }
@@ -860,38 +868,135 @@ test('A reader left on screen ends the old record at the last reading moment and
   expect(next.startedAt - earlier.endedAt).toBeGreaterThan(DAY_MS - 300_000)
 })
 
-for (const [field, player] of [
-  ['cloudAudioActive', 'AI audiobook'],
-  ['readAloudPlaying', 'device voice'],
+test('Listening to the AI audiobook with the screen off counts as reading time until playback stops', async ({
+  page,
+}) => {
+  const errors = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const state = await openReaderWithMovableClock(page)
+
+  await setReaderState(page, 'cloudAudioActive', true)
+  await setScreen(page, 'hidden')
+  await passTime(page, 20 * 60_000)
+  await setReaderState(page, 'cloudAudioActive', false)
+  const listened = await waitForSave(state, (save) => save.seconds >= 1200)
+
+  expect(listened.seconds).toBeLessThan(1215)
+  expect(listened.endedAt - listened.startedAt).toBeGreaterThanOrEqual(1_200_000)
+
+  await page.waitForTimeout(300)
+  await passTime(page, 10 * 60_000)
+  await setScreen(page, 'visible')
+  await passTime(page, 5_000)
+  await touchReader(page)
+  await setScreen(page, 'hidden')
+  const after = await waitForSave(state, (save) => save.id !== listened.id && save.seconds >= 5)
+
+  expect(after.seconds).toBeLessThan(15)
+  expect(lastSaveOf(state, listened.id).seconds, 'the silent break after listening is not counted').toBeLessThan(
+    1215
+  )
+  expect(errors).toEqual([])
+})
+
+// iOS가 화면 잠금 때 기기 음성을 끝났다는 신호 없이 멈춰, 재생 중 표시가 밤새 켜진 채 남는 상황입니다.
+for (const [flags, player] of [
+  [{ readAloudPlaying: true }, 'device voice'],
+  [{ cloudAudioActive: true, cloudAudioDeviceVoice: true }, 'device voice standing in for AI audio'],
 ]) {
-  test(`Listening to the ${player} with the screen off counts as reading time until playback stops`, async ({
+  test(`The ${player} counts only while the screen is on, so a voice stopped by a locked screen is not counted`, async ({
     page,
   }) => {
     const errors = []
     page.on('pageerror', (error) => errors.push(error.message))
     const state = await openReaderWithMovableClock(page)
 
-    await setReaderState(page, field, true)
+    for (const [field, value] of Object.entries(flags)) await setReaderState(page, field, value)
+    await page.waitForTimeout(100)
+    await passTime(page, 10 * 60_000)
     await setScreen(page, 'hidden')
-    await passTime(page, 20 * 60_000)
-    await setReaderState(page, field, false)
-    const listened = await waitForSave(state, (save) => save.seconds >= 1200)
-
-    expect(listened.seconds).toBeLessThan(1215)
-    expect(listened.endedAt - listened.startedAt).toBeGreaterThanOrEqual(1_200_000)
+    const listened = await waitForSave(state, (save) => save.seconds >= 600)
+    expect(listened.seconds, 'listening on screen counts without touching').toBeLessThan(615)
 
     await page.waitForTimeout(300)
-    await passTime(page, 10 * 60_000)
+    await passTime(page, 8 * 3_600_000)
     await setScreen(page, 'visible')
     await passTime(page, 5_000)
     await touchReader(page)
     await setScreen(page, 'hidden')
-    const after = await waitForSave(state, (save) => save.id !== listened.id && save.seconds >= 5)
+    await waitForSave(state, (save) => save.id !== listened.id && save.seconds >= 5)
 
-    expect(after.seconds).toBeLessThan(15)
-    expect(lastSaveOf(state, listened.id).seconds, 'the silent break after listening is not counted').toBeLessThan(
-      1215
+    expect(lastSaveOf(state, listened.id).seconds).toBeLessThan(615)
+    expect(Math.max(...sessionSaves(state).map((save) => save.seconds)), 'the locked night is never counted').toBeLessThan(
+      615
     )
     expect(errors).toEqual([])
   })
 }
+
+function progressSaves(state) {
+  return state.requests.filter((request) => request.path === '/api/books/save-progress')
+}
+
+function scrollReader(page, pixels) {
+  return page.evaluate((pixels) => document.querySelector('#epub-reader .epub-container').scrollBy(0, pixels), pixels)
+}
+
+test('Turning the screen off right after moving saves the new place without waiting for the auto-save', async ({
+  page,
+}) => {
+  // 5초 자동 저장을 멈춰, 화면을 끌 때 보낸 저장만 보이게 합니다.
+  await page.addInitScript(() => {
+    const realSetInterval = window.setInterval
+    window.setInterval = (handler, ms, ...rest) => (ms === 5000 ? 0 : realSetInterval(handler, ms, ...rest))
+  })
+  const state = await openReader(page)
+  await goToChapter(page, 3)
+  await scrollReader(page, 300)
+  await page.waitForTimeout(500)
+  const before = progressSaves(state).length
+
+  await setScreen(page, 'hidden')
+  await expect.poll(() => progressSaves(state).length).toBe(before + 1)
+  expect(progressSaves(state).at(-1).form.locator).toMatch(/^epubcfi\(\/6\/6!/)
+  expect(state.serverPosition.locator).toBe(progressSaves(state).at(-1).form.locator)
+
+  await setScreen(page, 'visible')
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
+  await setScreen(page, 'hidden')
+  await page.waitForTimeout(800)
+  expect(progressSaves(state).length, 'an unchanged place is not sent again').toBe(before + 1)
+})
+
+async function openReaderWhileOffline(page) {
+  const state = await mockReader(page, featureBook)
+  state.serverPosition = { locator: '', href: 'c4.xhtml', chapterLabel: '4장' }
+  state.failures.add('/api/books/load-progress')
+  await page.goto('/books/book/read')
+  await waitUntilLoaded(page)
+  return state
+}
+
+test('When the saved place arrives late, a reader who has not moved is taken there', async ({ page }) => {
+  const state = await openReaderWhileOffline(page)
+  await expectChapter(page, 1)
+
+  state.failures.clear()
+  await expectChapter(page, 4)
+  await expect(page.getByText('다른 기기에서 읽은 위치가 있어요.')).toBeHidden()
+})
+
+test('When the saved place arrives late, a reader who already moved on is asked instead of being pulled back', async ({
+  page,
+}) => {
+  const state = await openReaderWhileOffline(page)
+  await goToChapter(page, 2)
+
+  state.failures.clear()
+  await expect(page.getByText('4장 위치로 이동할까요?')).toBeVisible({ timeout: 15_000 })
+  await expectChapter(page, 2)
+  expect(progressSaves(state), 'nothing overwrites the saved place while the reader decides').toEqual([])
+
+  await page.getByRole('button', { name: '그 위치로 이동' }).click()
+  await expectChapter(page, 4)
+})

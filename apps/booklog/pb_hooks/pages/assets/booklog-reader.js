@@ -86,6 +86,7 @@ window.booklogReaderLogic = (function () {
   var readingSessionActivityBound = false
   var isRestoringPosition = false
   var hasResolvedSavedPosition = false
+  var restorePendingLocationKey = ''
   var lastPersistedProgressKey = ''
   var serverPositionKey = ''
   var pendingConflictPosition = null
@@ -1898,7 +1899,7 @@ window.booklogReaderLogic = (function () {
   function updateCurrentLocation(component, location) {
     var target = autoPagingTarget || resolveAutoPagingTarget()
 
-    markReadingSessionActivity()
+    markReadingSessionActivity(component)
     currentLocation = location || null
     syncActiveTocState(component, currentLocation)
 
@@ -2188,16 +2189,30 @@ window.booklogReaderLogic = (function () {
   }
 
   function isListeningAloud(component) {
-    return !!(component && (component.cloudAudioActive || component.readAloudPlaying))
+    if (!component) {
+      return false
+    }
+
+    if (component.cloudAudioActive && !component.cloudAudioDeviceVoice) {
+      return true
+    }
+
+    // 기기 음성은 화면이 잠기면 iOS가 끝났다는 신호 없이 멈출 수 있어, 화면이 켜져 있을 때만 듣는 시간으로 셉니다.
+    return isDocumentVisible() && !!(component.cloudAudioActive || component.readAloudPlaying)
   }
 
   function markReadingSessionActivity(component) {
     var nowMs = Date.now()
+    // 집계가 듣는 상태를 지금 화면 기준으로 바꾸기 전에, 직전까지 쉬고 있었는지로 판단합니다.
+    var resumedAfterBreak =
+      !!readingSessionStartedAtMs
+      && !readingSessionWasListening
+      && nowMs - readingSessionLastActivityMs > READING_SESSION_IDLE_MS
 
     syncReadingSessionActiveSeconds()
 
     // 오래 쉬었다 돌아온 독서는 앞 기록에 이어 붙이지 않아야 날짜별 기록이 제 날에 남습니다.
-    if (readingSessionStartedAtMs && nowMs - readingSessionLastActivityMs > READING_SESSION_IDLE_MS) {
+    if (resumedAfterBreak) {
       restartReadingSession(component)
     }
 
@@ -2532,15 +2547,17 @@ window.booklogReaderLogic = (function () {
     window.addEventListener('touchstart', markActivity, { passive: true })
     component.$watch('cloudAudioActive', onListeningChange)
     component.$watch('readAloudPlaying', onListeningChange)
+    component.$watch('cloudAudioDeviceVoice', onListeningChange)
 
     document.addEventListener('visibilitychange', function () {
-      syncReadingSessionActiveSeconds()
-
       if (isDocumentVisible()) {
         readingSessionBeaconSent = false
         markReadingSessionActivity(component)
         return
       }
+
+      syncReadingSessionActiveSeconds()
+      persistProgressOnHide(component)
 
       saveReadingSessionCheckpoint(component, {
         final: true,
@@ -2791,6 +2808,22 @@ window.booklogReaderLogic = (function () {
     })
   }
 
+  function persistProgressOnHide(component) {
+    if (!component || !renditionInstance || isLeavingPage) {
+      return
+    }
+
+    persistProgress(component, {
+      silent: true,
+      skipIfUnchanged: true,
+      keepalive: true,
+    }).catch(function (exception) {
+      console.warn('page/books/[bookId]/read:progress-hide-save:failed', {
+        message: String(exception && exception.message ? exception.message : exception),
+      })
+    })
+  }
+
   function persistProgress(component, options) {
     var progress = getCurrentProgressPayload(component)
     var formData = new FormData()
@@ -2854,6 +2887,7 @@ window.booklogReaderLogic = (function () {
       method: 'POST',
       body: formData,
       credentials: 'same-origin',
+      keepalive: !!(options && options.keepalive),
     })
       .then(function (response) {
         return response
@@ -3196,6 +3230,7 @@ window.booklogReaderLogic = (function () {
 
   function restoreSavedPosition(component, options) {
     var shouldShowMessage = !options || !options.silent
+    var isRetry = !!(options && options.retry)
 
     if (!renditionInstance) {
       if (shouldShowMessage) {
@@ -3206,7 +3241,9 @@ window.booklogReaderLogic = (function () {
     }
 
     isRestoringPosition = true
-    prepareManualNavigation()
+    if (!isRetry) {
+      prepareManualNavigation()
+    }
 
     if (shouldShowMessage) {
       component.showSavePositionMessage('')
@@ -3227,6 +3264,21 @@ window.booklogReaderLogic = (function () {
             component.showSavePositionMessage('저장된 읽기 위치가 없습니다.')
           }
           return false
+        }
+
+        // 불러오기에 실패한 동안 사용자가 읽어 나갔다면, 늦게 받은 위치로 끌고 가지 않고 이동할지 묻습니다.
+        if (
+          isRetry
+          && restorePendingLocationKey
+          && buildProgressKey(getCurrentProgressPayload(component)) !== restorePendingLocationKey
+        ) {
+          serverPositionKey = target
+          openPositionConflict(component, payload)
+          return false
+        }
+
+        if (isRetry) {
+          prepareManualNavigation()
         }
 
         return Promise.resolve(displayAt(target))
@@ -3278,6 +3330,9 @@ window.booklogReaderLogic = (function () {
       .catch(function (exception) {
         if (!hasResolvedSavedPosition) {
           component.errorMessage = POSITION_RESTORE_PENDING_MESSAGE
+          if (!restorePendingLocationKey) {
+            restorePendingLocationKey = buildProgressKey(getCurrentProgressPayload(component))
+          }
         }
         if (shouldShowMessage) {
           component.showSavePositionMessage(String(exception && exception.message ? exception.message : exception))
@@ -3318,7 +3373,7 @@ window.booklogReaderLogic = (function () {
     }
 
     if (!hasResolvedSavedPosition) {
-      restoreSavedPosition(component, { silent: true })
+      restoreSavedPosition(component, { silent: true, retry: true })
       return
     }
 
@@ -4441,7 +4496,7 @@ window.booklogReaderLogic = (function () {
       var currentScrollTop = boundAutoPagingTarget ? boundAutoPagingTarget.scrollTop || 0 : 0
       var direction = ''
 
-      markReadingSessionActivity()
+      markReadingSessionActivity(component)
 
       if (currentScrollTop > lastContainerScrollTop) {
         direction = 'next'
@@ -4649,6 +4704,7 @@ window.booklogReaderLogic = (function () {
     })
 
     window.addEventListener('pagehide', function () {
+      persistProgressOnHide(activeComponent)
       sendReadingSessionBeacon(activeComponent)
     })
 

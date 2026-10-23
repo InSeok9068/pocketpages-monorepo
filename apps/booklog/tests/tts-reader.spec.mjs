@@ -256,3 +256,165 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   await expect(page.getByRole('button', { name: 'AI 오디오북 재생' })).toBeHidden()
   expect(errors).toEqual([])
 })
+
+test('Seeking while paused keeps the audiobook paused, and device voice resumes from the paused sentence', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit' && process.platform === 'win32',
+    'Windows Playwright WebKit rejects standalone PCM WAV playback; verify Safari on an Apple device.'
+  )
+  const errors = []
+  const saves = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  // 기기 음성은 브라우저마다 소리가 달라, 읽으려고 넘긴 문장과 멈춤·재개 호출만 기록하는 대역으로 바꿉니다.
+  await page.addInitScript(() => {
+    const record = { spoken: [], pauses: 0, resumes: 0 }
+    window.__speech = record
+    Object.defineProperty(window, 'speechSynthesis', {
+      configurable: true,
+      value: {
+        speaking: false,
+        paused: false,
+        pending: false,
+        getVoices: () => [],
+        speak: (utterance) => record.spoken.push(utterance.text),
+        cancel: () => {},
+        pause: () => {
+          record.pauses += 1
+        },
+        resume: () => {
+          record.resumes += 1
+        },
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+    })
+    window.SpeechSynthesisUtterance = function (text) {
+      this.text = text
+    }
+  })
+  const chunks = [
+    {
+      chunkId: 'chunk-0-0',
+      parts: [
+        {
+          audioUrl: '/xapi/books/audio-file?chunkId=chunk-0-0',
+          fallbackText: '',
+          text: '첫 조각',
+          durationSeconds: 10,
+        },
+        { audioUrl: '', fallbackText: '첫 문장입니다.\n둘째 문장입니다.', text: '', durationSeconds: 10 },
+      ],
+    },
+    {
+      chunkId: 'chunk-0-1',
+      parts: [
+        {
+          audioUrl: '/xapi/books/audio-file?chunkId=chunk-0-1',
+          fallbackText: '',
+          text: '둘째 구간',
+          durationSeconds: 10,
+        },
+      ],
+    },
+  ]
+  const body = renderReader(true)
+  await page.route(
+    (url) => url.protocol === 'http:' || url.protocol === 'https:',
+    async (route) => {
+      const url = new URL(route.request().url())
+      if (url.pathname.startsWith('/assets/')) {
+        return route.fulfill({ path: fileURLToPath(new URL(url.pathname.slice(1), pagesRoot)) })
+      }
+      if (url.pathname === '/test.epub')
+        return route.fulfill({ body: Buffer.from(epub), contentType: 'application/epub+zip' })
+      if (url.pathname === '/api/books/audio-chunk') {
+        const chunk = chunks[Number(url.searchParams.get('chunkIndex'))]
+        return route.fulfill({
+          json: { ok: true, chunkCount: 2, configHash: 'settings', timeline: [20, 10], ...chunk },
+        })
+      }
+      if (url.pathname === '/xapi/books/audio-file') return route.fulfill({ body: wav, contentType: 'audio/wav' })
+      if (url.pathname === '/api/books/audio-progress') {
+        if (route.request().method() === 'POST') {
+          const request = route.request()
+          const form = await new Request(request.url(), {
+            method: 'POST',
+            headers: request.headers(),
+            body: request.postDataBuffer(),
+          }).formData()
+          saves.push({ chunkId: form.get('chunkId'), seconds: Number(form.get('seconds')) })
+          return route.fulfill({ json: { ok: true } })
+        }
+        return route.fulfill({ json: { ok: true, configHash: 'settings', progress: null } })
+      }
+      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, highlights: [], bookmarks: [] } })
+      return route.fulfill({ contentType: 'text/html', body: readerHtml(body) })
+    }
+  )
+  const state = () =>
+    page.evaluate(() => {
+      const data = window.Alpine.$data(document.querySelector('section[x-data]'))
+      return {
+        active: data.cloudAudioActive,
+        busy: data.cloudAudioBusy,
+        deviceVoice: data.cloudAudioDeviceVoice,
+        position: data.cloudAudioPosition,
+        spoken: window.__speech.spoken.slice(),
+      }
+    })
+  const player = page.locator('#reader-cloud-audio')
+  const toggle = page.getByRole('button', { name: /^(재생|일시 정지)$/ })
+
+  await page.goto('/books/book/read')
+  await openReadAloudPanel(page)
+  await page.getByRole('button', { name: '이어 듣기', exact: true }).click()
+  await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
+  await page.getByRole('button', { name: '일시 정지', exact: true }).click()
+  await expect.poll(() => player.evaluate((audio) => audio.paused)).toBe(true)
+
+  await page.evaluate(() => window.booklogAudio.seekTo(15))
+  await expect.poll(async () => (await state()).deviceVoice).toBe(true)
+  let current = await state()
+  expect(current.active, 'moving onto a device-voice part while paused does not start speaking').toBe(false)
+  expect(current.spoken).toEqual([])
+  expect(current.position, 'the position lands on the sentence that covers 15s').toBeGreaterThan(14)
+  expect(current.position).toBeLessThan(15)
+  await expect(toggle).toHaveAccessibleName('재생')
+  await expect.poll(() => saves.length, 'the moved position is saved even without playing').toBeGreaterThan(0)
+
+  await page.evaluate(() => window.booklogAudio.seekTo(3))
+  await expect.poll(async () => (await state()).deviceVoice).toBe(false)
+  await expect.poll(() => player.evaluate((audio) => audio.currentTime)).toBeGreaterThanOrEqual(2.9)
+  expect(await player.evaluate((audio) => audio.paused), 'moving back onto AI audio stays paused').toBe(true)
+  expect((await state()).active).toBe(false)
+
+  await page.evaluate(() => window.booklogAudio.seekTo(25))
+  await expect.poll(async () => (await state()).busy).toBe(false)
+  await expect.poll(() => player.evaluate((audio) => audio.currentTime)).toBeGreaterThanOrEqual(4.9)
+  expect(await player.evaluate((audio) => audio.paused), 'moving to another chunk stays paused').toBe(true)
+  expect(saves.at(-1).chunkId).toBe('chunk-0-1')
+
+  await toggle.click()
+  await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
+  await page.evaluate(() => window.booklogAudio.seekTo(15))
+  await expect
+    .poll(async () => (await state()).spoken, 'seeking while playing keeps playing')
+    .toEqual(['둘째 문장입니다.'])
+  expect((await state()).active).toBe(true)
+
+  await toggle.click()
+  current = await state()
+  expect(current.active).toBe(false)
+  expect(await page.evaluate(() => window.__speech.pauses)).toBe(1)
+  await toggle.click()
+  current = await state()
+  expect(current.active).toBe(true)
+  expect(current.spoken, 'resuming re-speaks the paused sentence instead of relying on resume()').toEqual([
+    '둘째 문장입니다.',
+    '둘째 문장입니다.',
+  ])
+  expect(errors).toEqual([])
+})

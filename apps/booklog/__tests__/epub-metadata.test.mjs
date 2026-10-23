@@ -216,3 +216,59 @@ test('Unpacked EPUB text is limited to 16MB per file and 200MB per book', () => 
   for (let index = 0; index < 12; index += 1) manyFiles('OPS/part' + index + '.xhtml', 16 * MB)
   assert.throws(() => manyFiles('OPS/part12.xhtml', 16 * MB), /total/)
 })
+
+test('Page counts read body files whose manifest paths are percent-encoded, as well as names containing a literal %', () => {
+  const { buildReadingMetricsFromBytes } = testRequire('../pb_hooks/pages/_private/epub-reading-metrics.js')
+  const { zipSync, strToU8 } = require('fflate')
+  const paragraph = '<p>' + '한글 본문 문장입니다. '.repeat(120) + '</p>'
+  const chapter = (title) =>
+    strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>' + title + '</h1>' + paragraph + '</body></html>')
+
+  function epubWith(hrefs, names) {
+    return zipSync({
+      'mimetype': strToU8('application/epub+zip'),
+      'META-INF/container.xml': strToU8(
+        '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+      ),
+      'OEBPS/content.opf': strToU8(
+        '<package xmlns="http://www.idpf.org/2007/opf" version="2.0"><metadata/><manifest>'
+          + '<item id="ncx" href="'
+          + hrefs.toc
+          + '" media-type="application/x-dtbncx+xml"/>'
+          + '<item id="c1" href="'
+          + hrefs.first
+          + '" media-type="application/xhtml+xml"/>'
+          + '<item id="c2" href="'
+          + hrefs.second
+          + '" media-type="application/xhtml+xml"/>'
+          + '</manifest><spine toc="ncx"><itemref idref="c1"/><itemref idref="c2"/></spine></package>'
+      ),
+      ['OEBPS/' + names.toc]: strToU8(
+        '<ncx><navMap><navPoint id="n1"><navLabel><text>1</text></navLabel></navPoint><navPoint id="n2"><navLabel><text>2</text></navLabel></navPoint></navMap></ncx>'
+      ),
+      ['OEBPS/' + names.first]: chapter('첫 장'),
+      ['OEBPS/' + names.second]: chapter('둘째 장'),
+    })
+  }
+
+  const plain = buildReadingMetricsFromBytes(
+    epubWith(
+      { toc: 'toc.ncx', first: 'Text/one.xhtml', second: 'Text/two.xhtml' },
+      { toc: 'toc.ncx', first: 'Text/one.xhtml', second: 'Text/two.xhtml' }
+    )
+  )
+  assert.ok(plain.estimatedPageCount > 1)
+
+  const encoded = buildReadingMetricsFromBytes(
+    epubWith(
+      {
+        toc: '%EB%AA%A9%EC%B0%A8.ncx',
+        first: 'Text/%EC%B2%AB%20%EC%9E%A5.xhtml#start',
+        second: 'Text/100%.xhtml',
+      },
+      { toc: '목차.ncx', first: 'Text/첫 장.xhtml', second: 'Text/100%.xhtml' }
+    )
+  )
+  assert.equal(encoded.textCharCount, plain.textCharCount, 'both body files are read')
+  assert.equal(encoded.estimatedPageCount, plain.estimatedPageCount)
+})

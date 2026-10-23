@@ -170,6 +170,29 @@ function joinPath(basePath, relativePath) {
   return normalizedSegments.join('/')
 }
 
+/**
+ * OPF manifest href를 EPUB 압축 안의 실제 파일 경로로 바꿉니다.
+ * @param {object} archiveEntries EPUB 압축 엔트리 맵
+ * @param {string} packageDocumentPath OPF 경로
+ * @param {string} href manifest href
+ * @returns {string} 압축 안 파일 경로. 찾지 못하면 href를 그대로 이은 경로
+ */
+function resolveManifestEntryPath(archiveEntries, packageDocumentPath, href) {
+  const rawHref = String(href || '').split('#')[0]
+  const rawPath = joinPath(dirname(packageDocumentPath), rawHref)
+
+  if (archiveEntries[rawPath]) {
+    return rawPath
+  }
+
+  try {
+    const decodedPath = joinPath(dirname(packageDocumentPath), decodeURIComponent(rawHref))
+    return archiveEntries[decodedPath] ? decodedPath : rawPath
+  } catch (_exception) {
+    return rawPath
+  }
+}
+
 function readArchiveText(archiveEntries, entryPath) {
   if (!entryPath || !archiveEntries[entryPath]) {
     return ''
@@ -247,7 +270,7 @@ function parseSpineIdrefs(packageDocument) {
   return idrefs
 }
 
-function findTocEntryPath(manifestItems, packageDocument, packageDocumentPath) {
+function findTocEntryPath(archiveEntries, manifestItems, packageDocument, packageDocumentPath) {
   const packageNode = getXmlChild(packageDocument, 'package')
   const spineNode = getXmlChild(packageNode, 'spine')
   const tocId = getXmlAttribute(spineNode, 'toc')
@@ -261,7 +284,7 @@ function findTocEntryPath(manifestItems, packageDocument, packageDocumentPath) {
     }
 
     if ((tocId && manifestItem.id === tocId) || manifestItem.mediaType === 'application/x-dtbncx+xml') {
-      return joinPath(dirname(packageDocumentPath), manifestItem.href)
+      return resolveManifestEntryPath(archiveEntries, packageDocumentPath, manifestItem.href)
     }
   }
 
@@ -321,7 +344,7 @@ function buildReadingMetrics(archiveEntries, manifestItems, packageDocumentPath,
       continue
     }
 
-    const entryPath = joinPath(dirname(packageDocumentPath), manifestItem.href)
+    const entryPath = resolveManifestEntryPath(archiveEntries, packageDocumentPath, manifestItem.href)
     const entryName = String(manifestItem.href || '')
       .split('/')
       .pop()
@@ -339,7 +362,7 @@ function buildReadingMetrics(archiveEntries, manifestItems, packageDocumentPath,
   }
 
   const textCharCount = countReadableCharacters(combinedText)
-  const tocEntryPath = findTocEntryPath(manifestItems, packageDocument, packageDocumentPath)
+  const tocEntryPath = findTocEntryPath(archiveEntries, manifestItems, packageDocument, packageDocumentPath)
   const chapterCount = countTocNavPoints(parseXmlDocument(readArchiveText(archiveEntries, tocEntryPath)))
   const pageDivisor = CHARS_PER_PAGE
 
@@ -632,4 +655,5 @@ module.exports = {
   buildReadingMetrics,
   buildReadingMetricsFromBytes,
   createTextEntrySizeGuard,
+  resolveManifestEntryPath,
 }

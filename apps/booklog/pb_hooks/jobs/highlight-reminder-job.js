@@ -78,13 +78,7 @@ function findHighlightBookTitle(highlightRecord) {
  * @returns {Array<any>} 알림 대상 user_settings 목록
  */
 function findHighlightReminderSettings() {
-  return $app.findRecordsByFilter(
-    'user_settings',
-    'push_enabled = true && highlight_push_cycle > 0',
-    '-updated',
-    500,
-    0
-  )
+  return $app.findRecordsByFilter('user_settings', 'push_enabled = true && highlight_push_cycle > 0', '-updated', 0, 0)
 }
 
 /**

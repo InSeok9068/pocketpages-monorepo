@@ -41,6 +41,14 @@ onBootstrap(function (event) {
     $app.save(highlight)
   }
 
+  const otherBookHighlight = new Record($app.findCollectionByNameOrId('book_highlights'))
+  otherBookHighlight.set('id', 'otherquote00001')
+  otherBookHighlight.set('user_id', user.id)
+  otherBookHighlight.set('book_id', 'book00000000002')
+  otherBookHighlight.set('quote_text', '다른 책의 문구')
+  otherBookHighlight.set('highlighted_at', new Date(Date.UTC(2026, 2, 1)).toISOString())
+  $app.save(otherBookHighlight)
+
   // 홈은 읽는 중인 책부터 50권만 보여 주므로, 이 완독 책은 홈 목록 밖에 있습니다.
   const finishedBook = new Record($app.findCollectionByNameOrId('books'))
   finishedBook.set('id', 'finishedbook001')
