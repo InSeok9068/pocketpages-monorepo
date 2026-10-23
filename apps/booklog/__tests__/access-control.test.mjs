@@ -288,6 +288,59 @@ test('Concurrent uploads of the same new EPUB leave one book, one stored file an
   for (const message of messages) assert.doesNotMatch(message, /UNIQUE|constraint|validation_/i)
 })
 
+test('Different readers uploading the same new EPUB at once share one book and file, each with their own shelf', async () => {
+  const { zipSync, strToU8 } = require('fflate')
+  const title = 'shared-concurrent-upload'
+  const bytes = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+    ),
+    'OPS/book.opf': strToU8(
+      '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>' + title + '</dc:title><dc:creator>공유 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+    ),
+    // 분석에 시간이 걸려야 세 요청이 실제로 겹치므로, 본문을 실제 책 한 권 정도로 키웁니다.
+    'OPS/body.xhtml': strToU8(
+      '<html><body>'
+        + Array.from({ length: 400 }, (_, index) => '<p>' + index + '번째 문단은 여러 독자가 같은 파일을 동시에 올려도 하나로 남는지 확인합니다.</p>').join('')
+        + '</body></html>'
+    ),
+  })
+  const readers = [1, 2, 4]
+  const responses = await Promise.all(
+    readers.map((user) => {
+      const form = new FormData()
+      form.set('epubFile', new Blob([bytes], { type: 'application/epub+zip' }), title + '.epub')
+      return fetch(service.baseUrl + '/xapi/epub/upload', {
+        method: 'POST',
+        headers: sessions[user],
+        redirect: 'manual',
+        body: form,
+      })
+    })
+  )
+  const messages = responses.map((response) => decodeURIComponent(response.headers.get('location') || ''))
+  for (const response of responses) assert.equal(response.status, 303, messages.join('\n'))
+  for (const message of messages) {
+    assert.doesNotMatch(message, /UNIQUE|constraint|validation_/i)
+    assert.match(message, /EPUB 파일과 도서 메타데이터를 저장했습니다\.|기존 책과 파일을 찾아 서재에 연결했습니다\./, message)
+  }
+
+  const state = await (await request('/_test/upload-state?title=' + encodeURIComponent(title))).json()
+  assert.equal(state.bookCount, 1, messages.join('\n'))
+  assert.equal(state.files.length, 1, messages.join('\n'))
+  assert.deepEqual(
+    state.shelves.map((shelf) => shelf.userId).sort(),
+    ['reviewuser00001', 'reviewuser00002', 'reviewuser00004'],
+    'every reader gets their own shelf entry'
+  )
+  assert.ok(
+    state.shelves.every((shelf) => shelf.bookFileId === state.files[0].id),
+    'all shelves point at the one shared file'
+  )
+  assert.ok(existsSync(path.join(state.storageRoot, state.files[0].path)), 'stored EPUB file exists')
+})
+
 test('Renamed legacy EPUBs reuse the same file, while equal-size different contents stay separate', async () => {
   const { zipSync, strToU8 } = require('fflate')
   const title = 'legacy-hash-rename-case'

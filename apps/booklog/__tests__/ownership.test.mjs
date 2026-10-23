@@ -224,6 +224,44 @@ test('A stranger who shelves the same book cannot change or delete the owner’s
   assert.deepEqual((await state()).highlight, ownerRecords.highlight)
 })
 
+test('Bookmarks are saved and listed for their reader, and only that reader can delete them', async () => {
+  async function api(route, user, input) {
+    const response = await request(route, user, input)
+    return { status: response.status, body: await response.json() }
+  }
+  const place = { bookId, bookFileId: 'ownedfile000001' }
+  const listIds = async (user) =>
+    ((await api('/api/books/list-bookmarks', user, place)).body.bookmarks || []).map((bookmark) => bookmark.id)
+
+  const saved = await api('/api/books/save-bookmark', owner, {
+    ...place,
+    locator: 'epubcfi(/6/2!/4/2/1:0)',
+    href: 'chapter.xhtml',
+    chapterLabel: '1장',
+    progressPercent: '12',
+  })
+  assert.equal(saved.status, 200)
+  const bookmarkId = saved.body.bookmark.id
+  assert.equal(saved.body.bookmark.label, '1장 · 12%')
+  assert.ok((await listIds(owner)).includes(bookmarkId), 'the saved bookmark is listed for its reader')
+
+  const intruder = await api('/api/books/save-bookmark', outsider, { ...place, href: 'chapter.xhtml' })
+  assert.equal(intruder.status, 404, 'a reader without the book on their shelf cannot add a bookmark to it')
+
+  for (const user of [stranger, outsider]) {
+    const denied = await api('/api/books/delete-bookmark', user, { bookId, bookmarkId })
+    assert.equal(denied.status, 400, user)
+    assert.equal(denied.body.ok, false, user)
+  }
+  assert.ok((await listIds(owner)).includes(bookmarkId), 'other readers could not delete it')
+
+  const deleted = await api('/api/books/delete-bookmark', owner, { bookId, bookmarkId })
+  assert.deepEqual(deleted, { status: 200, body: { ok: true, message: '책갈피를 삭제했습니다.', id: bookmarkId } })
+  assert.ok(!(await listIds(owner)).includes(bookmarkId))
+  assert.equal((await api('/api/books/delete-bookmark', owner, { bookId, bookmarkId })).status, 400)
+  assert.equal((await state()).bookmark, true, 'the reader’s other bookmark is untouched')
+})
+
 test('The owner can edit and remove their own records, and leaving the shelf clears them all', async () => {
   const shared = { bookId, highlightId: 'ownerquote00001' }
 
