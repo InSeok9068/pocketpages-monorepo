@@ -482,7 +482,7 @@ window.booklogAudio = (function () {
   }
 
   /**
-   * 음성 구간이 있는 이전·다음 챕터의 처음부터 재생합니다.
+   * 음성 구간이 있는 이전·다음 챕터의 처음으로 옮깁니다. 재생 중이었으면 이어 재생하고, 멈춰 있었으면 멈춘 채로 둡니다.
    * @param {number} direction 1이면 다음 챕터, -1이면 이전 챕터
    * @returns {void}
    */
@@ -491,6 +491,7 @@ window.booklogAudio = (function () {
     if (!session || session.state.cloudAudioBusy) return
     var target = direction > 0 ? session.nextSectionIndex : session.previousSectionIndex
     if (!(target >= 0)) return
+    var wasPaused = !session.state.cloudAudioActive
     savePosition(session, true, false)
     haltCurrent(session)
     session.completed = false
@@ -502,6 +503,7 @@ window.booklogAudio = (function () {
     session.resumeSeconds = 0
     session.nextChunk = null
     session.prefetchedKey = ''
+    session.holdPaused = wasPaused
     playChunk(session)
   }
 

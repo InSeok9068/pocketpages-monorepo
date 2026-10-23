@@ -3994,6 +3994,32 @@ window.booklogReaderLogic = (function () {
     })
   }
 
+  function deleteCachedBookBuffer() {
+    return openReaderCacheDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var transaction = null
+
+        if (!db) {
+          resolve()
+          return
+        }
+
+        transaction = db.transaction(READER_CACHE_STORE_NAME, 'readwrite')
+        transaction.oncomplete = function () {
+          resolve()
+        }
+        transaction.onerror = transaction.onabort = function () {
+          reject(transaction.error || new Error('EPUB 캐시를 지우지 못했습니다.'))
+        }
+        transaction.objectStore(READER_CACHE_STORE_NAME).delete(readerCacheKey)
+      }).finally(function () {
+        if (db) {
+          db.close()
+        }
+      })
+    })
+  }
+
   function writeCachedProgressLocations(serializedLocations) {
     return openReaderCacheDb().then(function (db) {
       if (!db) {
@@ -4673,6 +4699,37 @@ window.booklogReaderLogic = (function () {
     })
   }
 
+  function renderDownloadedBook(component) {
+    return fetchBookBuffer().then(function (buffer) {
+      bookCacheWritePromise = writeCachedBookBuffer(buffer).catch(function (exception) {
+        console.warn('page/books/[bookId]/read:cache-write-skipped', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+      })
+      return renderBookBuffer(component, buffer)
+    })
+  }
+
+  function discardRenderedBook() {
+    var container = document.getElementById('epub-reader')
+
+    try {
+      if (renditionInstance) {
+        renditionInstance.destroy()
+      }
+      if (bookInstance) {
+        bookInstance.destroy()
+      }
+    } catch (exception) {}
+
+    renditionInstance = null
+    bookInstance = null
+
+    if (container) {
+      container.innerHTML = ''
+    }
+  }
+
   function renderBookBuffer(component, buffer) {
     console.debug('page/books/[bookId]/read:fetch-buffer', {
       byteLength: buffer && buffer.byteLength ? buffer.byteLength : 0,
@@ -4740,7 +4797,13 @@ window.booklogReaderLogic = (function () {
       updateCurrentLocation(component, location)
     })
 
-    return bookInstance.ready.then(function () {
+    // 깨진 EPUB은 epub.js가 ready를 끝내지 않고 openFailed만 알려, 기다리지 않고 실패로 넘깁니다.
+    return new Promise(function (resolve, reject) {
+      bookInstance.on('openFailed', function () {
+        reject(new Error('EPUB 파일을 열지 못했습니다.'))
+      })
+      bookInstance.ready.then(resolve, reject)
+    }).then(function () {
       restoreCachedProgressLocations(component)
 
       try {
@@ -4822,7 +4885,19 @@ window.booklogReaderLogic = (function () {
           })
 
           bookCacheWritePromise = touchCachedBookBuffer().catch(function () {})
-          return cachedBuffer
+          return renderBookBuffer(component, cachedBuffer).catch(function (exception) {
+            // 기기에 남은 파일이 깨졌으면 매번 같은 실패를 반복하므로, 지우고 서버에서 한 번 더 받습니다.
+            console.warn('page/books/[bookId]/read:cache-render-failed', {
+              message: String(exception && exception.message ? exception.message : exception),
+            })
+            discardRenderedBook()
+            cachedProgressLocations = ''
+            return deleteCachedBookBuffer()
+              .catch(function () {})
+              .then(function () {
+                return renderDownloadedBook(component)
+              })
+          })
         }
 
         console.debug('page/books/[bookId]/read:cache-miss', {
@@ -4830,17 +4905,7 @@ window.booklogReaderLogic = (function () {
           cacheKey: readerCacheKey,
         })
 
-        return fetchBookBuffer().then(function (buffer) {
-          bookCacheWritePromise = writeCachedBookBuffer(buffer).catch(function (exception) {
-            console.warn('page/books/[bookId]/read:cache-write-skipped', {
-              message: String(exception && exception.message ? exception.message : exception),
-            })
-          })
-          return buffer
-        })
-      })
-      .then(function (buffer) {
-        return renderBookBuffer(component, buffer)
+        return renderDownloadedBook(component)
       })
       .then(function () {
         component.loadingSavedPosition = true
@@ -4853,6 +4918,7 @@ window.booklogReaderLogic = (function () {
       })
       .then(function () {
         component.loading = false
+        component.bookReady = true
         scheduleFinishPromptIfNeeded(component)
         startAutoSave(component)
         startReadingSession(component)
@@ -5188,10 +5254,12 @@ window.booklogReaderLogic = (function () {
         component.loading = false
       })
       .catch(function (exception) {
+        var message = String(exception && exception.message ? exception.message : exception)
+
         component.loading = false
-        component.errorMessage = String(exception && exception.message ? exception.message : exception)
+        component.showSavePositionMessage(message)
         console.error('page/books/[bookId]/read:goto-search-result:failed', {
-          message: component.errorMessage,
+          message: message,
           cfi: target,
         })
       })
@@ -5216,10 +5284,12 @@ window.booklogReaderLogic = (function () {
         component.loading = false
       })
       .catch(function (exception) {
+        var message = String(exception && exception.message ? exception.message : exception)
+
         component.loading = false
-        component.errorMessage = String(exception && exception.message ? exception.message : exception)
+        component.showSavePositionMessage(message)
         console.error('page/books/[bookId]/read:goto-toc-item:failed', {
-          message: component.errorMessage,
+          message: message,
           href: target,
         })
       })
@@ -5438,7 +5508,8 @@ window.booklogReaderLogic = (function () {
   function saveBookmark(component) {
     var progress = getCurrentProgressPayload(component)
 
-    if (!component || component.bookmarksSaving) {
+    // 목록을 받는 중에 저장하면 늦게 온 목록이 방금 저장한 책갈피를 덮어써 빠뜨립니다.
+    if (!component || component.bookmarksSaving || component.bookmarksLoading) {
       return
     }
 

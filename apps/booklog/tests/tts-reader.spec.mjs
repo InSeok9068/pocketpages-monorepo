@@ -476,3 +476,87 @@ test('A playback speed change applies to the voice playing now and stays for the
   expect(await rate(), 'the next part keeps the chosen speed').toBe(1.2)
   expect(errors).toEqual([])
 })
+
+test('Moving to another chapter keeps a paused audiobook paused and a playing one playing', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit' && process.platform === 'win32',
+    'Windows Playwright WebKit rejects standalone PCM WAV playback; verify Safari on an Apple device.'
+  )
+  const errors = []
+  const saves = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const chapter = (sectionIndex) => ({
+    chunkId: 'chapter' + sectionIndex + '0000000',
+    chunkCount: 1,
+    timeline: [10],
+    sectionOrder: [0, 1],
+    sectionIndex,
+    parts: [{ text: sectionIndex + 1 + '장 낭독', durationSeconds: 10 }],
+  })
+  const body = renderReader(true)
+  await page.route(
+    (url) => url.protocol === 'http:' || url.protocol === 'https:',
+    async (route) => {
+      const url = new URL(route.request().url())
+      if (url.pathname.startsWith('/assets/')) {
+        return route.fulfill({ path: fileURLToPath(new URL(url.pathname.slice(1), pagesRoot)) })
+      }
+      if (url.pathname === '/test.epub')
+        return route.fulfill({ body: Buffer.from(epub), contentType: 'application/epub+zip' })
+      if (url.pathname === '/api/books/audio-chunk') {
+        return route.fulfill({ json: audioChunkPayload(chapter(Number(url.searchParams.get('sectionIndex')))) })
+      }
+      if (url.pathname === '/xapi/books/audio-file') return route.fulfill({ body: wav, contentType: 'audio/wav' })
+      if (url.pathname === '/api/books/audio-progress') {
+        if (route.request().method() === 'POST') {
+          const form = await readForm(route)
+          const inputError = audioProgressInputError(form)
+          if (inputError) return badRequest(route, inputError)
+          saves.push({ chunkId: form.get('chunkId'), seconds: Number(form.get('seconds')) })
+          return route.fulfill({ json: { ok: true } })
+        }
+        return route.fulfill({ json: audioProgressPayload(null, [10]) })
+      }
+      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+      if (url.pathname === '/api/books/list-highlights') {
+        return route.fulfill({ json: listHighlightsPayload([], await readForm(route)) })
+      }
+      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, id: 'session00000001' } })
+      return route.fulfill({ contentType: 'text/html', body: readerHtml(body) })
+    }
+  )
+  const player = page.locator('#reader-cloud-audio')
+  const chapterOrder = () =>
+    page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).cloudAudioChapterOrder)
+  const pause = page.getByRole('button', { name: '일시 정지', exact: true })
+  const play = page.getByRole('button', { name: '재생', exact: true })
+
+  await page.goto('/books/book/read')
+  await openReadAloudPanel(page)
+  await page.getByRole('button', { name: '이어 듣기', exact: true }).click()
+  await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
+  await expect(pause).toBeVisible()
+  await pause.click()
+  await expect(play).toBeVisible()
+
+  await page.getByRole('button', { name: '다음 챕터' }).click()
+  await expect.poll(chapterOrder).toBe('2 / 2')
+  await expect.poll(() => saves.some((save) => save.chunkId === 'chapter10000000' && save.seconds === 0)).toBe(true)
+  expect(await player.evaluate((audio) => audio.paused), 'a paused audiobook stays paused in the new chapter').toBe(
+    true
+  )
+  await expect(play).toBeVisible()
+
+  await play.click()
+  await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
+  await expect(pause).toBeVisible()
+  await page.getByRole('button', { name: '이전 챕터' }).click()
+  await expect.poll(chapterOrder).toBe('1 / 2')
+  await expect
+    .poll(() => player.evaluate((audio) => !audio.paused), 'a playing audiobook keeps playing in the new chapter')
+    .toBe(true)
+  expect(errors).toEqual([])
+})

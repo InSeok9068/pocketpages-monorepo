@@ -1037,6 +1037,48 @@ test('Changing font size, line spacing and margins keeps the same paragraph at t
   expect(await readingSpot(page), 'after quick repeated changes').toBe(spot)
 })
 
+test('Moving inside an open book says it is moving, not loading the file', async ({ page }) => {
+  await openReader(page)
+  await page.evaluate(() => {
+    const overlay = document.querySelector('[x-show="loading"]')
+    window.__overlayTexts = []
+    const sample = () => {
+      if (window.getComputedStyle(overlay).display !== 'none') window.__overlayTexts.push(overlay.textContent.trim())
+      window.requestAnimationFrame(sample)
+    }
+    sample()
+  })
+
+  await goToChapter(page, 3)
+  const shown = await page.evaluate(() => [...new Set(window.__overlayTexts)])
+  expect(shown).toEqual(['위치로 이동하는 중입니다.'])
+})
+
+test('A move that fails shows a short notice and leaves no error over the book', async ({ page }) => {
+  await openReader(page)
+  const messages = () =>
+    page.evaluate(() => {
+      const data = window.Alpine.$data(document.querySelector('section[x-data]'))
+      return { error: data.errorMessage, notice: data.savePositionMessage }
+    })
+
+  for (const move of ['goToTocItem', 'goToSearchResult']) {
+    await page.evaluate(
+      (move) =>
+        window.Alpine.$data(document.querySelector('section[x-data]'))[move]({
+          href: 'missing.xhtml',
+          cfi: 'missing.xhtml',
+        }),
+      move
+    )
+    await expect.poll(async () => (await messages()).notice, move).not.toBe('')
+    expect((await messages()).error, move).toBe('')
+    await expect.poll(async () => (await messages()).notice, move + ' notice goes away').toBe('')
+    expect((await messages()).error, move).toBe('')
+    await expect(page.getByText('위치로 이동하는 중입니다.')).toBeHidden()
+  }
+})
+
 test('A chapter drawn after the reading settings changed uses the same settings', async ({ page }) => {
   await openReader(page)
   const before = await paragraphStyle(page, '1장 문단 1입니다')
@@ -1158,4 +1200,95 @@ test('The device keeps five books and drops the one opened longest ago when anot
   await waitUntilLoaded(page)
   expect(state.epubDownloads, 'the book just added is read from the device').toBe(2)
   expect(await cachedBookKeys(page)).toEqual([current, ...older.slice(1)].sort())
+})
+
+test('A broken copy on the device is replaced by downloading the book again', async ({ page }) => {
+  const state = await openReader(page)
+  await expect.poll(() => cachedBookKeys(page)).toHaveLength(1)
+  const [current] = await cachedBookKeys(page)
+  const cachedSize = () =>
+    page.evaluate(
+      (current) =>
+        new Promise((resolve) => {
+          const request = indexedDB.open('booklog-reader-cache')
+          request.onsuccess = () => {
+            const db = request.result
+            const entry = db.transaction('epubBuffers').objectStore('epubBuffers').get(current)
+            entry.onsuccess = () => {
+              db.close()
+              resolve(entry.result ? entry.result.byteLength : 0)
+            }
+          }
+        }),
+      current
+    )
+  const fullSize = await cachedSize()
+
+  await page.evaluate(
+    (current) =>
+      new Promise((resolve) => {
+        const request = indexedDB.open('booklog-reader-cache')
+        request.onsuccess = () => {
+          const db = request.result
+          const transaction = db.transaction('epubBuffers', 'readwrite')
+          const broken = new TextEncoder().encode('not an epub file').buffer
+          transaction.objectStore('epubBuffers').put({
+            cacheKey: current,
+            buffer: broken,
+            byteLength: broken.byteLength,
+            lastOpenedAt: Date.now(),
+          })
+          transaction.oncomplete = () => {
+            db.close()
+            resolve()
+          }
+        }
+      }),
+    current
+  )
+
+  await page.reload()
+  await waitUntilLoaded(page)
+  await expectChapter(page, 1)
+  expect(state.epubDownloads, 'the broken copy makes the reader download the book once more').toBe(2)
+  expect(await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).errorMessage)).toBe(
+    ''
+  )
+  await expect.poll(cachedSize, 'the device copy is replaced with the real book').toBe(fullSize)
+
+  await page.reload()
+  await waitUntilLoaded(page)
+  await expectChapter(page, 1)
+  expect(state.epubDownloads, 'the repaired copy is used next time').toBe(2)
+})
+
+test('A bookmark cannot be saved while the list is still loading, so the new one is never dropped', async ({
+  page,
+}) => {
+  const state = await openReader(page)
+  let releaseList = null
+  await page.route('**/api/books/list-bookmarks', async (route) => {
+    if (releaseList === null) {
+      await new Promise((resolve) => {
+        releaseList = resolve
+      })
+    }
+    return route.fallback()
+  })
+  const save = page.getByRole('button', { name: '현재 위치 저장' })
+
+  await openMenuItem(page, '책갈피')
+  await expect.poll(() => typeof releaseList).toBe('function')
+  await expect(save, 'saving waits for the list').toBeDisabled()
+
+  releaseList()
+  await expect(save).toBeEnabled()
+  await save.click()
+  await expect(page.getByText('책갈피를 저장했습니다.')).toBeVisible()
+  const listed = () =>
+    page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).bookmarks.length)
+  await expect.poll(listed, 'the saved bookmark stays in the list').toBe(1)
+  await page.waitForTimeout(500)
+  expect(await listed()).toBe(1)
+  expect(state.bookmarks).toHaveLength(1)
 })
