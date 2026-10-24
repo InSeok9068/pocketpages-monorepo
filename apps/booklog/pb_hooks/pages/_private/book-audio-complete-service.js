@@ -115,6 +115,8 @@ function sourcePlan(app, fileId, configHash) {
           section: Number(r.get('section_index')),
           chunk: Number(r.get('chunk_index')),
           text: String(r.get('input_text')),
+          // 요청이 없으면 직전 버전의 원본 지문을 유지합니다.
+          regenerate: r.get('regenerate_requested') ? true : undefined,
         }
       }),
     parts,
@@ -131,6 +133,7 @@ function validPlan(plan) {
     return false
   const next = {}
   return plan.roots.every(function (root) {
+    if (root.regenerate) return false
     const expected = next[root.section] || 0
     if (root.chunk !== expected) return false
     next[root.section] = expected + 1

@@ -1305,6 +1305,9 @@ window.booklogAudio = (function () {
   }
 
   function fallbackFromCompleteAudio(session) {
+    // 오류가 timeupdate보다 먼저 도착해도 실제 미디어 위치에서 대체 재생합니다.
+    syncCompletePosition(session, false)
+    if (!isActive(session) || !session.complete) return
     var seconds = session.positionReady
       ? session.partOffset + audioSeconds(session)
       : session.completeResume - session.completeEntry.start

@@ -441,77 +441,92 @@ test('Resuming after chunks were re-planned moves a stale position to the neares
   )
 })
 
-test('Real Chrome buffers authenticated split MP3s, restores DB progress after reload and completes each chapter', async () => {
-  await scenario(7, 'browser-buffer')
-  const browser = await chromium.launch({ channel: 'chrome', headless: true })
-  const context = await browser.newContext()
-  try {
-    await context.addCookies(
-      cookie.split('; ').map((pair) => {
-        const separator = pair.indexOf('=')
-        return { name: pair.slice(0, separator), value: pair.slice(separator + 1), url: service.baseUrl }
+for (const mode of ['buffer', 'file']) {
+  test(`Real Chrome ${mode} playback restores split-MP3 DB progress after reload and completes each chapter`, async () => {
+    await scenario(7, 'browser-buffer')
+    const browser = await chromium.launch({ channel: 'chrome', headless: true })
+    const context = await browser.newContext()
+    try {
+      if (mode === 'file')
+        await context.addInitScript(() => {
+          window.MediaSource = undefined
+          window.ManagedMediaSource = undefined
+        })
+      await context.addCookies(
+        cookie.split('; ').map((pair) => {
+          const separator = pair.indexOf('=')
+          return { name: pair.slice(0, separator), value: pair.slice(separator + 1), url: service.baseUrl }
+        })
+      )
+      const page = await context.newPage()
+      const errors = []
+      const apiFailures = []
+      const chunkRequests = []
+      page.on('pageerror', (error) => errors.push(error.message))
+      page.on('response', (response) => {
+        if (response.url().includes('/api/books/audio-') && response.status() >= 400)
+          apiFailures.push(response.status())
       })
-    )
-    const page = await context.newPage()
-    const errors = []
-    const apiFailures = []
-    const chunkRequests = []
-    page.on('pageerror', (error) => errors.push(error.message))
-    page.on('response', (response) => {
-      if (response.url().includes('/api/books/audio-') && response.status() >= 400) apiFailures.push(response.status())
-    })
-    page.on('request', (request) => {
-      const url = new URL(request.url())
-      if (url.pathname === '/api/books/audio-chunk')
-        chunkRequests.push([url.searchParams.get('sectionIndex'), url.searchParams.get('chunkIndex')])
-    })
-    await page.goto(service.baseUrl + '/_test/buffer-player')
-    await page.click('#start')
-    await page.waitForFunction(() => window.state.cloudAudioActive)
-    await page.evaluate(() => window.booklogAudio.seekTo(4.4))
-    await page.waitForFunction(() => !window.state.cloudAudioBusy && window.state.cloudAudioPosition >= 4.4)
-    await page.evaluate(() => window.booklogAudio.toggle())
-    await page.waitForFunction(() => !window.state.cloudAudioActive)
-    await page.waitForFunction(
-      () => Object.keys(JSON.parse(localStorage.getItem('booklog-audio-pending:browser-e2e') || '{}')).length === 0
-    )
-    const query = new URLSearchParams({ bookId: bookId(7), fileId: fileId(7) })
-    const loaded = await (
-      await fetch(service.baseUrl + '/api/books/audio-progress?' + query, { headers: { Cookie: cookie } })
-    ).json()
-    assert.equal(loaded.progress.sectionIndex, 0)
-    assert.equal(loaded.progress.chunkIndex, 0)
-    assert.ok(loaded.progress.seconds >= 4.4 && loaded.progress.seconds < 5.5, JSON.stringify(loaded.progress))
-    const savedChapterSeconds = loaded.progress.chapterSeconds
-    chunkRequests.length = 0
-    await page.reload()
-    await page.click('#start')
-    await page.waitForFunction(() => window.state.cloudAudioActive)
-    assert.deepEqual(chunkRequests[0], ['0', '0'])
-    assert.ok(Math.abs((await page.evaluate(() => window.state.cloudAudioPosition)) - savedChapterSeconds) < 0.5)
-    const src = await page.locator('audio').getAttribute('src')
-    await page.waitForFunction(() => window.state.cloudAudioDetail.startsWith('1 / 1'))
-    assert.equal(await page.locator('audio').getAttribute('src'), src)
-    await page.waitForFunction(() => window.state.cloudAudioSession === false)
-    await page.waitForFunction(
-      () => Object.keys(JSON.parse(localStorage.getItem('booklog-audio-pending:browser-e2e') || '{}')).length === 0
-    )
-    const rows = await (await fetch(service.baseUrl + '/_test/buffer-progress')).json()
-    assert.deepEqual(
-      rows.map((row) => [row.section, row.completed]),
-      [
-        [0, true],
-        [2, true],
-      ]
-    )
-    assert.deepEqual(apiFailures, [])
-    assert.deepEqual(errors, [])
-    assert.equal(await page.locator('audio').getAttribute('src'), null)
-  } finally {
-    await context.close()
-    await browser.close()
-  }
-})
+      page.on('request', (request) => {
+        const url = new URL(request.url())
+        if (url.pathname === '/api/books/audio-chunk')
+          chunkRequests.push([url.searchParams.get('sectionIndex'), url.searchParams.get('chunkIndex')])
+      })
+      await page.goto(service.baseUrl + '/_test/buffer-player')
+      await page.click('#start')
+      await page.waitForFunction(() => window.state.cloudAudioActive)
+      await page.evaluate(() => window.booklogAudio.seekTo(4.4))
+      await page.waitForFunction(() => !window.state.cloudAudioBusy && window.state.cloudAudioPosition >= 4.4)
+      await page.evaluate(() => window.booklogAudio.toggle())
+      await page.waitForFunction(() => !window.state.cloudAudioActive)
+      await page.waitForFunction(
+        () => Object.keys(JSON.parse(localStorage.getItem('booklog-audio-pending:browser-e2e') || '{}')).length === 0
+      )
+      const query = new URLSearchParams({ bookId: bookId(7), fileId: fileId(7) })
+      const loaded = await (
+        await fetch(service.baseUrl + '/api/books/audio-progress?' + query, { headers: { Cookie: cookie } })
+      ).json()
+      assert.equal(loaded.progress.sectionIndex, 0)
+      assert.equal(loaded.progress.chunkIndex, 0)
+      // 버퍼 전역 시간에서 조각 시간을 빼면 부동소수점 오차가 생깁니다.
+      assert.ok(loaded.progress.seconds >= 4.39 && loaded.progress.seconds < 5.5, JSON.stringify(loaded.progress))
+      const savedChapterSeconds = loaded.progress.chapterSeconds
+      chunkRequests.length = 0
+      await page.reload()
+      await page.click('#start')
+      await page.waitForFunction(() => window.state.cloudAudioActive)
+      // play 이벤트보다 메타데이터·이어 듣기 위치 복원이 늦게 완료될 수 있습니다.
+      await page.waitForFunction(
+        (saved) => Math.abs(window.state.cloudAudioPosition - saved) < 0.5,
+        savedChapterSeconds
+      )
+      assert.deepEqual(chunkRequests[0], ['0', '0'])
+      assert.ok(Math.abs((await page.evaluate(() => window.state.cloudAudioPosition)) - savedChapterSeconds) < 0.5)
+      const src = await page.locator('audio').getAttribute('src')
+      await page.waitForFunction(() => window.state.cloudAudioDetail.startsWith('1 / 1'))
+      if (mode === 'buffer') assert.equal(await page.locator('audio').getAttribute('src'), src)
+      else assert.notEqual(await page.locator('audio').getAttribute('src'), src)
+      await page.waitForFunction(() => window.state.cloudAudioSession === false)
+      await page.waitForFunction(
+        () => Object.keys(JSON.parse(localStorage.getItem('booklog-audio-pending:browser-e2e') || '{}')).length === 0
+      )
+      const rows = await (await fetch(service.baseUrl + '/_test/buffer-progress')).json()
+      assert.deepEqual(
+        rows.map((row) => [row.section, row.completed]),
+        [
+          [0, true],
+          [2, true],
+        ]
+      )
+      assert.deepEqual(apiFailures, [])
+      assert.deepEqual(errors, [])
+      assert.equal(await page.locator('audio').getAttribute('src'), null)
+    } finally {
+      await context.close()
+      await browser.close()
+    }
+  })
+}
 
 async function completeControl(index, options = {}) {
   const response = await fetch(service.baseUrl + '/_test/complete-control', {
@@ -839,6 +854,59 @@ test(
     assert.equal(merged.result.status, 'ready', JSON.stringify(merged))
     const after = await completeControl(11, { hideComplete: true, expire: true, run: true })
     assert.equal(after.chunks, merged.chunks)
+    assert.equal(after.audioChunks, merged.audioChunks)
+    assert.equal(after.records.find((r) => r.status === 'ready').cleanupDone, false)
+  }
+)
+
+test(
+  'A regeneration blocked by another model reservation preserves the ready complete edition until it can run',
+  { skip: hasMediaTools ? false : 'ffmpeg and ffprobe are required' },
+  async () => {
+    await prepareComplete(11)
+    await completeRequest(11, { cleanup: 'keep' })
+    const merged = await completeControl(11, { run: true })
+    assert.equal(merged.result.status, 'ready')
+    const readyId = merged.records.find((r) => r.status === 'ready').id
+    // 앞선 예약 시나리오의 일시 정지·실패 작업도 모델을 점유하므로 이 시험의 대기열을 분리합니다.
+    const existingJobs = await (await fetch(service.baseUrl + '/_test/audio-state')).json()
+    for (const job of existingJobs.jobs) {
+      if (job.file_id !== fileId(11) && job.model === flash) {
+        await control(Number(job.file_id.slice(4)), { status: 'completed' })
+      }
+    }
+    await scenario(9, 'plan')
+    await control(9, { status: 'running' })
+    try {
+      const deferred = await control(11, { regenerate: true, apply: true })
+      assert.equal(deferred.reset, 0)
+      assert.equal((await completeControl(11)).records.find((r) => r.status === 'ready')?.id, readyId)
+    } finally {
+      await control(9, { status: 'completed' })
+    }
+    const restarted = await control(11, { apply: true })
+    assert.equal(restarted.reset, 1)
+    assert.equal((await completeControl(11)).records.find((r) => r.id === readyId).status, 'retired')
+  }
+)
+
+test(
+  'A split-root regeneration request blocks merging, invalidates queued input and preserves chunks during cleanup',
+  { skip: hasMediaTools ? false : 'ffmpeg and ffprobe are required' },
+  async () => {
+    await prepareComplete(10)
+    await completeControl(10, { rootRegenerate: 'on' })
+    await completeRequest(10)
+    assert.equal((await completeControl(10)).records.filter((r) => r.status === 'queued').length, 0)
+    await completeControl(10, { rootRegenerate: 'off' })
+    await completeRequest(10)
+    const changed = await completeControl(10, { rootRegenerate: 'on', run: true })
+    assert.equal(changed.result.status, 'failed')
+    await completeControl(10, { rootRegenerate: 'off' })
+    await completeRequest(10)
+    const merged = await completeControl(10, { run: true })
+    assert.equal(merged.result.status, 'ready')
+    const after = await completeControl(10, { rootRegenerate: 'on', expire: true, run: true })
     assert.equal(after.audioChunks, merged.audioChunks)
     assert.equal(after.records.find((r) => r.status === 'ready').cleanupDone, false)
   }

@@ -52,9 +52,19 @@ routerAdd('POST', '/_test/complete-control', function (event) {
     failTool: false,
     dropSchema: false,
     hideComplete: false,
+    rootRegenerate: '',
   })
   event.bindBody(input)
   const service = require(__hooks + '/pages/_private/book-audio-complete-service.js')
+  if (input.rootRegenerate) {
+    const root = $app.findFirstRecordByFilter(
+      'book_audio_chunks',
+      "file_id = {:fileId} && status = 'split' && split_path = ''",
+      { fileId: input.fileId }
+    )
+    root.set('regenerate_requested', input.rootRegenerate === 'on')
+    $app.save(root)
+  }
   if (input.dropSchema) {
     $app.delete($app.findCollectionByNameOrId('book_audio_complete'))
     return event.json(200, { result: service.run($app) })
@@ -267,6 +277,11 @@ routerAdd('POST', '/_test/audio-scenario', function (event) {
     ])
   }
   if (input.name === 'browser-buffer') {
+    $app
+      .findRecordsByFilter('book_audio_progress', 'file_id = {:fileId}', '', 0, 0, { fileId: input.fileId })
+      .forEach(function (r) {
+        $app.delete(r)
+      })
     // 같은 시나리오를 다시 준비할 때 이전 분할 자식을 중복 생성하지 않습니다.
     $app
       .findRecordsByFilter('book_audio_chunks', 'file_id = {:fileId}', '', 0, 0, { fileId: input.fileId })

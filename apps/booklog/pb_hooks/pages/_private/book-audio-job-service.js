@@ -430,11 +430,6 @@ function applyRegenerateRequests(app, nowMs) {
       // 생성 중인 구간은 결과 저장과 겹치지 않도록 끝난 뒤 다음 실행에서 초기화합니다.
       if (chunk.get('status') === 'generating' && !generation.isClaimable(chunk, nowMs)) return
       const fileId = String(chunk.get('file_id'))
-      require(__hooks + '/pages/_private/book-audio-complete-service.js').invalidate(
-        txApp,
-        fileId,
-        String(chunk.get('config_hash'))
-      )
       const job = findJob(txApp, fileId, String(chunk.get('config_hash')))
       if (job && (job.get('status') === 'completed' || job.get('status') === 'failed')) {
         const occupied = audioData.getModelOptions(txApp, fileId).some(function (option) {
@@ -448,6 +443,8 @@ function applyRegenerateRequests(app, nowMs) {
         job.set('error_message', '')
         txApp.save(job)
       }
+      // 모델 점유로 미뤄질 때는 현재 완성본을 계속 제공하고, 실제 초기화 직전에만 해제합니다.
+      completeService.invalidate(txApp, fileId, String(chunk.get('config_hash')))
       // 반복 차단된 조각은 같은 본문을 다시 보내도 또 막혀, 더 작게 나눠 차단 문장만 기기 음성으로 남깁니다.
       if (generation.splitBlockedChunk(txApp, chunk)) {
         chunk.set('regenerate_requested', false)

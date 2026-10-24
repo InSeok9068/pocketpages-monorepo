@@ -476,6 +476,32 @@ test('A complete-file playback error restores the split-chunk position in the ex
   }
 })
 
+test('A complete-file error before the next timeupdate resumes the actual chapter and local position', async () => {
+  const p = await createPlayer()
+  try {
+    await start(p)
+    await p.page.evaluate((seconds) => {
+      const audio = document.querySelector('audio')
+      // 미디어 위치 변경 직후, 다음 timeupdate보다 오류가 먼저 도착합니다.
+      audio.currentTime = seconds * 3 + 0.3
+      audio.dispatchEvent(new Event('error'))
+    }, p.seconds)
+    await p.page.waitForFunction(
+      () => !window.state.cloudAudioBusy && document.querySelector('audio').src.startsWith('blob:')
+    )
+    await p.page.waitForFunction(() => document.querySelector('audio').readyState > 0)
+    await flush(p)
+    assert.equal(p.saves.at(-1).chunkId, 'chunk-2-0')
+    assert.ok(
+      Number(p.saves.at(-1).seconds) >= 0.25 && Number(p.saves.at(-1).seconds) < 1,
+      JSON.stringify(p.saves.at(-1))
+    )
+    assert.deepEqual(p.errors, [])
+  } finally {
+    await p.close()
+  }
+})
+
 test('Autoplay rejection keeps the complete URL ready for a manual play request', async () => {
   const p = await createPlayer()
   try {
