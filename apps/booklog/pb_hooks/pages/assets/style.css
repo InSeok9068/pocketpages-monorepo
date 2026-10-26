@@ -64,6 +64,15 @@ summary.list-none::-webkit-details-marker {
   transform: translateZ(0);
 }
 
+/* iOS Safari는 16px 미만 입력창을 누르면 화면을 확대하므로, iOS에서만 입력 글자를 16px로 맞춥니다. */
+@supports (-webkit-touch-callout: none) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 .booklog-linked-section {
   outline: 2px solid #9e6125;
   outline-offset: 4px;
