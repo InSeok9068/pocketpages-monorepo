@@ -7,6 +7,7 @@ window.booklogReaderLogic = (function () {
   var initialShelfStatus = String(readerConfig.initialShelfStatus || '')
   var bookInstance = null
   var renditionInstance = null
+  var renderedBookBuffer = null
   var tocLabelByHref = {}
   var currentLocation = null
   var readerContainer = null
@@ -34,6 +35,7 @@ window.booklogReaderLogic = (function () {
   var READING_SESSION_SAVE_INTERVAL_MS = 60000
   var READING_SESSION_IDLE_MS = 180000
   var NAVIGATION_SAVE_WAIT_MS = 2000
+  var INITIAL_RESTORE_TIMEOUT_MS = 8000
   var DISPLAY_SETTLE_TIMEOUT_MS = 1500
   var DISPLAY_SETTLE_RETRY_MS = 80
   var VISIBLE_TOP_TOLERANCE_PX = 64
@@ -3271,12 +3273,23 @@ window.booklogReaderLogic = (function () {
    * @returns {Promise<any>} 보정 후 epub.js 위치
    */
   function displayAt(target) {
-    return Promise.resolve(renditionInstance.display(target)).then(function (location) {
-      return settleDisplayedTarget(target).then(function () {
-        refillSectionsAfterMove()
-        return renditionInstance.currentLocation() || location
+    var rendition = renditionInstance
+    var queue = rendition.manager ? rendition.manager.q : null
+    // 이동은 보이지 않는 챕터를 모두 지우므로, 큐에서 챕터를 불러오던 확인이 있으면 끝난 뒤에 옮깁니다.
+    var displaying =
+      queue && (queue.running || queue.length())
+        ? Promise.resolve(queue.enqueue(function () {})).then(function () {
+            return rendition.display(target)
+          })
+        : rendition.display(target)
+
+    return Promise.resolve(displaying)
+      .then(function (location) {
+        return settleDisplayedTarget(target).then(function () {
+          refillSectionsAfterMove()
+          return rendition.currentLocation() || location
+        })
       })
-    })
   }
 
   // epub.js는 직접 스크롤을 옮긴 뒤 다음 스크롤 이벤트 하나를 무시하는데, 이미 그 자리여서 이벤트가 생기지 않으면 무시 표시가 남아
@@ -3291,7 +3304,12 @@ window.booklogReaderLogic = (function () {
     manager.ignore = false
 
     try {
-      Promise.resolve(manager.check()).catch(function (exception) {
+      // 큐 밖에서 확인하면 다른 확인과 겹쳐, 불러오던 챕터를 epub.js가 두 번 표시하거나 지워 이동이 끝나지 않습니다.
+      Promise.resolve(
+        manager.q.enqueue(function () {
+          return manager.check()
+        })
+      ).catch(function (exception) {
         console.warn('page/books/[bookId]/read:refill-sections:failed', {
           message: String(exception && exception.message ? exception.message : exception),
         })
@@ -3358,10 +3376,12 @@ window.booklogReaderLogic = (function () {
         var container = manager.container
 
         // 이동 중에 챕터를 더 붙이면 epub.js의 display가 끝나지 않습니다. 이동 뒤에는 refillSectionsAfterMove가 확인합니다.
+        // 저장 위치 응답을 기다리는 동안 붙이기 시작하면, 곧 이어질 이동이 불러오던 챕터를 지워 같은 문제가 생깁니다.
         if (
           !renditionInstance
           || renditionInstance.manager !== manager
           || renditionInstance.displaying
+          || isRestoringPosition
           || !container
           || container.scrollHeight > container.clientHeight + 1
         ) {
@@ -3414,6 +3434,8 @@ window.booklogReaderLogic = (function () {
       return Promise.resolve(false)
     }
 
+    var rendition = renditionInstance
+
     isRestoringPosition = true
     if (!isRetry) {
       prepareManualNavigation()
@@ -3425,6 +3447,10 @@ window.booklogReaderLogic = (function () {
 
     return requestSavedProgress()
       .then(function (payload) {
+        if (rendition !== renditionInstance) {
+          return false
+        }
+
         var locator = String(payload && payload.locator ? payload.locator : '')
         var href = String(payload && payload.href ? payload.href : '')
         var target = locator || href
@@ -3467,6 +3493,10 @@ window.booklogReaderLogic = (function () {
             function (location) {
               var progress = null
 
+              if (rendition !== renditionInstance) {
+                return false
+              }
+
               component.currentChapterLabel = String(
                 payload && payload.chapterLabel ? payload.chapterLabel : component.currentChapterLabel || ''
               )
@@ -3495,6 +3525,9 @@ window.booklogReaderLogic = (function () {
           )
       })
       .then(function (restored) {
+        if (rendition !== renditionInstance) {
+          return false
+        }
         hasResolvedSavedPosition = true
         if (component.errorMessage === POSITION_RESTORE_PENDING_MESSAGE) {
           component.errorMessage = ''
@@ -3502,6 +3535,9 @@ window.booklogReaderLogic = (function () {
         return restored
       })
       .catch(function (exception) {
+        if (rendition !== renditionInstance) {
+          return false
+        }
         if (!hasResolvedSavedPosition) {
           component.errorMessage = POSITION_RESTORE_PENDING_MESSAGE
           if (!restorePendingLocationKey) {
@@ -3519,8 +3555,41 @@ window.booklogReaderLogic = (function () {
         return false
       })
       .finally(function () {
-        isRestoringPosition = false
+        if (rendition === renditionInstance) {
+          isRestoringPosition = false
+        }
       })
+  }
+
+  // 처음 위치 복원이 끝나지 않으면 리더를 다시 만들어 처음부터 열고, 저장 위치는 자동 저장 때 다시 불러옵니다.
+  function restoreInitialPosition(component) {
+    var timerId = 0
+    var timeout = new Promise(function (resolve) {
+      timerId = window.setTimeout(function () {
+        resolve('timeout')
+      }, INITIAL_RESTORE_TIMEOUT_MS)
+    })
+
+    return Promise.race([restoreSavedPosition(component, { silent: true }), timeout]).then(function (result) {
+      window.clearTimeout(timerId)
+
+      if (result !== 'timeout') {
+        return result
+      }
+
+      console.warn('page/books/[bookId]/read:restore-timeout', {
+        bookId: bookId,
+        timeoutMs: INITIAL_RESTORE_TIMEOUT_MS,
+      })
+      isRestoringPosition = false
+      discardRenderedBook()
+
+      return renderBookBuffer(component, renderedBookBuffer).then(function () {
+        component.errorMessage = POSITION_RESTORE_PENDING_MESSAGE
+        restorePendingLocationKey = buildProgressKey(getCurrentProgressPayload(component))
+        return false
+      })
+    })
   }
 
   function shouldSkipAutoSave(component) {
@@ -4924,6 +4993,7 @@ window.booklogReaderLogic = (function () {
       byteLength: buffer && buffer.byteLength ? buffer.byteLength : 0,
     })
 
+    renderedBookBuffer = buffer
     bookInstance = window.ePub(buffer)
     renditionInstance = bookInstance.renderTo('epub-reader', {
       width: '100%',
@@ -5114,13 +5184,12 @@ window.booklogReaderLogic = (function () {
       .then(function () {
         component.loadingSavedPosition = true
 
-        return restoreSavedPosition(component, {
-          silent: true,
-        }).finally(function () {
+        return restoreInitialPosition(component).finally(function () {
           component.loadingSavedPosition = false
         })
       })
       .then(function () {
+        refillSectionsAfterMove()
         component.loading = false
         component.bookReady = true
         scheduleFinishPromptIfNeeded(component)

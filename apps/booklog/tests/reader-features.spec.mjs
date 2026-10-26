@@ -118,6 +118,8 @@ async function mockReader(page, book, body = readerBody) {
     epubStatus: 200,
     failures: new Set(),
     serverPosition: null,
+    loadProgressDelay: 0,
+    keepServerPosition: false,
   }
   await page.route(
     (url) => url.protocol === 'http:' || url.protocol === 'https:',
@@ -146,6 +148,7 @@ async function mockReader(page, book, body = readerBody) {
           }
         }
         if (url.pathname === '/api/books/load-progress') {
+          if (state.loadProgressDelay) await new Promise((resolve) => setTimeout(resolve, state.loadProgressDelay))
           return route.fulfill({ json: loadProgressPayload(state.serverPosition) })
         }
         if (url.pathname === '/api/books/save-progress') {
@@ -154,7 +157,7 @@ async function mockReader(page, book, body = readerBody) {
             state.requests.at(-1).status = 409
             return route.fulfill({ status: 409, json: conflict })
           }
-          state.serverPosition = positionFromForm(form)
+          if (!state.keepServerPosition) state.serverPosition = positionFromForm(form)
           state.requests.at(-1).status = 200
           return route.fulfill({ json: saveProgressPayload() })
         }
@@ -1639,4 +1642,99 @@ test('Picture pages drawn inside a full-height box still show their picture', as
       message: 'the inner picture page is drawn too',
     })
     .toBeGreaterThan(0)
+})
+
+// 표지 그림이 줄며 붙이는 다음 챕터를 불러오는 사이에 저장 위치로 옮기면, epub.js가 불러오던 챕터를 지워 이동이 끝나지 않았습니다.
+const pictureStartBook = smallBook(
+  'picture-start',
+  {
+    'cover.xhtml': xhtml(' <div><img alt="" src="front.png" /></div> '),
+    'author.xhtml': xhtml(
+      Array.from({ length: 6 }, (_, index) => '<p>지은이 소개 ' + (index + 1) + '. 작가가 걸어온 길입니다.</p>').join('')
+    ),
+    'inner1.xhtml': xhtml(' <div><img alt="" src="rear.png" /></div> '),
+    'inner2.xhtml': xhtml(' <div><img alt="" src="front.png" /></div> '),
+    'inner3.xhtml': xhtml(' <div><img alt="" src="rear.png" /></div> '),
+    'front.png': new Uint8Array(tallPng(1000, 1600)),
+    'rear.png': new Uint8Array(tallPng(1000, 1600)),
+    'c1.xhtml': xhtml(chapterBody(1)),
+    'c2.xhtml': xhtml(chapterBody(2)),
+  },
+  ['cover.xhtml', 'author.xhtml', 'inner1.xhtml', 'inner2.xhtml', 'inner3.xhtml', 'c1.xhtml', 'c2.xhtml']
+)
+
+test('Reopening at a picture page always finishes loading even when the saved position arrives during the first chapter fill', async ({
+  page,
+}) => {
+  const state = await openReader(page, pictureStartBook)
+  state.serverPosition = { locator: 'epubcfi(/6/8!/4/1:0)', href: 'inner2.xhtml', chapterLabel: '' }
+  state.keepServerPosition = true
+  const readerState = () =>
+    page.evaluate(() => {
+      const data = window.Alpine.$data(document.querySelector('section[x-data]'))
+      return {
+        ready: !data.loading && data.bookReady,
+        chaptersShown: document.querySelectorAll('#epub-reader iframe').length > 1,
+      }
+    })
+
+  for (const delay of [50, 80, 120, 50, 80, 120, 60, 100]) {
+    state.loadProgressDelay = delay
+    await page.reload()
+    await expect
+      .poll(readerState, { timeout: 6_000, message: 'reopen with a ' + delay + 'ms position response finishes loading' })
+      .toEqual({ ready: true, chaptersShown: true })
+  }
+})
+
+test('A first move to the saved position that never finishes reopens the reader and retries the position', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    let realEpub = null
+    window.__restoreHung = false
+    Object.defineProperty(window, 'ePub', {
+      configurable: true,
+      get: () =>
+        realEpub
+        && function (...args) {
+          const book = realEpub(...args)
+          const renderTo = book.renderTo.bind(book)
+          book.renderTo = (...renderArgs) => {
+            const rendition = renderTo(...renderArgs)
+            const display = rendition.display.bind(rendition)
+            rendition.display = (target) => {
+              if (!window.__restoreHung && String(target || '').indexOf('/6/6!') >= 0) {
+                window.__restoreHung = true
+                return new Promise(() => {})
+              }
+              return display(target)
+            }
+            return rendition
+          }
+          return book
+        },
+      set: (value) => {
+        realEpub = value
+      },
+    })
+  })
+  const warnings = []
+  page.on('console', (message) => {
+    if (message.type() === 'warning') warnings.push(message.text())
+  })
+  const state = await mockReader(page, featureBook)
+  state.serverPosition = { locator: 'epubcfi(/6/6!/4/2/1:0)', href: 'c3.xhtml', chapterLabel: '3장' }
+  await page.goto('/books/book/read')
+
+  const readerState = () =>
+    page.evaluate(() => {
+      const data = window.Alpine.$data(document.querySelector('section[x-data]'))
+      return { ready: !data.loading && data.bookReady }
+    })
+  await expect.poll(readerState, { timeout: 15_000, message: 'the reader becomes usable' }).toEqual({ ready: true })
+  expect(warnings.some((text) => text.includes('restore-timeout'))).toBe(true)
+  await expect
+    .poll(() => readingSpot(page), { timeout: 15_000, message: 'the saved position is opened on the retry' })
+    .toMatch(/^3장/)
 })
