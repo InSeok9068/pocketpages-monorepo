@@ -651,6 +651,14 @@ test('Listening follow pauses while the reader scrolls and resumes only near the
       return null
     }, index)
   const followTop = 700 / 5
+  // Safari는 본문 iframe의 입력 이벤트를 리더에 넘기지 않아, 입력 없이 바깥 스크롤 영역만 움직여 그 상황을 재현합니다.
+  const scrollReader = (delta) =>
+    page.evaluate((value) => {
+      const scroller = [document.querySelector('#epub-reader .epub-container'), document.getElementById('epub-reader')].find(
+        (element) => element && element.scrollHeight > element.clientHeight + 10
+      )
+      scroller.scrollBy({ top: value, behavior: 'instant' })
+    }, delta)
 
   await speak(0)
   await expect.poll(async () => (await spoken())?.index).toBe(0)
@@ -660,19 +668,12 @@ test('Listening follow pauses while the reader scrolls and resumes only near the
     .toBeGreaterThan(followTop - 40)
   await expect.poll(async () => Math.abs((await spoken()).top - followTop)).toBeLessThan(40)
 
+  // 따라가기 이동이 끝난 뒤의 스크롤만 사용자 스크롤로 셉니다.
+  await page.waitForTimeout(1700)
   const nextTop = await topOf(31)
-  await page.mouse.move(200, 350)
-  await page.mouse.wheel(0, -(610 - nextTop))
+  await scrollReader(-(610 - nextTop))
   const nudgedAt = Date.now()
   await expect.poll(() => topOf(31)).toBeGreaterThan(560)
-  // WebKit은 휠 스크롤이 잠시 더 미끄러지므로, 멈춘 뒤의 위치를 기준으로 삼습니다.
-  await expect
-    .poll(async () => {
-      const first = await topOf(31)
-      await page.waitForTimeout(300)
-      return first === (await topOf(31))
-    })
-    .toBe(true)
   const nudgedTop = await topOf(31)
   await speak(31)
   await expect.poll(async () => (await spoken())?.index).toBe(31)
@@ -683,7 +684,8 @@ test('Listening follow pauses while the reader scrolls and resumes only near the
     .toBeLessThan(40)
   expect(Date.now() - nudgedAt, 'following waits until ten seconds after the last scroll').toBeGreaterThan(9000)
 
-  await page.mouse.wheel(0, 2500)
+  await page.waitForTimeout(1700)
+  await scrollReader(2500)
   await expect.poll(async () => (await spoken()).top).toBeLessThan(-200)
   await speak(32)
   await expect.poll(async () => (await spoken())?.index).toBe(32)
@@ -705,5 +707,15 @@ test('Listening follow pauses while the reader scrolls and resumes only near the
       timeout: 5000,
     })
     .toBeLessThan(40)
+  await speak(48)
+  await expect
+    .poll(async () => {
+      const current = (await spoken()) || { index: -1, top: 9999 }
+      return current.index === 48 && Math.abs(current.top - followTop) < 40
+    }, {
+      message: 'the follow scroll itself never counts as a reader scroll',
+      timeout: 5000,
+    })
+    .toBe(true)
   expect(errors).toEqual([])
 })

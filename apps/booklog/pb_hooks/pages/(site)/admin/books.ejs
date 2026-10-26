@@ -286,7 +286,7 @@
     .newQuery(
       'SELECT books.id AS bookId, books.title AS title, books.author AS author, '
         + '(SELECT count(DISTINCT user_id) FROM book_shelves WHERE book_id = books.id) AS userCount, '
-        + "coalesce((SELECT group_concat(coalesce(nullif(users.name, ''), users.email), char(10)) FROM book_shelves JOIN users ON users.id = book_shelves.user_id WHERE book_shelves.book_id = books.id), '') AS userNames, "
+        + "coalesce((SELECT group_concat(CASE WHEN users.name != '' THEN users.name WHEN instr(users.email, '@') > 0 THEN substr(users.email, 1, instr(users.email, '@') - 1) ELSE users.email END, char(10)) FROM book_shelves JOIN users ON users.id = book_shelves.user_id WHERE book_shelves.book_id = books.id), '') AS userNames, "
         + '(SELECT count(*) FROM book_files WHERE book_id = books.id) AS fileCount, '
         + '(SELECT coalesce(sum(file_size), 0) FROM book_files WHERE book_id = books.id) AS fileBytes, '
         + "(SELECT count(*) FROM book_audio_chunks JOIN book_files ON book_files.id = book_audio_chunks.file_id WHERE book_files.book_id = books.id AND book_audio_chunks.audio_file != '') AS audioCount "

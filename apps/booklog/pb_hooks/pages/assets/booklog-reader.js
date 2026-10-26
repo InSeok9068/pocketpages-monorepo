@@ -43,6 +43,8 @@ window.booklogReaderLogic = (function () {
   var FOLLOW_PAUSE_AFTER_SCROLL_MS = 10000
   var SCROLL_KEYS = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']
   var lastUserScrollAt = 0
+  var PROGRAMMATIC_SCROLL_MS = 1500
+  var programmaticScrollUntil = 0
   var HISTORY_BACK_FALLBACK_MS = 1500
   var DEFAULT_FONT_SIZE_PERCENT = 100
   var FONT_SIZE_OPTIONS = [90, 100, 110, 120, 130]
@@ -1295,13 +1297,32 @@ window.booklogReaderLogic = (function () {
     if (SCROLL_KEYS.indexOf(event.key) >= 0) markUserScroll()
   }
 
-  // 따라가기 이동과 챕터 이어 붙이기는 입력 이벤트를 만들지 않아, 사용자가 직접 끌거나 굴린 스크롤만 셉니다.
+  function markProgrammaticScroll() {
+    programmaticScrollUntil = Date.now() + PROGRAMMATIC_SCROLL_MS
+  }
+
+  // 따라가기 이동·위치 복원·챕터 이어 붙이기가 만든 스크롤은 사용자 스크롤로 세지 않습니다.
+  function handleReaderScroll() {
+    var component = activeComponent
+    if (
+      Date.now() < programmaticScrollUntil
+      || isAutoPagingSettling()
+      || isRestoringPosition
+      || (component && component.loading)
+    ) {
+      return
+    }
+    markUserScroll()
+  }
+
+  // WebKit은 스크립트가 막힌 본문 iframe에 붙인 입력 처리기를 실행하지 않아, 바깥 스크롤 영역의 scroll 이벤트로도 감지합니다.
   function bindUserScrollTracking(target) {
     if (!target || target.__booklogUserScrollBound) return
     target.__booklogUserScrollBound = true
     target.addEventListener('touchmove', markUserScroll, { passive: true })
     target.addEventListener('wheel', markUserScroll, { passive: true })
     target.addEventListener('keydown', markUserScrollKey)
+    if (target === document) target.addEventListener('scroll', handleReaderScroll, { capture: true, passive: true })
   }
 
   function isFollowPaused() {
@@ -1336,6 +1357,7 @@ window.booklogReaderLogic = (function () {
         ? box.viewTop + viewHeight * targetTopRatio
         : box.viewTop + Math.max(0, (viewHeight - (box.bottom - box.top)) / 2)
     // 본문은 챕터 iframe 안에 있어 WebKit이 문단의 scrollIntoView를 바깥 스크롤 영역에서 맞추지 않으므로, 바깥 영역을 직접 옮깁니다.
+    markProgrammaticScroll()
     scroller.scrollBy({ top: Math.round(box.top - targetTop), behavior: 'smooth' })
   }
 
@@ -5204,9 +5226,12 @@ window.booklogReaderLogic = (function () {
           cfi = found.length ? String(found[0].cfi || '') : ''
           return !!cfi
         })
+        markProgrammaticScroll()
         return displayAt(cfi || section.href)
       })
       .then(function () {
+        markProgrammaticScroll()
+        resumeFollowNow()
         component.loading = false
       })
       .catch(function (exception) {
@@ -5270,7 +5295,10 @@ window.booklogReaderLogic = (function () {
       if (!view && watching && section && listeningFollow.openedSection !== anchor.sectionIndex) {
         listeningFollow.openedSection = anchor.sectionIndex
         prepareManualNavigation()
-        displayAt(section.href).catch(function () {})
+        markProgrammaticScroll()
+        displayAt(section.href)
+          .then(markProgrammaticScroll)
+          .catch(function () {})
       }
       return
     }
