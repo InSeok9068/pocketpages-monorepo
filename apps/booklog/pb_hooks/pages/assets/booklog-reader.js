@@ -3226,9 +3226,34 @@ window.booklogReaderLogic = (function () {
   function displayAt(target) {
     return Promise.resolve(renditionInstance.display(target)).then(function (location) {
       return settleDisplayedTarget(target).then(function () {
+        refillSectionsAfterMove()
         return renditionInstance.currentLocation() || location
       })
     })
+  }
+
+  // epub.js는 직접 스크롤을 옮긴 뒤 다음 스크롤 이벤트 하나를 무시하는데, 이미 그 자리여서 이벤트가 생기지 않으면 무시 표시가 남아
+  // 사용자의 첫 스크롤이 버려집니다. 첫 챕터가 화면보다 조금만 길면 그 한 번이 끝까지 내린 스크롤이라 다음 챕터가 영영 붙지 않습니다.
+  function refillSectionsAfterMove() {
+    var manager = renditionInstance && renditionInstance.manager ? renditionInstance.manager : null
+
+    if (!manager || typeof manager.check !== 'function') {
+      return
+    }
+
+    manager.ignore = false
+
+    try {
+      Promise.resolve(manager.check()).catch(function (exception) {
+        console.warn('page/books/[bookId]/read:refill-sections:failed', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+      })
+    } catch (exception) {
+      console.warn('page/books/[bookId]/read:refill-sections:failed', {
+        message: String(exception && exception.message ? exception.message : exception),
+      })
+    }
   }
 
   function restoreSavedPosition(component, options) {
@@ -4816,6 +4841,7 @@ window.booklogReaderLogic = (function () {
       } catch (exception) {}
 
       return renditionInstance.display().then(function (location) {
+        refillSectionsAfterMove()
         syncReaderLayout(component)
         scheduleReaderLayoutSync(component, {
           frameCount: 2,

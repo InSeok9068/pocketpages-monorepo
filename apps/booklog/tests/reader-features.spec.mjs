@@ -1420,3 +1420,56 @@ test('Searching again before the first search ends shows only the latest results
     'a later search still reads every chapter'
   ).toBe(true)
 })
+
+// 큰 그림 두 장짜리 표지입니다. epub.js는 원래 크기(화면 몇 배)로 다음 챕터가 필요 없다고 본 뒤 그림을 화면 크기로 줄이고,
+// 첫 스크롤 하나를 무시합니다. 줄어든 표지는 화면보다 조금만 길어 그 한 번이 끝까지 내린 스크롤이라 다음 챕터가 붙지 않았습니다.
+function tallPng(width, height) {
+  const { deflateSync, crc32 } = require('node:zlib')
+  const chunk = (type, data) => {
+    const length = Buffer.alloc(4)
+    length.writeUInt32BE(data.length)
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type), data])))
+    return Buffer.concat([length, Buffer.from(type), data, crc])
+  }
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header[8] = 8
+  const rows = Buffer.alloc((width + 1) * height, 200)
+  for (let row = 0; row < height; row += 1) rows[row * (width + 1)] = 0
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(rows)),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
+
+const pictureCoverBook = zipSync({
+  'mimetype': strToU8('application/epub+zip'),
+  'META-INF/container.xml': strToU8(
+    '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+  ),
+  'book.opf': strToU8(
+    '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">picture-cover</dc:identifier><dc:title>그림 표지</dc:title></metadata><manifest><item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/><item id="front" href="front.png" media-type="image/png"/><item id="rear" href="rear.png" media-type="image/png"/><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/><item id="c2" href="c2.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="cover"/><itemref idref="c1"/><itemref idref="c2"/></spine></package>'
+  ),
+  'cover.xhtml': xhtml('<div><img alt="" src="front.png" /></div><div><img alt="" src="rear.png" /></div>'),
+  'front.png': new Uint8Array(tallPng(1000, 1600)),
+  'rear.png': new Uint8Array(tallPng(1000, 1600)),
+  'c1.xhtml': xhtml(chapterBody(1)),
+  'c2.xhtml': xhtml(chapterBody(2)),
+})
+
+test('A picture cover that shrinks to just over a screen still scrolls on into the first chapter', async ({ page }) => {
+  await openReader(page, pictureCoverBook)
+  await page.mouse.move(195, 500)
+  for (let step = 0; step < 8; step += 1) {
+    await page.mouse.wheel(0, 300)
+    await page.waitForTimeout(250)
+  }
+
+  await expect
+    .poll(() => readingSpot(page), { timeout: 10_000, message: 'scrolling leaves the cover' })
+    .toMatch(/^1장/)
+})
