@@ -73,7 +73,11 @@
           class="flex items-center justify-between gap-4 rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
           <span class="min-w-0 flex-1">
             <span class="block text-sm font-semibold text-stone-900">푸시 알림 사용</span>
-            <span class="mt-1 block text-sm leading-6 text-stone-600">브라우저 구독이 허용되면 알림을 받습니다.</span>
+            <span class="mt-0.5 block text-xs leading-5 text-stone-500">브라우저에서 알림을 허용하면 받습니다.</span>
+            <span
+              id="push-state-notice"
+              hidden
+              class="text-xs leading-5 text-amber-700"></span>
           </span>
           <input
             id="push-enabled-input"
@@ -91,9 +95,7 @@
           class="flex items-center justify-between gap-4 rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
           <span class="min-w-0 flex-1">
             <span class="block text-sm font-semibold text-stone-900">주간 독서 리마인더</span>
-            <span class="mt-1 block text-sm leading-6 text-stone-600">
-              일요일 저녁까지 이번 주 독서 세션이 없으면 짧은 알림을 받습니다.
-            </span>
+            <span class="mt-0.5 block text-xs leading-5 text-stone-500">안 읽은 주는 일요일 저녁에 알립니다.</span>
           </span>
           <input
             id="weekly-reading-nudge-input"
@@ -107,24 +109,15 @@
             aria-hidden="true"></span>
         </label>
 
-        <div class="space-y-2">
-          <p
-            id="push-notice"
-            hidden
-            class="rounded-[1.15rem] bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800 shadow-[inset_0_0_0_1px_rgba(180,83,9,0.08)]"></p>
-
-          <p
-            id="push-state-notice"
-            hidden
-            class="rounded-[1.15rem] bg-stone-100/90 px-4 py-3 text-sm leading-6 text-stone-700 shadow-[inset_0_0_0_1px_rgba(120,92,57,0.08)]"></p>
-        </div>
+        <p
+          id="push-notice"
+          hidden
+          class="px-1 text-xs leading-5 text-amber-700"></p>
 
         <div class="grid gap-3 sm:grid-cols-2">
           <label class="block rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
             <span class="block text-sm font-semibold text-stone-900">읽기 리마인더</span>
-            <span class="mt-1 block text-sm leading-6 text-stone-600">
-              마지막 읽기 후 며칠 뒤 알림을 보낼지 정합니다.
-            </span>
+            <span class="mt-0.5 block text-xs leading-5 text-stone-500">마지막으로 읽은 뒤 며칠 지나면 알립니다.</span>
             <input
               id="reading-reminder-cycle-input"
               type="number"
@@ -138,9 +131,7 @@
 
           <label class="block rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
             <span class="block text-sm font-semibold text-stone-900">하이라이트 알림</span>
-            <span class="mt-1 block text-sm leading-6 text-stone-600">
-              저장한 문구를 며칠마다 다시 보여줄지 정합니다.
-            </span>
+            <span class="mt-0.5 block text-xs leading-5 text-stone-500">저장한 문구를 며칠마다 다시 보여줍니다.</span>
             <input
               id="highlight-push-cycle-input"
               type="number"
@@ -268,23 +259,19 @@
       let message = ''
 
       if (isIosDevice() && !isStandaloneWebApp()) {
-        message = 'iPhone/iPad에서는 북로그를 홈 화면에 추가한 뒤 앱처럼 연 상태에서만 푸시 알림을 켤 수 있습니다.'
+        message = 'iPhone·iPad는 홈 화면 앱에서만 됩니다.'
       } else if (!state.pushState.supported) {
-        message = '현재 브라우저에서는 웹 푸시 알림을 지원하지 않습니다.'
+        message = '이 브라우저는 웹 푸시를 지원하지 않습니다.'
       } else if (!state.pushState.ready) {
-        message = pushEnabledInput.checked ? '브라우저 알림 상태를 확인하는 중입니다.' : ''
+        message = pushEnabledInput.checked ? '알림 상태를 확인하는 중입니다.' : ''
       } else if (!pushEnabledInput.checked) {
-        message = state.pushState.optedIn
-          ? '북로그 알림은 꺼져 있지만, 브라우저 구독은 아직 남아 있습니다. 저장하면 북로그 알림도 함께 꺼집니다.'
-          : ''
+        message = state.pushState.optedIn ? '이 기기 구독이 남아 있습니다. 저장하면 함께 해제됩니다.' : ''
       } else if (state.pushState.optedIn) {
         message = ''
       } else if (state.pushState.permission === 'denied') {
-        message =
-          '브라우저 알림 권한이 차단되어 있습니다. 브라우저 설정에서 권한을 다시 허용해야 북로그 알림을 받을 수 있습니다.'
+        message = '알림 권한이 차단되어 있습니다. 브라우저 설정에서 허용해 주세요.'
       } else {
-        message =
-          '북로그 알림은 켜져 있지만 현재 브라우저 구독은 연결되지 않았습니다. 설정을 저장하면 브라우저 구독을 다시 확인합니다.'
+        message = '이 기기는 아직 구독되지 않았습니다. 저장하면 다시 연결합니다.'
       }
 
       renderMessage(pushStateNoticeElement, message)
@@ -511,15 +498,11 @@
     }
 
     pushEnabledInput.addEventListener('change', function () {
-      fillDefaultRemindersIfEmpty(
-        '알림을 받을 수 있도록 기본 알림 주기를 채웠습니다. 원하는 값으로 바꾼 뒤 저장하세요.'
-      )
+      fillDefaultRemindersIfEmpty('기본 알림 주기를 채웠습니다. 바꾼 뒤 저장하세요.')
       renderPushStateNotice()
     })
 
-    fillDefaultRemindersIfEmpty(
-      '푸시 알림은 켜져 있지만 받을 알림이 모두 꺼져 있어 알림이 오지 않았습니다. 기본 주기를 채웠으니 저장하면 적용됩니다.'
-    )
+    fillDefaultRemindersIfEmpty('받을 알림이 모두 꺼져 있어 기본 주기를 채웠습니다. 저장하면 적용됩니다.')
 
     if (window.__booklogPushBridge && typeof window.__booklogPushBridge.subscribe === 'function') {
       window.__booklogPushBridge.subscribe(function (nextState) {

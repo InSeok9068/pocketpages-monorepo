@@ -5326,6 +5326,8 @@ window.booklogReaderLogic = (function () {
     }
     stopBrowserSpeech(component, { keepMessage: true })
     window.booklogAudio.stop()
+    // 기준 문장을 찾는 동안 iOS가 사용자 동작을 잊으므로, 누른 순간 재생 권한부터 얻어 둡니다.
+    window.booklogAudio.unlock()
     resumeFollowNow()
     component.cloudAudioBusy = true
     component.cloudAudioMessage = ''

@@ -768,8 +768,20 @@ test('Autoplay rejection leaves a prepared buffer paused and a manual play uses 
     await player.page.evaluate(() => {
       const play = HTMLMediaElement.prototype.play
       let rejected = false
+      let inClick = false
+      document.addEventListener(
+        'click',
+        () => {
+          inClick = true
+          setTimeout(() => {
+            inClick = false
+          })
+        },
+        true
+      )
+      // 클릭 중의 잠금 해제 재생은 통과시키고, 준비가 끝난 뒤의 첫 재생만 막습니다.
       HTMLMediaElement.prototype.play = function () {
-        if (!rejected) {
+        if (!inClick && !rejected) {
           rejected = true
           return Promise.reject(new DOMException('test autoplay blocked', 'NotAllowedError'))
         }
@@ -785,6 +797,56 @@ test('Autoplay rejection leaves a prepared buffer paused and a manual play uses 
     await player.page.waitForFunction(() => window.state.cloudAudioActive)
     assert.equal(await player.page.locator('audio').getAttribute('src'), src)
     assert.equal((await bufferEvents(player.page)).filter((entry) => entry.event === 'buffer-start').length, 1)
+    assert.deepEqual(player.errors, [])
+  } finally {
+    await player.context.close()
+  }
+})
+
+test('Under the iOS gesture rule a single tap starts playback after the async preparation', async () => {
+  const player = await createPlayer({
+    segmentSeconds: 90,
+    chapters: { 0: [[true], [true]] },
+    progress: { sectionIndex: 0, chunkIndex: 0, seconds: 30, isCompleted: false },
+  })
+  try {
+    await player.page.evaluate(() => {
+      const play = HTMLMediaElement.prototype.play
+      const unlocked = new WeakSet()
+      let inClick = false
+      window.blockedPlays = 0
+      document.addEventListener(
+        'click',
+        () => {
+          inClick = true
+          setTimeout(() => {
+            inClick = false
+          })
+        },
+        true
+      )
+      // WebKit처럼 사용자 탭 중에 한 번 재생을 시작한 오디오 요소만 이후의 비동기 재생을 허용합니다.
+      HTMLMediaElement.prototype.play = function () {
+        if (inClick) unlocked.add(this)
+        if (!unlocked.has(this)) {
+          window.blockedPlays += 1
+          return Promise.reject(new DOMException('gesture required', 'NotAllowedError'))
+        }
+        return play.call(this)
+      }
+    })
+    await player.page.click('#start')
+    await player.page.waitForFunction(() => window.state.cloudAudioActive === true)
+    assert.equal(await player.page.evaluate(() => window.blockedPlays), 0)
+    assert.doesNotMatch(await player.page.evaluate(() => window.state.cloudAudioMessage), /재생 버튼/)
+    const position = await player.page.evaluate(() => window.state.cloudAudioPosition)
+    assert.ok(position >= 29.9 && position < 33, 'the silent unlock keeps the saved listening position: ' + position)
+    assert.match(await player.page.evaluate(() => window.state.cloudAudioDetail), /^1 \/ 2/)
+    await player.page.evaluate(() => window.booklogAudio.stop())
+    await waitForSaves(player.page)
+    assert.equal(player.saves.at(-1).chunkId, 'chunk-0-0')
+    assert.ok(Number(player.saves.at(-1).seconds) >= 29.9)
+    assert.equal(await player.page.evaluate(() => window.testLiveUrls.length), 0, 'the silent unlock URL is released')
     assert.deepEqual(player.errors, [])
   } finally {
     await player.context.close()

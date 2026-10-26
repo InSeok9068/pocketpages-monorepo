@@ -23,6 +23,7 @@ window.booklogAudio = (function () {
   var diagnosticsStorage = true
   var diagnosticsLastProgress = 0
   var DIAGNOSTICS_LIMIT = 1000
+  var playbackUnlocked = false
   if (diagnosticsAvailable) {
     pruneDiagnostics()
     try {
@@ -627,6 +628,37 @@ window.booklogAudio = (function () {
 
   function mediaSessionApi() {
     return typeof navigator !== 'undefined' && navigator.mediaSession ? navigator.mediaSession : null
+  }
+
+  /**
+   * 사용자가 누른 순간 같은 오디오 요소로 무음을 재생해, 준비가 끝난 뒤 시작하는 재생을 iOS가 막지 않게 합니다.
+   * @returns {void}
+   */
+  function unlockPlayback() {
+    var player = document.getElementById('reader-cloud-audio')
+    if (!player || playbackUnlocked || activeSession) return
+    try {
+      var frame = new Uint8Array(417)
+      frame.set([0xff, 0xfb, 0x90, 0x64])
+      var url = URL.createObjectURL(new Blob([frame], { type: 'audio/mpeg' }))
+      player.src = url
+      player
+        .play()
+        .then(
+          function () {
+            playbackUnlocked = true
+            if (player.getAttribute('src') === url) player.pause()
+          },
+          function () {
+            /* 곧바로 실제 음성으로 바뀌면 무음 재생은 취소됩니다. */
+          }
+        )
+        .then(function () {
+          URL.revokeObjectURL(url)
+        })
+    } catch (_error) {
+      /* 잠금 해제 없이 재생을 시도합니다. */
+    }
   }
 
   function setMediaPlaybackState(state) {
@@ -1596,6 +1628,7 @@ window.booklogAudio = (function () {
     stop()
     var player = document.getElementById('reader-cloud-audio')
     if (!player) return
+    unlockPlayback()
     var session = {
       state: state,
       player: player,
@@ -1636,8 +1669,9 @@ window.booklogAudio = (function () {
     state.cloudAudioBusy = true
     state.cloudAudioSession = true
     state.cloudAudioMessage = ''
+    // 구간을 불러오기 전의 이벤트는 잠금 해제용 무음 재생에서 온 것이라 재생 상태에 반영하지 않습니다.
     player.onloadedmetadata = function () {
-      if (!isActive(session)) return
+      if (!isActive(session) || !session.chunkId) return
       if (session.stream) return
       if (session.resumeSeconds > 0 && isFinite(player.duration)) {
         player.currentTime = Math.min(session.resumeSeconds, Math.max(0, player.duration - 0.1))
@@ -1651,7 +1685,7 @@ window.booklogAudio = (function () {
       }
     }
     player.ontimeupdate = function () {
-      if (!isActive(session)) return
+      if (!isActive(session) || !session.chunkId) return
       syncBufferedPosition(session)
       if (!isActive(session)) return
       if (Date.now() - diagnosticsLastProgress >= 30000) {
@@ -1663,7 +1697,7 @@ window.booklogAudio = (function () {
       pumpAudioBuffer(session)
     }
     player.onplay = function () {
-      if (!isActive(session)) return
+      if (!isActive(session) || !session.chunkId) return
       recordDiagnostic('play', session)
       setMediaPlaybackState('playing')
       updateProgress(session)
@@ -1673,6 +1707,7 @@ window.booklogAudio = (function () {
       prepareNextChunk(session)
     }
     player.onpause = function () {
+      if (!session.chunkId) return
       syncBufferedPosition(session)
       recordDiagnostic('pause', session)
       // 기기 음성 조각으로 넘어갈 때 플레이어를 멈춘 이벤트가 늦게 와도 재생 중 표시를 지우지 않습니다.
@@ -1682,6 +1717,7 @@ window.booklogAudio = (function () {
       savePosition(session, true, false)
     }
     player.onerror = function () {
+      if (!session.chunkId) return
       recordDiagnostic('media-error', session, {
         code: player.error ? player.error.code : 0,
         message: String((player.error && player.error.message) || '').slice(0, 200),
@@ -1693,6 +1729,7 @@ window.booklogAudio = (function () {
       setError(session, new Error('오디오를 재생하지 못했습니다.'))
     }
     player.onended = function () {
+      if (!session.chunkId) return
       syncBufferedPosition(session)
       if (!isActive(session)) return
       recordDiagnostic('ended', session)
@@ -1869,6 +1906,7 @@ window.booklogAudio = (function () {
     seekBy: seekBy,
     moveChapter: moveChapter,
     cycleSleepTimer: cycleSleepTimer,
+    unlock: unlockPlayback,
     preview: preview,
     currentAnchor: currentAnchor,
     formatTime: formatTime,
