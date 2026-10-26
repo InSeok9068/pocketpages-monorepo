@@ -1738,3 +1738,140 @@ test('A first move to the saved position that never finishes reopens the reader 
     .poll(() => readingSpot(page), { timeout: 15_000, message: 'the saved position is opened on the retry' })
     .toMatch(/^3장/)
 })
+
+// 빠르게 올리는 동안 잠깐 화면 밖으로 나간 챕터를 epub.js가 비웠다가 다시 그리면, 다시 잴 때 줄어든 높이만큼 화면이 튀었습니다.
+const shrinkingChaptersBook = smallBook(
+  'shrinking-chapters',
+  {
+    ...Object.fromEntries(
+      Array.from({ length: 8 }, (_, index) => [
+        'c' + (index + 1) + '.xhtml',
+        xhtml(chapterBody(index + 1) + '<div><img alt="" src="tall.png" /></div>'),
+      ])
+    ),
+    'tall.png': new Uint8Array(tallPng(1000, 1600)),
+  },
+  Array.from({ length: 8 }, (_, index) => 'c' + (index + 1) + '.xhtml')
+)
+
+function watchVisibleJumps(page) {
+  return page.evaluate(() => {
+    window.__jumps = []
+    const container = document.querySelector('#epub-reader .epub-container')
+    let previous = null
+    const sample = () => {
+      const top = container.getBoundingClientRect().top
+      const frame = Array.from(container.querySelectorAll('iframe')).find(
+        (candidate) => candidate.getBoundingClientRect().bottom > top + 1
+      )
+      if (frame) {
+        const current = { frame, top: frame.getBoundingClientRect().top - top }
+        if (previous && previous.frame === frame) {
+          const moved = previous.top - current.top
+          if (moved > 30 || moved < -1600) window.__jumps.push(Math.round(moved))
+        }
+        previous = current
+      }
+      window.requestAnimationFrame(sample)
+    }
+    sample()
+  })
+}
+
+test('Fast upward bursts from the last chapter never push the page down or jump on their own', async ({ page }) => {
+  const state = await openReader(page, shrinkingChaptersBook)
+  state.serverPosition = { locator: '', href: 'c8.xhtml', chapterLabel: '' }
+  await page.reload()
+  await expect
+    .poll(() => page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).bookReady))
+    .toBe(true)
+  await page.mouse.move(195, 500)
+  await watchVisibleJumps(page)
+  for (let round = 0; round < 3; round += 1) {
+    for (let step = 0; step < 30; step += 1) {
+      await page.mouse.wheel(0, 1500)
+      await page.waitForTimeout(40)
+    }
+    await page.waitForTimeout(1500)
+    await page.evaluate(() => {
+      window.__jumps = []
+    })
+    for (let burst = 0; burst < 12; burst += 1) {
+      for (let step = 0; step < 8; step += 1) {
+        await page.mouse.wheel(0, -1500)
+        await page.waitForTimeout(16)
+      }
+      await page.waitForTimeout(350)
+    }
+    await page.waitForTimeout(1000)
+    expect(await page.evaluate(() => window.__jumps), 'visible jumps while scrolling up, round ' + (round + 1)).toEqual([])
+  }
+})
+
+async function captureRendition(page) {
+  await page.addInitScript(() => {
+    let realEpub = null
+    Object.defineProperty(window, 'ePub', {
+      configurable: true,
+      get: () =>
+        realEpub
+        && function (...args) {
+          const book = realEpub(...args)
+          const renderTo = book.renderTo.bind(book)
+          book.renderTo = (...renderArgs) => {
+            window.__rendition = renderTo(...renderArgs)
+            return window.__rendition
+          }
+          return book
+        },
+      set: (value) => {
+        realEpub = value
+      },
+    })
+  })
+}
+
+// 맨 끝에서는 더 스크롤되지 않아 scroll 이벤트가 없으므로, epub.js가 확인을 놓치면 앞뒤 챕터가 붙지 않고 멈췄습니다.
+test('Wheeling at the very top or bottom attaches the neighbouring chapter even without a scroll event', async ({ page }) => {
+  await captureRendition(page)
+  const state = await openReader(page)
+  state.serverPosition = { locator: '', href: 'c3.xhtml', chapterLabel: '3장' }
+  await page.reload()
+  await expect
+    .poll(() => page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).bookReady))
+    .toBe(true)
+  await page.waitForTimeout(1500)
+  const edges = () =>
+    page.evaluate(() => {
+      const views = window.__rendition.manager.views
+      return { first: views.first().section.index, last: views.last().section.index }
+    })
+
+  const missedTop = await page.evaluate(() => {
+    const manager = window.__rendition.manager
+    while (manager.views.first().section.index < 2) manager.views.remove(manager.views.first())
+    manager.ignore = true
+    manager.container.scrollTop = 0
+    return manager.views.first().section.index
+  })
+  await page.mouse.move(195, 500)
+  for (let step = 0; step < 10; step += 1) {
+    await page.mouse.wheel(0, -200)
+    await page.waitForTimeout(150)
+  }
+  await expect.poll(async () => (await edges()).first, { timeout: 4_000, message: 'the previous chapter attaches at the top' }).toBeLessThan(missedTop)
+
+  const missedBottom = await page.evaluate(() => {
+    const manager = window.__rendition.manager
+    const current = manager.views.all().find((view) => view.section.index === 2)
+    while (manager.views.last() !== current) manager.views.remove(manager.views.last())
+    manager.ignore = true
+    manager.container.scrollTop = manager.container.scrollHeight
+    return manager.views.last().section.index
+  })
+  for (let step = 0; step < 10; step += 1) {
+    await page.mouse.wheel(0, 200)
+    await page.waitForTimeout(150)
+  }
+  await expect.poll(async () => (await edges()).last, { timeout: 4_000, message: 'the next chapter attaches at the bottom' }).toBeGreaterThan(missedBottom)
+})

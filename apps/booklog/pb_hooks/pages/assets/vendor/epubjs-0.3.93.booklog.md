@@ -16,22 +16,23 @@ let m = s.map(t => t.display(this.request).then(t => (t.show(), t)));
 
 각 챕터가 준비되면 해당 view의 `show()`를 호출합니다. 기존 `check()`·`update()`와 위치 보정은 유지합니다.
 
-## 늦게 실행되는 정리 작업
+## 화면 밖 챕터 정리
 
-`update()`는 화면 밖 view의 `destroy()`를 큐에 넣었습니다. 큐 실행 전에 사용자가 반대 방향으로 이동하면, 예약 당시 화면 밖이었던 view가 현재 화면 안에 들어와도 파괴할 수 있었습니다.
+`update()`는 화면 밖 view를 `destroy()`로 내용만 비우고 목록에는 남겼습니다. 빠르게 스크롤하면 잠깐 화면 밖에 나간 view가 비워졌다가, 다시 화면에 들어오면 `update()`가 처음부터 다시 그렸습니다. 다시 그릴 때 높이가 크게 재졌다가 줄어, 화면 맨 위에 걸친 챕터의 보정만큼 보던 곳이 튀었습니다. 이전 패치(실행 시점에 가시성 재확인)도 이 재표시를 막지는 못했습니다.
+
+`update()`는 더 이상 view를 비우지 않고, 정리는 `trim()`에 맡깁니다. `trim()`은 표시된 view가 아니라 현재 화면과 offset 안에 있는 view를 기준으로, 그 앞뒤 한 개씩만 남기고 `erase()`합니다. `erase()`는 위쪽 view를 지울 때 기존처럼 스크롤을 보정합니다.
 
 ```js
 // Before
-this.q.enqueue(e.destroy.bind(e));
+else this.q.enqueue(function (view) { ...isVisible... || view.destroy() }.bind(this, e)), clearTimeout(this.trimTimeout), ...
+trim(){for(var t=new n.defer,e=this.views.displayed(),i=e[0],...
 
 // After
-this.q.enqueue(function (view) {
-  let offset = this.settings.offset || 0;
-  if (!this.isVisible(view, offset, offset, this.bounds())) view.destroy();
-}.bind(this, e));
+else clearTimeout(this.trimTimeout), ...
+trim(){var t=new n.defer,f=this.settings.offset||0,b=this.bounds(),e=this.views.all().filter(function(v){return v.displayed&&this.isVisible(v,f,f,b)}.bind(this));if(!e.length)return t.resolve(),t.promise;for(var i=e[0],...
 ```
 
-정리 시점에 현재 화면과 기존 offset 기준으로 가시성을 다시 판단합니다. 화면 밖 view는 기존대로 정리합니다. 별도 `scrollTop` 보정은 추가하지 않습니다.
+화면 근처 view가 하나도 없으면 아무것도 지우지 않습니다.
 
 ## 불러오는 중 지워진 챕터
 
@@ -69,4 +70,4 @@ t=>{this.displaying=void 0,this.emit(DISPLAY_ERROR,t),i.reject(t)}
 
 ## 검증
 
-`apps/booklog/tests/reader-scroll.spec.mjs`의 `Scroll stress` 시나리오, `reader-features.spec.mjs`의 그림 페이지 다시 열기 검사와 기존 navigation/scroll/audio 검사를 사용합니다. 고정 seed 입력 계획과 프레임별 문단 좌표, 표시 중 view가 파괴되는지, 로딩 종료 후 위치가 유지되는지를 확인합니다. 실제 iPhone Safari 관성 스크롤의 대체 검증은 아닙니다.
+`apps/booklog/tests/reader-scroll.spec.mjs`의 `Scroll stress` 시나리오, `reader-features.spec.mjs`의 그림 페이지 다시 열기·빠른 위쪽 스크롤·끝에서 챕터 붙이기 검사와 기존 navigation/scroll/audio 검사를 사용합니다. 고정 seed 입력 계획과 프레임별 문단 좌표, 표시 중 view가 파괴되는지, 로딩 종료 후 위치가 유지되는지를 확인합니다. 실제 iPhone Safari 관성 스크롤의 대체 검증은 아닙니다.

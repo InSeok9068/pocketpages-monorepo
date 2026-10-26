@@ -18,6 +18,8 @@ window.booklogReaderLogic = (function () {
   var pendingAutoPagingDirection = ''
   var intentDirection = ''
   var intentStartedAt = 0
+  var intentTimerId = 0
+  var lastEdgeRetryAt = 0
   var releaseRequired = false
   var releaseDirection = ''
   var autoPagingGeneration = 0
@@ -30,6 +32,7 @@ window.booklogReaderLogic = (function () {
   var EDGE_RELEASE_DISTANCE = 96
   var EDGE_INTENT_MS = 140
   var AUTO_PAGE_SETTLE_MS = 520
+  var EDGE_RETRY_INTERVAL_MS = 700
   var AUTO_SAVE_INTERVAL_MS = 5000
   var POSITION_RESTORE_PENDING_MESSAGE = '읽던 위치를 확인하지 못해 위치 저장을 보류합니다. 자동으로 다시 시도합니다.'
   var READING_SESSION_SAVE_INTERVAL_MS = 60000
@@ -1323,6 +1326,7 @@ window.booklogReaderLogic = (function () {
     target.__booklogUserScrollBound = true
     target.addEventListener('touchmove', markUserScroll, { passive: true })
     target.addEventListener('wheel', markUserScroll, { passive: true })
+    if (target !== document) target.addEventListener('wheel', handleEdgeWheel, { passive: true })
     target.addEventListener('keydown', markUserScrollKey)
     if (target === document) target.addEventListener('scroll', handleReaderScroll, { capture: true, passive: true })
   }
@@ -3419,7 +3423,8 @@ window.booklogReaderLogic = (function () {
     var viewTop = element.getBoundingClientRect().top
     var previousHeight = (Number(size.height) || 0) - (Number(size.heightDelta) || 0)
 
-    return viewTop < visibleTop - 1 || viewTop + previousHeight <= visibleTop + 1
+    // 화면 맨 위에 걸친 챕터는 보던 문단 아래에서 높이가 바뀌는 경우가 많아, 통째로 옮기면 보던 곳이 그만큼 튑니다.
+    return viewTop + previousHeight <= visibleTop + 1
   }
 
   function restoreSavedPosition(component, options) {
@@ -4364,6 +4369,8 @@ window.booklogReaderLogic = (function () {
   function resetAutoPagingIntent() {
     intentDirection = ''
     intentStartedAt = 0
+    window.clearTimeout(intentTimerId)
+    intentTimerId = 0
   }
 
   /**
@@ -4779,6 +4786,33 @@ window.booklogReaderLogic = (function () {
    * @param {'next' | 'prev'} direction 이동 방향
    * @returns {void}
    */
+  // 붙인 뒤에도 같은 끝에 그대로 있고 이웃 챕터가 여전히 없으면 붙지 않은 것이라, 큐가 비었을 때 간격을 두고 다시 시도합니다.
+  function canRetryEdgeAttach(target, direction) {
+    var manager = renditionInstance && renditionInstance.manager ? renditionInstance.manager : null
+    var edgeView = null
+
+    if (!manager || !manager.views || !manager.q || releaseDirection !== direction) {
+      return false
+    }
+
+    edgeView = direction === 'prev' ? manager.views.first() : manager.views.last()
+
+    if (
+      getDistanceToEdge(target, direction) > 1
+      || !edgeView
+      || !edgeView.section
+      || !(direction === 'prev' ? edgeView.section.prev() : edgeView.section.next())
+      || manager.q.running
+      || manager.q.length()
+      || Date.now() - lastEdgeRetryAt < EDGE_RETRY_INTERVAL_MS
+    ) {
+      return false
+    }
+
+    lastEdgeRetryAt = Date.now()
+    return true
+  }
+
   function evaluateAutoPaging(component, direction) {
     var target = autoPagingTarget || syncAutoPagingTarget()
 
@@ -4789,11 +4823,17 @@ window.booklogReaderLogic = (function () {
 
     if (component.loading || isRestoringPosition || autoPagingInFlight || isAutoPagingSettling()) {
       resetAutoPagingIntent()
+      if (getDistanceToEdge(target, direction) <= 1) {
+        intentTimerId = window.setTimeout(function () {
+          intentTimerId = 0
+          scheduleAutoPagingEvaluation(component, direction)
+        }, AUTO_PAGE_SETTLE_MS)
+      }
       return
     }
 
     if (releaseRequired) {
-      if (!hasReleasedAutoPagingEdge(target)) {
+      if (!hasReleasedAutoPagingEdge(target) && !canRetryEdgeAttach(target, direction)) {
         resetAutoPagingIntent()
         return
       }
@@ -4813,6 +4853,11 @@ window.booklogReaderLogic = (function () {
     if (intentDirection !== direction) {
       intentDirection = direction
       intentStartedAt = Date.now()
+      // 끝에 닿으면 더 스크롤되지 않아 다음 scroll 이벤트가 오지 않으므로, 머문 시간을 따로 확인합니다.
+      intentTimerId = window.setTimeout(function () {
+        intentTimerId = 0
+        scheduleAutoPagingEvaluation(component, direction)
+      }, EDGE_INTENT_MS + 20)
       return
     }
 
@@ -4860,6 +4905,21 @@ window.booklogReaderLogic = (function () {
     }
 
     target.addEventListener('scroll', boundAutoPagingHandler, { passive: true })
+
+    if (!target.__booklogEdgeWheelBound) {
+      target.__booklogEdgeWheelBound = true
+      target.addEventListener('wheel', handleEdgeWheel, { passive: true })
+    }
+  }
+
+  // 끝에서 계속 굴려도 scroll 이벤트가 생기지 않아, 휠 방향으로 앞뒤 챕터 붙이기를 확인합니다.
+  function handleEdgeWheel(event) {
+    var target = boundAutoPagingTarget
+    var direction = event.deltaY < 0 ? 'prev' : event.deltaY > 0 ? 'next' : ''
+
+    if (direction && target && activeComponent && getDistanceToEdge(target, direction) <= 1) {
+      scheduleAutoPagingEvaluation(activeComponent, direction)
+    }
   }
 
   function startProgressLocationGeneration(component) {
