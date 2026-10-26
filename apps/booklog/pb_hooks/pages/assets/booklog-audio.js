@@ -22,11 +22,12 @@ window.booklogAudio = (function () {
   var diagnosticsPage = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8)
   var diagnosticsStorage = true
   var diagnosticsLastProgress = 0
+  var DIAGNOSTICS_LIMIT = 1000
   if (diagnosticsAvailable) {
     pruneDiagnostics()
     try {
       var storedDiagnostics = JSON.parse(localStorage.getItem(diagnosticsKey) || '[]')
-      if (Array.isArray(storedDiagnostics)) diagnostics = storedDiagnostics.slice(-300)
+      if (Array.isArray(storedDiagnostics)) diagnostics = storedDiagnostics.slice(-DIAGNOSTICS_LIMIT)
     } catch (_error) {
       diagnosticsStorage = false
     }
@@ -123,8 +124,8 @@ window.booklogAudio = (function () {
   }
 
   // 진단 기록 실패가 재생을 방해하지 않도록 본문·URL 없이 상태만 기기에 보관합니다.
-  function recordDiagnostic(event, session, details) {
-    if (!diagnosticsEnabled) return
+  function recordDiagnostic(event, session, details, always) {
+    if (!diagnosticsEnabled && !always) return
     try {
       var player = session && session.player
       var part = session && session.parts[session.partIndex]
@@ -161,7 +162,7 @@ window.booklogAudio = (function () {
       }
       if (details) entry.details = details
       diagnostics.push(entry)
-      diagnostics = diagnostics.slice(-300)
+      diagnostics = diagnostics.slice(-DIAGNOSTICS_LIMIT)
       try {
         localStorage.setItem(diagnosticsKey, JSON.stringify(diagnostics))
         diagnosticsStorage = true
@@ -171,6 +172,13 @@ window.booklogAudio = (function () {
     } catch (_error) {
       /* 진단 실패와 관계없이 재생합니다. */
     }
+  }
+
+  function errorDetails(error, extra) {
+    return Object.assign(
+      { error: error && error.name, message: String((error && error.message) || '').slice(0, 200) },
+      extra
+    )
   }
 
   /**
@@ -417,12 +425,11 @@ window.booklogAudio = (function () {
   function loadChunkRetrying(session, sectionIndex, index, retries) {
     return loadChunk(session, sectionIndex, index).catch(function (error) {
       var network = error && (error.retryable || error.name === 'TypeError' || error.name === 'SyntaxError')
-      recordDiagnostic('chunk-request-error', session, {
-        section: sectionIndex,
-        chunk: index,
-        error: error.name,
-        retries: retries,
-      })
+      recordDiagnostic(
+        'chunk-request-error',
+        session,
+        errorDetails(error, { section: sectionIndex, chunk: index, retries: retries })
+      )
       if (!network || !isActive(session)) throw error
       if (!(retries > 0)) {
         throw new Error('인터넷 연결이 불안정해 다음 구간을 받지 못했습니다. 연결을 확인한 뒤 이어 듣기를 눌러 주세요.')
@@ -493,7 +500,7 @@ window.booklogAudio = (function () {
 
   function setError(session, error) {
     if (!isActive(session) || error.name === 'AbortError') return
-    recordDiagnostic('session-error', session, { error: error.name })
+    recordDiagnostic('session-error', session, errorDetails(error))
     session.failed = true
     endSession(session, error.message || '음성을 재생하지 못했습니다. 잠시 후 다시 시도해 주세요.')
   }
@@ -539,7 +546,7 @@ window.booklogAudio = (function () {
   function playAudio(session) {
     recordDiagnostic('play-request', session)
     return session.player.play().catch(function (error) {
-      recordDiagnostic('play-rejected', session, { error: error.name })
+      recordDiagnostic('play-rejected', session, errorDetails(error))
       if (!isActive(session)) return
       if (error.name === 'NotAllowedError') {
         session.state.cloudAudioActive = false
@@ -1155,7 +1162,7 @@ window.booklogAudio = (function () {
     if (!isCurrentBuffer(session, stream)) return
     var seconds = stream.started ? audioSeconds(session) : stream.resume
     var hold = stream.started ? session.player.paused : stream.hold
-    recordDiagnostic('buffer-fallback', session, { error: error.name })
+    recordDiagnostic('buffer-fallback', session, errorDetails(error))
     session.positionReady = false
     session.player.pause()
     closeAudioBuffer(session)
@@ -1329,7 +1336,7 @@ window.booklogAudio = (function () {
     } catch (error) {
       closeAudioBuffer(session)
       session.streamDisabled = true
-      recordDiagnostic('buffer-unavailable', session, { error: error.name })
+      recordDiagnostic('buffer-unavailable', session, errorDetails(error))
       return false
     }
   }
@@ -1675,7 +1682,10 @@ window.booklogAudio = (function () {
       savePosition(session, true, false)
     }
     player.onerror = function () {
-      recordDiagnostic('media-error', session, { code: player.error ? player.error.code : 0 })
+      recordDiagnostic('media-error', session, {
+        code: player.error ? player.error.code : 0,
+        message: String((player.error && player.error.message) || '').slice(0, 200),
+      })
       if (session.stream) {
         useFilePlayback(session, session.stream, new Error('MediaSource playback failed'))
         return
@@ -1810,7 +1820,15 @@ window.booklogAudio = (function () {
     if (activeSession) savePosition(activeSession, true, false)
   })
   if (diagnosticsAvailable) {
-    recordDiagnostic('page-init', null, { wasDiscarded: !!document.wasDiscarded })
+    // 백그라운드에서 버려졌다 다시 열린 페이지는 기록이 꺼진 채 시작해, 이전 기록 뒤에 재시작 표시만 남깁니다.
+    if (diagnostics.length) {
+      recordDiagnostic(
+        'page-init',
+        null,
+        { wasDiscarded: !!document.wasDiscarded, previousEvent: diagnostics[diagnostics.length - 1].event },
+        true
+      )
+    }
     ;['freeze', 'resume'].forEach(function (event) {
       document.addEventListener(event, function () {
         recordDiagnostic(event, activeSession)

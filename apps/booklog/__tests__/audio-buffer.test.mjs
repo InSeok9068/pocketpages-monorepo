@@ -286,6 +286,34 @@ test('Diagnostics are off by default, can be enabled, and clearing them leaves p
   }
 })
 
+test('A reloaded page marks its restart after earlier diagnostics and records error messages', async () => {
+  const player = await createPlayer({ chapters: { 0: [[true], [true]] } })
+  try {
+    await player.page.route('**/api/books/audio-chunk?*', (route) =>
+      new URL(route.request().url()).searchParams.get('chunkIndex') === '1'
+        ? route.fulfill({ status: 403, json: { ok: false, message: '접근 권한이 없습니다.' } })
+        : route.fallback()
+    )
+    await player.page.click('#start')
+    await player.page.waitForFunction(() => !window.state.cloudAudioSession)
+    const failed = await bufferEvents(player.page)
+    const sessionError = failed.find((entry) => entry.event === 'session-error')
+    assert.equal(sessionError.details.message, '접근 권한이 없습니다.')
+    assert.ok(failed.some((entry) => entry.event === 'chunk-request-error' && entry.details.message === '접근 권한이 없습니다.'))
+    await player.page.reload()
+    const reloaded = await player.page.evaluate(() => JSON.parse(window.booklogAudio.exportDiagnostics()))
+    assert.equal(reloaded.recording, false)
+    const restart = reloaded.events.filter((entry) => entry.event === 'page-init')
+    assert.equal(restart.length, 1)
+    assert.equal(restart[0].details.wasDiscarded, false)
+    assert.ok(restart[0].details.previousEvent)
+    assert.ok(reloaded.events.length > failed.length)
+    assert.deepEqual(player.errors, [])
+  } finally {
+    await player.context.close()
+  }
+})
+
 test('Stopping during an outstanding buffer download never starts late playback', async () => {
   const player = await createPlayer({ chapters: { 0: [[true], [true]] } })
   let release

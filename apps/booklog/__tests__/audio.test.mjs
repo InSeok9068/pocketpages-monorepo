@@ -839,8 +839,9 @@ test('Admin audio diagnostics retain transitions, hidden playback and lifecycle 
   assert.doesNotMatch(JSON.stringify(report), /fallbackText|input_text|audioUrl|user:hash/)
   const reloaded = createPlayerHarness(() => audioResponse(), { diagnostics: true, storage: player.values })
   assert.ok(JSON.parse(reloaded.logic.exportDiagnostics()).events.some((entry) => entry.event === 'freeze'))
-  for (let index = 0; index < 350; index += 1) reloaded.emit('window', 'online')
-  assert.equal(JSON.parse(reloaded.logic.exportDiagnostics()).events.length, 300)
+  assert.ok(JSON.parse(reloaded.logic.exportDiagnostics()).events.some((entry) => entry.event === 'page-init'))
+  for (let index = 0; index < 1050; index += 1) reloaded.emit('window', 'online')
+  assert.equal(JSON.parse(reloaded.logic.exportDiagnostics()).events.length, 1000)
   player.logic.stop()
 })
 
