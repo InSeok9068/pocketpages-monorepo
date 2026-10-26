@@ -49,6 +49,21 @@
   display: none;
 }
 
+/* Safari 17.4 미만의 ::backdrop은 :root 변수를 물려받지 못해, 테마 변수 대신 색을 직접 씁니다. */
+dialog::backdrop {
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+/* Safari는 summary 펼침 표시를 list-style이 아닌 별도 마커로 그립니다. */
+summary.list-none::-webkit-details-marker {
+  display: none;
+}
+
+/* iOS Safari 16은 둥근 스크롤 패널의 높이가 바뀌면 잘림 영역을 갱신하지 않아, 별도 레이어로 그립니다. */
+.booklog-scroll-sheet {
+  transform: translateZ(0);
+}
+
 .booklog-linked-section {
   outline: 2px solid #9e6125;
   outline-offset: 4px;

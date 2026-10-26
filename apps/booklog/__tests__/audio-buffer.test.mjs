@@ -504,13 +504,38 @@ for (const reason of ['permission', 'regenerated', 'empty-parts', 'persistent-50
       assert.ok(player.saves.every((save) => save.isCompleted === 'false'))
       assert.ok(Number(player.saves.at(-1).seconds) > 0.6)
       assert.ok((await player.page.evaluate(() => window.state.cloudAudioMessage)).length > 0)
-      assert.equal(attempts, reason === 'persistent-503' ? 3 : 1)
+      assert.equal(attempts, reason === 'persistent-503' ? 6 : 2)
       assert.deepEqual(player.errors, [])
     } finally {
       await player.context.close()
     }
   })
 }
+
+test('A next chunk that fails every preload retry is fetched again at the boundary and keeps playing', async () => {
+  const player = await createPlayer({ chapters: { 0: [[true], [true]] } })
+  let attempts = 0
+  try {
+    await player.page.route('**/api/books/audio-chunk?*', async (route) => {
+      if (new URL(route.request().url()).searchParams.get('chunkIndex') === '1' && ++attempts <= 3)
+        return route.abort('failed')
+      return route.fallback()
+    })
+    await player.page.click('#start')
+    await player.page.waitForFunction(() => !window.state.cloudAudioSession)
+    await waitForSaves(player.page)
+    const events = await bufferEvents(player.page)
+    assert.equal(attempts, 4)
+    assert.ok(events.some((entry) => entry.event === 'buffer-end' && entry.details.reason === 'error'))
+    assert.equal(events.filter((entry) => entry.event === 'buffer-start').length, 2)
+    assert.ok(!events.some((entry) => entry.event === 'session-error'))
+    assert.equal(player.saves.at(-1).chunkId, 'chunk-0-1')
+    assert.equal(player.saves.at(-1).isCompleted, 'true')
+    assert.deepEqual(player.errors, [])
+  } finally {
+    await player.context.close()
+  }
+})
 
 test('Media Session pause, resume, seek and chapter commands preserve playback state', async () => {
   const player = await createPlayer({ segmentSeconds: 90, chapters: { 0: [[true], [true]], 2: [[true]] } })
@@ -694,7 +719,7 @@ test('An append failure after crossing a chunk boundary falls back at the curren
         (entry) => entry.event === 'play' && entry.playbackMode === 'file'
       )
     )
-    assert.ok((await player.page.evaluate(() => window.state.cloudAudioPosition)) >= 119.9)
+    await player.page.waitForFunction(() => window.state.cloudAudioPosition >= 119.9)
     assert.ok((await player.page.evaluate(() => window.state.cloudAudioPosition)) < 122)
     assert.equal(await player.page.evaluate(() => window.state.cloudAudioActive), true)
     assert.match(await player.page.evaluate(() => window.state.cloudAudioDetail), /^2 \/ 6/)

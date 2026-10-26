@@ -1204,9 +1204,8 @@ window.booklogAudio = (function () {
             stream.cursor = { data: data, chunkIndex: nextIndex, partIndex: 0 }
             return step()
           },
-          function (error) {
+          function () {
             if (!isCurrentBuffer(session, stream)) return
-            stream.error = error
             finish('error')
           }
         )
@@ -1687,10 +1686,7 @@ window.booklogAudio = (function () {
       syncBufferedPosition(session)
       if (!isActive(session)) return
       recordDiagnostic('ended', session)
-      if (session.stream && session.stream.error) {
-        setError(session, session.stream.error)
-        return
-      }
+      // 미리 받기에 실패한 다음 구간도 그사이 연결이 돌아왔을 수 있어, 경계에서 한 번 더 받아 봅니다.
       advancePart(session)
     }
     bindMediaSession(session)

@@ -15,7 +15,7 @@
     x-ref="compressDialog"
     aria-labelledby="audio-compress-title-<%= fileId %>"
     @click="if ($event.target === $el) $el.close()"
-    class="fixed inset-0 m-auto max-h-[88dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-[1.75rem] border-none bg-[#fbf7ef] p-0 text-left text-stone-950 shadow-xl backdrop:bg-black/40">
+    class="fixed inset-0 m-auto max-h-[88dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-[1.75rem] border-none bg-[#fbf7ef] p-0 text-left text-stone-950 shadow-xl">
     <form
       method="post"
       action="<%= action %>"
@@ -40,7 +40,7 @@
           type="button"
           @click="$refs.compressDialog.close()"
           aria-label="닫기"
-          class="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border-none bg-stone-200/60 text-stone-700">
+          class="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border-none bg-stone-200/60 p-0 text-stone-700">
           <span
             class="i-lucide-x h-4 w-4"
             aria-hidden="true"></span>
