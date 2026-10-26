@@ -1,4 +1,4 @@
-import type { MiddlewareNextFunc, PagesGlobalContext, PagesRequestContext, PagesResponse } from 'pocketpages'
+import type { MiddlewareNextFunc, PagesGlobalContext, PagesMethods, PagesRequest, PagesRequestContext, PagesResponse } from 'pocketpages'
 import type DatastarPlugin = require('pocketpages-plugin-datastar-v1')
 import type { Client, ClientId, RealtimeOptions } from 'pocketpages-plugin-realtime'
 
@@ -10,14 +10,20 @@ type PocketPagesRealtimeApi = {
   getClientById: (clientId: ClientId) => Client | undefined
   send: (topic: string, message: string, options?: RealtimeOptions) => void
 }
+// PocketPages 0.22 passes HEAD/OPTIONS through at runtime, but PagesMethods omits them.
+type PocketPagesEditorRequest = Omit<PagesRequest, 'method'> & {
+  method: PagesMethods | 'HEAD' | 'OPTIONS'
+}
+
 type PocketPagesEditorResponse = Omit<PagesResponse, 'cookie'> & {
   // PocketPages 0.22.3 returns the serialized cookie value at runtime.
   cookie: <T>(name: string, value: T, options?: Parameters<PagesResponse['cookie']>[2]) => string
 }
-type PocketPagesEditorApi<TData = any> = Omit<PagesRequestContext<TData>, 'formData' | 'response'> & {
+type PocketPagesEditorApi<TData = any> = Omit<PagesRequestContext<TData>, 'formData' | 'request' | 'response'> & {
   datastar: PocketPagesDatastarApi
 } & { realtime: PocketPagesRealtimeApi } & {
   formData: () => Record<string, any>
+  request: PocketPagesEditorRequest
   response: PocketPagesEditorResponse
 }
 

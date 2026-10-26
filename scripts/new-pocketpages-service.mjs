@@ -737,18 +737,24 @@ type PocketPagesRealtimeOptions = RealtimeOptions
   ].join('')
   const globalApiExtensions = options.auth ? ' & PocketPagesAuthGlobalApi & PocketPagesJsSdkApi' : ''
 
-  return `import type { MiddlewareNextFunc, PagesGlobalContext, PagesRequestContext, PagesResponse } from 'pocketpages'
+  return `import type { MiddlewareNextFunc, PagesGlobalContext, PagesMethods, PagesRequest, PagesRequestContext, PagesResponse } from 'pocketpages'
 ${authImport}${datastarImport}${realtimeImport}
 // Editor-only mirror for globals injected by PocketPages core and plugins in
 // \`pb_hooks/pages/+config.js\`.
 ${datastarTypes}${authTypes}${realtimeTypes}
+// PocketPages 0.22 passes HEAD/OPTIONS through at runtime, but PagesMethods omits them.
+type PocketPagesEditorRequest = Omit<PagesRequest, 'method'> & {
+  method: PagesMethods | 'HEAD' | 'OPTIONS'
+}
+
 type PocketPagesEditorResponse = Omit<PagesResponse, 'cookie'> & {
   // PocketPages 0.22.3 returns the serialized cookie value at runtime.
   cookie: <T>(name: string, value: T, options?: Parameters<PagesResponse['cookie']>[2]) => string
 }
-type PocketPagesEditorApi<TData = any> = Omit<PagesRequestContext<TData>, 'formData' | 'response'>
+type PocketPagesEditorApi<TData = any> = Omit<PagesRequestContext<TData>, 'formData' | 'request' | 'response'>
 ${editorApiExtensions}  & {
     formData: () => Record<string, any>
+    request: PocketPagesEditorRequest
     response: PocketPagesEditorResponse
   }
 

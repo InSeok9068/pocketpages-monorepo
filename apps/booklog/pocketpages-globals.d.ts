@@ -1,10 +1,15 @@
-import type { MiddlewareNextFunc, PagesGlobalContext, PagesRequestContext, PagesResponse } from 'pocketpages'
+import type { MiddlewareNextFunc, PagesGlobalContext, PagesMethods, PagesRequest, PagesRequestContext, PagesResponse } from 'pocketpages'
 import type PocketBase from 'pocketbase-js-sdk-jsvm'
 import type { AuthData as PocketPagesAuthData, User as PocketPagesAuthUser } from 'pocketpages-plugin-auth'
 import type { PocketBaseClientOptions } from 'pocketpages-plugin-js-sdk'
 
 // Editor-only mirror for globals injected by PocketPages core and plugins in
 // `pb_hooks/pages/+config.js`.
+
+// PocketPages 0.22 passes HEAD/OPTIONS through at runtime, but PagesMethods omits them.
+type PocketPagesEditorRequest = Omit<PagesRequest, 'method'> & {
+  method: PagesMethods | 'HEAD' | 'OPTIONS'
+}
 
 type PocketPagesEditorResponse = Omit<PagesResponse, 'cookie'> & {
   // PocketPages 0.22.3 returns the serialized cookie value at runtime.
@@ -69,10 +74,11 @@ type PocketPagesAuthApi = PocketPagesAuthGlobalApi & PocketPagesAuthRequestApi
 type PocketPagesJsSdkApi = {
   pb: (options?: Partial<PocketBaseClientOptions>) => PocketBase
 }
-type PocketPagesEditorApi<TData = any> = Omit<PagesRequestContext<TData>, 'formData' | 'response'>
+type PocketPagesEditorApi<TData = any> = Omit<PagesRequestContext<TData>, 'formData' | 'request' | 'response'>
   & PocketPagesAuthApi
   & PocketPagesJsSdkApi & {
     formData: () => Record<string, any>
+    request: PocketPagesEditorRequest
     response: PocketPagesEditorResponse
   }
 
