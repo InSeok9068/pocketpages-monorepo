@@ -930,7 +930,8 @@
       <form
         method="post"
         action="/xapi/books/audio-job"
-        class="m-0">
+        class="m-0"
+        onsubmit="return window.confirm('AI 오디오북 생성을 다시 시작할까요?')">
         <input
           type="hidden"
           name="bookId"
@@ -964,7 +965,8 @@
       <form
         method="post"
         action="/xapi/books/audio-job"
-        class="m-0">
+        class="m-0"
+        onsubmit="return window.confirm('AI 오디오북 생성을 일시 정지할까요?')">
         <input
           type="hidden"
           name="bookId"
