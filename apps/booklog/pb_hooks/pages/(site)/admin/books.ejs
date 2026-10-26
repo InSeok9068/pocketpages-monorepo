@@ -286,7 +286,7 @@
     .newQuery(
       'SELECT books.id AS bookId, books.title AS title, books.author AS author, '
         + '(SELECT count(DISTINCT user_id) FROM book_shelves WHERE book_id = books.id) AS userCount, '
-        + "coalesce((SELECT group_concat(coalesce(nullif(users.name, ''), users.email), ', ') FROM book_shelves JOIN users ON users.id = book_shelves.user_id WHERE book_shelves.book_id = books.id), '') AS userNames, "
+        + "coalesce((SELECT group_concat(coalesce(nullif(users.name, ''), users.email), char(10)) FROM book_shelves JOIN users ON users.id = book_shelves.user_id WHERE book_shelves.book_id = books.id), '') AS userNames, "
         + '(SELECT count(*) FROM book_files WHERE book_id = books.id) AS fileCount, '
         + '(SELECT coalesce(sum(file_size), 0) FROM book_files WHERE book_id = books.id) AS fileBytes, '
         + "(SELECT count(*) FROM book_audio_chunks JOIN book_files ON book_files.id = book_audio_chunks.file_id WHERE book_files.book_id = books.id AND book_audio_chunks.audio_file != '') AS audioCount "
@@ -418,16 +418,20 @@
     })
   }
 
+  const bookTitleService = resolve('book-title')
+  const bookAuthorView = resolve('book-author-view')
   const books = rows.map(function (row) {
-    const title = String(row.title || '제목 없음')
+    const title = bookTitleService.getMainTitle(String(row.title || '제목 없음')) || '제목 없음'
     const userCount = Number(row.userCount || 0)
     return {
       audioFiles: audioFilesByBook[String(row.bookId)] || [],
       bookId: String(row.bookId),
       title,
-      author: String(row.author || '저자 정보 없음'),
+      author: bookAuthorView.formatDisplayAuthor(String(row.author || '').trim()) || '저자 정보 없음',
       userCount,
-      userNames: String(row.userNames || ''),
+      userNames: String(row.userNames || '')
+        .split('\n')
+        .filter(Boolean),
       fileCount: Number(row.fileCount || 0),
       fileSizeLabel: formatBytes(Number(row.fileBytes || 0)),
       audioSizeLabel: audioSizeUnknown[String(row.bookId)]
@@ -465,7 +469,10 @@
         )
         .bind({ bookId: assignBookId })
         .all(assignmentCandidates)
-      assignmentBook = { bookId: assignBookId, title: String(assignmentRecord.get('title') || '제목 없음') }
+      assignmentBook = {
+        bookId: assignBookId,
+        title: bookTitleService.getMainTitle(String(assignmentRecord.get('title') || '제목 없음')) || '제목 없음',
+      }
       dbg('page/admin/books:assignment-loaded', {
         userId,
         bookId: assignBookId,
@@ -701,8 +708,12 @@
             </th>
             <td class="px-3 py-2.5">
               <span class="font-semibold tabular-nums"><%= book.userCount %>명</span>
-              <% if (book.userNames) { %>
-              <p class="m-0 break-all text-stone-500"><%= book.userNames %></p>
+              <% if (book.userNames.length) { %>
+              <ul class="m-0 list-none p-0 text-stone-500">
+                <% book.userNames.forEach(function (name) { %>
+                <li class="break-all"><%= name %></li>
+                <% }) %>
+              </ul>
               <% } else { %>
               <span class="ml-1 rounded bg-[#efe2d2] px-1.5 py-0.5 text-[11px] text-[#8e5521]">미사용</span>
               <% } %>

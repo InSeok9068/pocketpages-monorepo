@@ -560,3 +560,150 @@ test('Moving to another chapter keeps a paused audiobook paused and a playing on
     .toBe(true)
   expect(errors).toEqual([])
 })
+
+test('Listening follow pauses while the reader scrolls and resumes only near the spoken paragraph', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const paragraphs = Array.from(
+    { length: 60 },
+    (_value, index) =>
+      `${index + 1}번째 문단입니다. 따라가기를 시험하려고 화면 여러 줄을 채우는 문장을 이어 씁니다. 같은 길이로 한 번 더 이어 적어 문단 높이를 맞춥니다.`
+  )
+  const longBook = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+    ),
+    'book.opf': strToU8(
+      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">follow-test</dc:identifier><dc:title>따라가기 테스트</dc:title><dc:language>ko</dc:language></metadata><manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/></manifest><spine><itemref idref="chapter"/></spine></package>'
+    ),
+    'nav.xhtml': strToU8(
+      '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="chapter.xhtml">긴 챕터</a></li></ol></nav></body></html>'
+    ),
+    'chapter.xhtml': strToU8(
+      '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>긴 챕터</title></head><body><h1>긴 챕터</h1>'
+        + paragraphs.map((text) => `<p>${text}</p>`).join('')
+        + '</body></html>'
+    ),
+  })
+  const errors = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.setViewportSize({ width: 400, height: 700 })
+  const body = renderReader(true)
+  await page.route(
+    (url) => url.protocol === 'http:' || url.protocol === 'https:',
+    async (route) => {
+      const url = new URL(route.request().url())
+      if (url.pathname.startsWith('/assets/')) {
+        return route.fulfill({ path: fileURLToPath(new URL(url.pathname.slice(1), pagesRoot)) })
+      }
+      if (url.pathname === '/test.epub')
+        return route.fulfill({ body: Buffer.from(longBook), contentType: 'application/epub+zip' })
+      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+      if (url.pathname === '/api/books/list-highlights') {
+        return route.fulfill({ json: listHighlightsPayload([], await readForm(route)) })
+      }
+      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, id: 'session00000001' } })
+      return route.fulfill({ contentType: 'text/html', body: readerHtml(body) })
+    }
+  )
+  await page.goto('/books/book/read')
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const root = document.querySelector('section[x-data]')
+        return window.Alpine && !window.Alpine.$data(root).loading
+      })
+    )
+    .toBeTruthy()
+  // 실제 음성 대신 읽는 문장만 바꿔, 따라가기가 화면을 언제 옮기는지 봅니다.
+  await page.evaluate((texts) => {
+    window.__followTexts = texts
+    window.__anchor = null
+    window.booklogAudio.currentAnchor = () => window.__anchor
+    window.Alpine.$data(document.querySelector('section[x-data]')).cloudAudioSession = true
+  }, paragraphs)
+  const speak = (index) =>
+    page.evaluate((value) => {
+      window.__anchor = { sectionIndex: 0, text: window.__followTexts[value] }
+    }, index)
+  const spoken = () =>
+    page.evaluate(() => {
+      for (const frame of document.querySelectorAll('#epub-reader iframe')) {
+        const node = frame.contentDocument && frame.contentDocument.querySelector('.booklog-listen-active')
+        if (!node) continue
+        return {
+          index: window.__followTexts.indexOf(node.textContent.trim()),
+          top: Math.round(frame.getBoundingClientRect().top + node.getBoundingClientRect().top),
+        }
+      }
+      return null
+    })
+  const topOf = (index) =>
+    page.evaluate((value) => {
+      for (const frame of document.querySelectorAll('#epub-reader iframe')) {
+        const node = Array.from(frame.contentDocument ? frame.contentDocument.querySelectorAll('p') : []).find(
+          (candidate) => candidate.textContent.trim() === window.__followTexts[value]
+        )
+        if (node) return Math.round(frame.getBoundingClientRect().top + node.getBoundingClientRect().top)
+      }
+      return null
+    }, index)
+  const followTop = 700 / 5
+
+  await speak(0)
+  await expect.poll(async () => (await spoken())?.index).toBe(0)
+  await speak(30)
+  await expect
+    .poll(async () => (await spoken())?.top, { message: 'a watching reader follows to the next paragraph' })
+    .toBeGreaterThan(followTop - 40)
+  await expect.poll(async () => Math.abs((await spoken()).top - followTop)).toBeLessThan(40)
+
+  const nextTop = await topOf(31)
+  await page.mouse.move(200, 350)
+  await page.mouse.wheel(0, -(610 - nextTop))
+  const nudgedAt = Date.now()
+  await expect.poll(() => topOf(31)).toBeGreaterThan(560)
+  // WebKit은 휠 스크롤이 잠시 더 미끄러지므로, 멈춘 뒤의 위치를 기준으로 삼습니다.
+  await expect
+    .poll(async () => {
+      const first = await topOf(31)
+      await page.waitForTimeout(300)
+      return first === (await topOf(31))
+    })
+    .toBe(true)
+  const nudgedTop = await topOf(31)
+  await speak(31)
+  await expect.poll(async () => (await spoken())?.index).toBe(31)
+  await page.waitForTimeout(3000)
+  expect(Math.abs((await spoken()).top - nudgedTop), 'the highlight moves without pulling the screen').toBeLessThan(3)
+  await expect
+    .poll(async () => Math.abs((await spoken()).top - followTop), { timeout: 15_000 })
+    .toBeLessThan(40)
+  expect(Date.now() - nudgedAt, 'following waits until ten seconds after the last scroll').toBeGreaterThan(9000)
+
+  await page.mouse.wheel(0, 2500)
+  await expect.poll(async () => (await spoken()).top).toBeLessThan(-200)
+  await speak(32)
+  await expect.poll(async () => (await spoken())?.index).toBe(32)
+  const farTop = (await spoken()).top
+  await page.waitForTimeout(12_000)
+  expect(Math.abs((await spoken()).top - farTop), 'a reader who left the paragraph keeps their place').toBeLessThan(3)
+
+  await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).goToListeningPosition())
+  await expect
+    .poll(async () => {
+      const current = await spoken()
+      return current && current.top >= -10 && current.top < 300
+    })
+    .toBe(true)
+  await speak(40)
+  await expect
+    .poll(async () => Math.abs(((await spoken()) || { top: 9999 }).top - followTop), {
+      message: 'returning with the button follows again without waiting',
+      timeout: 5000,
+    })
+    .toBeLessThan(40)
+  expect(errors).toEqual([])
+})

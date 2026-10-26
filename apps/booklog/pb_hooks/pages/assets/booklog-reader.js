@@ -40,6 +40,9 @@ window.booklogReaderLogic = (function () {
   var FOLLOW_BOTTOM_MARGIN_PX = 180
   var FOLLOW_TARGET_TOP_RATIO = 1 / 5
   var LISTEN_FOLLOW_INTERVAL_MS = 1000
+  var FOLLOW_PAUSE_AFTER_SCROLL_MS = 10000
+  var SCROLL_KEYS = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']
+  var lastUserScrollAt = 0
   var HISTORY_BACK_FALLBACK_MS = 1500
   var DEFAULT_FONT_SIZE_PERCENT = 100
   var FONT_SIZE_OPTIONS = [90, 100, 110, 120, 130]
@@ -106,7 +109,7 @@ window.booklogReaderLogic = (function () {
   var renderedContentEntries = []
   var savedHighlightLocators = {}
   var activeReadAloudHighlight = null
-  var listeningFollow = { key: '', node: null, openedSection: -1 }
+  var listeningFollow = { key: '', node: null, openedSection: -1, deferred: false }
   var activeComponent = null
   var activeSelectionContents = null
   var selectionSyncTimerId = 0
@@ -1284,36 +1287,56 @@ window.booklogReaderLogic = (function () {
     return !!box && box.bottom > box.viewTop && box.top < box.viewBottom
   }
 
+  function markUserScroll() {
+    lastUserScrollAt = Date.now()
+  }
+
+  function markUserScrollKey(event) {
+    if (SCROLL_KEYS.indexOf(event.key) >= 0) markUserScroll()
+  }
+
+  // 따라가기 이동과 챕터 이어 붙이기는 입력 이벤트를 만들지 않아, 사용자가 직접 끌거나 굴린 스크롤만 셉니다.
+  function bindUserScrollTracking(target) {
+    if (!target || target.__booklogUserScrollBound) return
+    target.__booklogUserScrollBound = true
+    target.addEventListener('touchmove', markUserScroll, { passive: true })
+    target.addEventListener('wheel', markUserScroll, { passive: true })
+    target.addEventListener('keydown', markUserScrollKey)
+  }
+
+  function isFollowPaused() {
+    return Date.now() - lastUserScrollAt < FOLLOW_PAUSE_AFTER_SCROLL_MS
+  }
+
+  function resumeFollowNow() {
+    lastUserScrollAt = 0
+  }
+
+  // 스크롤이 멈춘 뒤에는 듣는 문단이 아직 화면에 걸쳐 있을 때만 다시 맞추고, 멀리 벗어났으면 그 자리에 둡니다.
+  function revealDeferredFollow(holder, targetTopRatio) {
+    if (!holder || !holder.deferred || !holder.node || isFollowPaused()) return
+    holder.deferred = false
+    revealFollowedNode(holder.node, isNodeOnScreen(holder.node), targetTopRatio)
+  }
+
   // 읽는 문단을 보고 있던 사용자만 따라 옮기고, 이미 잘 보이는 문단이면 화면을 움직이지 않습니다.
   // 문단 첫 줄이 화면 위로 지나갔거나 아래쪽 미니 플레이어 근처까지 내려왔을 때만 옮깁니다.
   function revealFollowedNode(node, watching, targetTopRatio) {
     var box = getNodeScreenBox(node)
-    var scrollMarginTop = 0
-    var previousScrollMarginTop = ''
-    var previousScrollMarginPriority = ''
+    var scroller = resolveAutoPagingTarget()
+    var viewHeight = 0
+    var targetTop = 0
 
-    if (!watching || !box || typeof node.scrollIntoView !== 'function') return
+    if (!watching || !box || !scroller || typeof scroller.scrollBy !== 'function') return
     if (box.top >= box.viewTop && box.top <= box.viewBottom - FOLLOW_BOTTOM_MARGIN_PX) return
 
-    if (typeof targetTopRatio !== 'number') {
-      node.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' })
-      return
-    }
-
-    scrollMarginTop = Math.round((box.viewBottom - box.viewTop) * targetTopRatio)
-    previousScrollMarginTop = node.style.getPropertyValue('scroll-margin-top')
-    previousScrollMarginPriority = node.style.getPropertyPriority('scroll-margin-top')
-    node.style.setProperty('scroll-margin-top', scrollMarginTop + 'px')
-
-    try {
-      node.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'smooth' })
-    } finally {
-      if (previousScrollMarginTop) {
-        node.style.setProperty('scroll-margin-top', previousScrollMarginTop, previousScrollMarginPriority)
-      } else {
-        node.style.removeProperty('scroll-margin-top')
-      }
-    }
+    viewHeight = box.viewBottom - box.viewTop
+    targetTop =
+      typeof targetTopRatio === 'number'
+        ? box.viewTop + viewHeight * targetTopRatio
+        : box.viewTop + Math.max(0, (viewHeight - (box.bottom - box.top)) / 2)
+    // 본문은 챕터 iframe 안에 있어 WebKit이 문단의 scrollIntoView를 바깥 스크롤 영역에서 맞추지 않으므로, 바깥 영역을 직접 옮깁니다.
+    scroller.scrollBy({ top: Math.round(box.top - targetTop), behavior: 'smooth' })
   }
 
   function activateReadAloudHighlight(queueItem) {
@@ -1325,7 +1348,8 @@ window.booklogReaderLogic = (function () {
     var entryIndex = 0
     var className = 'booklog-read-aloud-active'
     var previous = activeReadAloudHighlight ? activeReadAloudHighlight.node : null
-    var watching = !previous || isNodeOnScreen(previous)
+    var paused = isFollowPaused()
+    var watching = !paused && (!previous || isNodeOnScreen(previous))
 
     clearReadAloudHighlight()
 
@@ -1392,6 +1416,7 @@ window.booklogReaderLogic = (function () {
     activeReadAloudHighlight = {
       node: node,
       className: className,
+      deferred: paused,
     }
 
     revealFollowedNode(node, watching)
@@ -4909,6 +4934,7 @@ window.booklogReaderLogic = (function () {
       applyReaderSettingsToDocument(doc, getComponentReaderSettings(component))
       bindContentSelectionCapture(component, contents)
       bindNoteReferencePopup(component, contents)
+      bindUserScrollTracking(doc)
 
       // 스크롤 방식에서는 챕터 높이가 내용을 따르므로, html·body의 % 높이를 그대로 두면 그 안의 % 높이 상자가 0이 됩니다.
       if (doc.documentElement && doc.documentElement.style) {
@@ -4981,7 +5007,11 @@ window.booklogReaderLogic = (function () {
     var container = document.getElementById('epub-reader')
 
     activeComponent = component
-    window.setInterval(followListeningPosition, LISTEN_FOLLOW_INTERVAL_MS)
+    bindUserScrollTracking(document)
+    window.setInterval(function () {
+      followListeningPosition()
+      revealDeferredFollow(activeReadAloudHighlight)
+    }, LISTEN_FOLLOW_INTERVAL_MS)
     syncReaderFontSizeState(component, readStoredReaderFontSizePercent())
     syncReaderSettingsState(component, readStoredReaderSettings())
     // 새로고침하면 지금 항목이 이미 보호 항목이라, 또 쌓으면 뒤로가기마다 리더가 다시 열립니다.
@@ -5113,6 +5143,7 @@ window.booklogReaderLogic = (function () {
     stopSpeechPlayback(component, {
       keepMessage: true,
     })
+    resumeFollowNow()
 
     component.readAloudBusy = true
     component.readAloudPlaying = false
@@ -5148,6 +5179,7 @@ window.booklogReaderLogic = (function () {
       return
     }
     stopBrowserSpeech(component, { keepMessage: true })
+    resumeFollowNow()
     window.booklogAudio.start(component, section.index, !!fromBeginning)
   }
 
@@ -5160,6 +5192,7 @@ window.booklogReaderLogic = (function () {
     }
     component.readAloudOpen = false
     component.loading = true
+    resumeFollowNow()
     prepareManualNavigation()
     Promise.resolve(section.load(bookInstance.load.bind(bookInstance)))
       .then(function () {
@@ -5192,7 +5225,7 @@ window.booklogReaderLogic = (function () {
 
   function clearListeningHighlight() {
     if (listeningFollow.node) listeningFollow.node.classList.remove('booklog-listen-active')
-    listeningFollow = { key: '', node: null, openedSection: -1 }
+    listeningFollow = { key: '', node: null, openedSection: -1, deferred: false }
   }
 
   function findListeningNode(doc, key) {
@@ -5218,8 +5251,12 @@ window.booklogReaderLogic = (function () {
       return
     }
     var followKey = anchor.sectionIndex + ':' + key
-    if (listeningFollow.key === followKey) return
-    var watching = !listeningFollow.node || isNodeOnScreen(listeningFollow.node)
+    if (listeningFollow.key === followKey) {
+      revealDeferredFollow(listeningFollow, FOLLOW_TARGET_TOP_RATIO)
+      return
+    }
+    var paused = isFollowPaused()
+    var watching = !paused && (!listeningFollow.node || isNodeOnScreen(listeningFollow.node))
     var section = bookInstance.spine.get(anchor.sectionIndex)
     var view =
       renditionInstance && renditionInstance.manager
@@ -5243,7 +5280,7 @@ window.booklogReaderLogic = (function () {
     }
     ensureReadAloudStyle(target.ownerDocument)
     target.classList.add('booklog-listen-active')
-    listeningFollow = { key: followKey, node: target, openedSection: -1 }
+    listeningFollow = { key: followKey, node: target, openedSection: -1, deferred: paused }
     revealFollowedNode(target, watching, FOLLOW_TARGET_TOP_RATIO)
   }
 
@@ -5261,6 +5298,7 @@ window.booklogReaderLogic = (function () {
     }
     stopBrowserSpeech(component, { keepMessage: true })
     window.booklogAudio.stop()
+    resumeFollowNow()
     component.cloudAudioBusy = true
     component.cloudAudioMessage = ''
     buildReadAloudQueue(component)

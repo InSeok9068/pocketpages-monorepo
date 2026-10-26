@@ -41,7 +41,11 @@ onBootstrap(function (event) {
     return record
   }
 
-  saveRecord('books', { id: 'adminbook000001', title: '관리 대상 책', author: '관리 저자' })
+  saveRecord('books', {
+    id: 'adminbook000001',
+    title: '관리 대상 책 - 관리 부제목',
+    author: '관리 저자 (지은이), 관리 역자 (옮긴이)',
+  })
   saveRecord('books', { id: 'unusedbook00001', title: '미사용 관리 책' })
   saveRecord('books', {
     id: 'sharedbook00001',
