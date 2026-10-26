@@ -1,0 +1,117 @@
+<script server>
+  const isManager = !!request.auth && request.auth.get('admin_manager') === true
+  const userId = request.auth ? String(request.auth.get('id')) : ''
+  const archiveService = resolve('book-audio-archive-service')
+
+  if (request.method === 'GET') {
+    if (!isManager) {
+      warn('xapi/books/audio-archive:forbidden', { userId })
+      response.html(403, '관리자 권한이 필요합니다.')
+      return
+    }
+    const bookId = String(request.url.query.bookId || '')
+    const fileId = String(request.url.query.fileId || '')
+    try {
+      $app.findFirstRecordByFilter('book_files', 'id = {:fileId} && book_id = {:bookId}', { fileId, bookId })
+    } catch (_exception) {
+      warn('xapi/books/audio-archive:file-not-found', { userId, bookId, fileId })
+      response.html(404, '책 파일을 찾지 못했습니다.')
+      return
+    }
+    let archive = null
+    try {
+      archive = archiveService.createArchive($app, fileId)
+    } catch (exception) {
+      error('xapi/books/audio-archive:export-failed', {
+        userId,
+        bookId,
+        fileId,
+        error: String(exception.message || exception),
+      })
+      response.html(
+        exception.userMessage ? 404 : 500,
+        exception.userMessage ? exception.message : '보관 파일을 만들지 못했습니다.'
+      )
+      return
+    }
+    try {
+      const archivePath = $filepath.join(archive.directory, archive.archiveName)
+      info('xapi/books/audio-archive:export', {
+        userId,
+        bookId,
+        fileId,
+        chunks: archive.chunkCount,
+        audio: archive.audioCount,
+      })
+      response.header(
+        'Content-Disposition',
+        'attachment; filename="booklog-audiobook-'
+          + fileId
+          + ".tar\"; filename*=UTF-8''"
+          + encodeURIComponent(archive.downloadName)
+      )
+      response.header('Content-Length', String($os.stat(archivePath).size()))
+      response.header('Cache-Control', 'no-store')
+      const reader = $os.openInRoot(archive.directory, archive.archiveName)
+      try {
+        request.event.stream(200, 'application/x-tar', reader)
+      } finally {
+        reader.close()
+      }
+    } finally {
+      archiveService.removeWorkspace(archive.directory)
+    }
+    return
+  }
+
+  if (request.method !== 'POST') {
+    response.html(405, 'GET 또는 POST 요청만 가능합니다.')
+    return
+  }
+  if (!isManager) {
+    warn('xapi/books/audio-archive:forbidden', { userId })
+    dbg('xapi/books/audio-archive:redirect', { status: 303, redirectTo: '/', message: '관리자 권한이 필요합니다.' })
+    redirect('/', { status: 303, message: '관리자 권한이 필요합니다.' })
+    return
+  }
+
+  const form = body()
+  const bookId = String(form.bookId || '').trim()
+  const fileId = String(form.fileId || '').trim()
+  const from = String(form.from || '')
+  const redirectTo = /^\/admin\/books(?:[?#]|$)/.test(from) ? from : '/admin/books'
+  let message = ''
+  try {
+    $app.findFirstRecordByFilter('book_files', 'id = {:fileId} && book_id = {:bookId}', { fileId, bookId })
+    const upload = (request.event.findUploadedFiles('archive') || [])[0]
+    if (!upload) throw Object.assign(new Error('보관 파일을 선택해 주세요.'), { userMessage: true })
+    if (!/\.tar$/i.test(String(upload.originalName || upload.name || ''))) {
+      throw Object.assign(new Error('북로그에서 내려받은 .tar 보관 파일만 올릴 수 있습니다.'), { userMessage: true })
+    }
+    const result = archiveService.restoreUpload($app, fileId, userId, upload)
+    info('xapi/books/audio-archive:restored', { userId, bookId, fileId, result })
+    message =
+      'AI 오디오북을 복원했습니다. 음성 '
+      + result.readyChunks
+      + '구간'
+      + (result.queuedChunks > 0
+        ? ', 다시 만들 구간 ' + result.queuedChunks + '개(생성 다시 시작으로 이어서 만듭니다)'
+        : '')
+      + (result.discardedAudio > 0 ? ', 본문이 달라 쓰지 않은 음성 ' + result.discardedAudio + '개' : '')
+      + (result.progress > 0 ? ', 청취 위치 ' + result.progress + '개' : '')
+      + '.'
+  } catch (exception) {
+    error('xapi/books/audio-archive:restore-failed', {
+      userId,
+      bookId,
+      fileId,
+      error: String(exception.message || exception),
+    })
+    message = exception.userMessage
+      ? exception.message
+      : 'AI 오디오북을 복원하지 못했습니다. 보관 파일과 EPUB을 확인한 뒤 다시 시도해 주세요.'
+  }
+  dbg('xapi/books/audio-archive:redirect', { status: 303, redirectTo, message })
+  redirect(redirectTo, { status: 303, message })
+  return
+</script>

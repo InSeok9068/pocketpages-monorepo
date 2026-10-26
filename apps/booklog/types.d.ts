@@ -144,6 +144,27 @@ declare namespace types {
     deviceSeconds: number
   }
 
+  interface BookAudioArchive {
+    /** 보관 파일을 만든 임시 작업 폴더 */
+    directory: string
+    archiveName: string
+    /** 브라우저에 내려줄 파일 이름 */
+    downloadName: string
+    chunkCount: number
+    audioCount: number
+  }
+
+  interface BookAudioArchiveRestoreResult {
+    jobId: string
+    status: string
+    readyChunks: number
+    /** 본문이 달라졌거나 음성이 없어 다시 생성할 구간 수 */
+    queuedChunks: number
+    /** 현재 본문과 맞지 않아 쓰지 않은 보관 음성 수 */
+    discardedAudio: number
+    progress: number
+  }
+
   interface BookAudioJobView {
     status: string
     totalChunks: number

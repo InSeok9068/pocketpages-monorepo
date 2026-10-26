@@ -759,9 +759,15 @@ test('Only administrators see and access book management; users cannot grant the
 })
 
 test('Administrators can search all books, see members and delete unused books', async () => {
-  const unused = await request('/admin/books', 4)
+  const defaultListing = await (await request('/admin/books', 4)).text()
+  assert.match(defaultListing, /미사용 관리 책/)
+  assert.match(defaultListing, /관리 대상 책/, 'the default scope lists every book')
+  assert.equal(load(defaultListing)('select[name=scope] option[selected]').val(), 'all')
+  const unused = await request('/admin/books?scope=unused', 4)
   assert.equal(unused.status, 200)
-  assert.match(await unused.text(), /미사용 관리 책/)
+  const unusedHtml = await unused.text()
+  assert.match(unusedHtml, /미사용 관리 책/)
+  assert.doesNotMatch(unusedHtml, /관리 대상 책/)
   const listing = await request('/admin/books?scope=all&q=' + encodeURIComponent('관리 저자'), 4)
   assert.equal(listing.status, 200)
   const html = await listing.text()

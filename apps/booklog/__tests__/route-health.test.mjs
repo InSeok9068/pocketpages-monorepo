@@ -185,6 +185,8 @@ const GET_WITHOUT_INPUT = [
   '/api/books/audio-chunk',
   '/api/books/audio-position',
   '/api/books/audio-progress',
+  '/xapi/books/audio-archive',
+  '/xapi/books/audio-archive?bookId=fullbook0000001&fileId=nothing',
   '/xapi/books/audio-file',
   '/xapi/books/audio-file?chunkId=nothing',
   '/xapi/books/barebook0000001/read-file',
@@ -320,6 +322,11 @@ test('Book management opens only for administrators, including with odd search i
     await expectPage(route, 'admin')
   }
   await expectPage('/admin/books?scope=all', 'admin', { contains: ['unshelvedbook01'] })
+  for (const route of ['/xapi/books/audio-archive', '/xapi/books/audio-archive?bookId=fullbook0000001&fileId=nothing']) {
+    const result = await visit(route, 'admin')
+    assertNotBroken(result, 'GET ' + route)
+    assert.equal(result.status, 404, route)
+  }
 })
 
 test('Only administrators receive the audio diagnostic control and manual copy field', async () => {

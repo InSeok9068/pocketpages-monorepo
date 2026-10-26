@@ -3256,6 +3256,105 @@ window.booklogReaderLogic = (function () {
     }
   }
 
+  // epub.js(0.3.93 continuous)는 위에 붙인 챕터가 커질 때마다 그만큼 스크롤을 옮기는데, 챕터가 화면 아래로 내려온 뒤에도 계속 옮겨
+  // 그림 페이지가 다시 잴 때마다 화면이 튑니다. 바뀐 높이가 보던 화면보다 위일 때만 옮기도록 prepend를 같은 동작으로 다시 둡니다.
+  // 또 epub.js는 스크롤할 때만 다음 챕터를 붙이므로, 챕터가 줄어 화면보다 짧아지면 스크롤할 곳이 없어 그대로 멈춥니다.
+  function patchContinuousViews(manager) {
+    if (!manager || typeof manager.prepend !== 'function' || typeof manager.createView !== 'function') {
+      return
+    }
+
+    var createView = manager.createView
+
+    manager.createView = function () {
+      var view = createView.apply(this, arguments)
+      checkAfterShrink(this, view)
+      return view
+    }
+
+    manager.prepend = function (section) {
+      var self = this
+      var view = self.createView(section)
+
+      view.on('resized', function (size) {
+        if (shouldCounterPrependedResize(self, view, size)) {
+          self.counter(size)
+        }
+        view.expanded = true
+      })
+      view.on('axis', function (axis) {
+        self.updateAxis(axis)
+      })
+      view.on('writingMode', function (mode) {
+        self.updateWritingMode(mode)
+      })
+      self.views.prepend(view)
+      view.onDisplayed = self.afterDisplayed.bind(self)
+      return view
+    }
+  }
+
+  function checkAfterShrink(manager, view) {
+    if (!view || typeof view.on !== 'function') {
+      return
+    }
+
+    view.on('resized', function (size) {
+      if (!size || !(Number(size.heightDelta) < 0) || manager.booklogCheckPending) {
+        return
+      }
+
+      manager.booklogCheckPending = true
+      window.requestAnimationFrame(function () {
+        manager.booklogCheckPending = false
+
+        var container = manager.container
+
+        // 이동 중에 챕터를 더 붙이면 epub.js의 display가 끝나지 않습니다. 이동 뒤에는 refillSectionsAfterMove가 확인합니다.
+        if (
+          !renditionInstance
+          || renditionInstance.manager !== manager
+          || renditionInstance.displaying
+          || !container
+          || container.scrollHeight > container.clientHeight + 1
+        ) {
+          return
+        }
+
+        try {
+          Promise.resolve(
+            manager.q.enqueue(function () {
+              return manager.check()
+            })
+          ).catch(function (exception) {
+            console.warn('page/books/[bookId]/read:check-after-shrink:failed', {
+              message: String(exception && exception.message ? exception.message : exception),
+            })
+          })
+        } catch (exception) {
+          console.warn('page/books/[bookId]/read:check-after-shrink:failed', {
+            message: String(exception && exception.message ? exception.message : exception),
+          })
+        }
+      })
+    })
+  }
+
+  function shouldCounterPrependedResize(manager, view, size) {
+    var element = view && view.element ? view.element : null
+    var container = manager.container
+
+    if (manager.settings.axis !== 'vertical' || manager.settings.fullsize || !element || !container || !size) {
+      return true
+    }
+
+    var visibleTop = container.getBoundingClientRect().top
+    var viewTop = element.getBoundingClientRect().top
+    var previousHeight = (Number(size.height) || 0) - (Number(size.heightDelta) || 0)
+
+    return viewTop < visibleTop - 1 || viewTop + previousHeight <= visibleTop + 1
+  }
+
   function restoreSavedPosition(component, options) {
     var shouldShowMessage = !options || !options.silent
     var isRetry = !!(options && options.retry)
@@ -4756,6 +4855,23 @@ window.booklogReaderLogic = (function () {
     }
   }
 
+  // epub.js는 그림 최대 높이를 본문 높이의 95%로 정하는데, 본문이 높이 100% 상자뿐인 그림 페이지는 그 값이 0이 되어 그림이 사라집니다.
+  function restoreCollapsedImages(doc) {
+    var win = doc.defaultView
+    var container = renditionInstance && renditionInstance.manager ? renditionInstance.manager.container : null
+    var screenHeight = container && container.clientHeight ? container.clientHeight : window.innerHeight
+
+    if (!win || !screenHeight) {
+      return
+    }
+
+    Array.prototype.forEach.call(doc.querySelectorAll('img, svg'), function (image) {
+      if (parseFloat(win.getComputedStyle(image).maxHeight) === 0) {
+        image.style.setProperty('max-height', Math.round(screenHeight * 0.95) + 'px', 'important')
+      }
+    })
+  }
+
   function renderBookBuffer(component, buffer) {
     console.debug('page/books/[bookId]/read:fetch-buffer', {
       byteLength: buffer && buffer.byteLength ? buffer.byteLength : 0,
@@ -4768,6 +4884,10 @@ window.booklogReaderLogic = (function () {
       manager: 'continuous',
       flow: 'scrolled',
       allowScriptedContent: false,
+    })
+    var startedRendition = renditionInstance
+    Promise.resolve(startedRendition.started).then(function () {
+      patchContinuousViews(startedRendition.manager)
     })
     applyReaderSettings(component, readStoredReaderSettings(), {
       skipStorage: true,
@@ -4790,13 +4910,18 @@ window.booklogReaderLogic = (function () {
       bindContentSelectionCapture(component, contents)
       bindNoteReferencePopup(component, contents)
 
+      // 스크롤 방식에서는 챕터 높이가 내용을 따르므로, html·body의 % 높이를 그대로 두면 그 안의 % 높이 상자가 0이 됩니다.
       if (doc.documentElement && doc.documentElement.style) {
         doc.documentElement.style.setProperty('overflow-anchor', 'none', 'important')
+        doc.documentElement.style.setProperty('height', 'auto', 'important')
       }
 
       if (doc.body && doc.body.style) {
         doc.body.style.setProperty('overflow-anchor', 'none', 'important')
+        doc.body.style.setProperty('height', 'auto', 'important')
       }
+
+      restoreCollapsedImages(doc)
 
       if (readAloudPrepared) {
         annotateReadableTextNodes(doc.body || doc)

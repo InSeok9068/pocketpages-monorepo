@@ -38,6 +38,7 @@ const pocketBaseHookGlobals = {
   __hooks: 'readonly',
   arrayOf: 'readonly',
   DynamicModel: 'readonly',
+  Middleware: 'readonly',
   cronAdd: 'readonly',
   cronRemove: 'readonly',
   nullArray: 'readonly',

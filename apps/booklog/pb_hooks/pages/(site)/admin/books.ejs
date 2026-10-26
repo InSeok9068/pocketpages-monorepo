@@ -12,7 +12,7 @@
   const queryText = String(request.url.query.q || '')
     .trim()
     .slice(0, 200)
-  const scope = request.url.query.scope === 'all' ? 'all' : 'unused'
+  const scope = request.url.query.scope === 'unused' ? 'unused' : 'all'
   const sort = request.url.query.sort === 'size' ? 'size' : 'newest'
   const requestedPage = Math.max(1, Math.floor(Number(request.url.query.page) || 1))
   const pageSize = 30
@@ -596,14 +596,14 @@
         name="scope"
         class="box-border h-8 rounded-md border border-solid border-stone-300 bg-white px-2 text-xs text-stone-700 focus-visible:outline-stone-500">
         <option
-          value="unused"
-          <%= scope === 'unused' ? 'selected' : '' %>>
-          미사용 도서
-        </option>
-        <option
           value="all"
           <%= scope === 'all' ? 'selected' : '' %>>
           전체 도서
+        </option>
+        <option
+          value="unused"
+          <%= scope === 'unused' ? 'selected' : '' %>>
+          미사용 도서
         </option>
       </select>
       <label
@@ -774,6 +774,46 @@
                         type="submit"
                         class="inline-flex h-7 items-center justify-center rounded-md border-0 bg-[#efe2d2] px-2 text-xs font-semibold text-[#8e5521] ring-0 transition hover:bg-[#ead9c4] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500">
                         <%= file.requestLabel %>
+                      </button>
+                    </form>
+                    <% } %>
+                    <% if (file.hasJob) { %>
+                    <a
+                      href="/xapi/books/audio-archive?bookId=<%= encodeURIComponent(book.bookId) %>&fileId=<%= encodeURIComponent(file.fileId) %>"
+                      download
+                      class="inline-flex h-7 shrink-0 items-center justify-center rounded-md bg-stone-100 px-2 text-xs font-semibold text-stone-700 no-underline hover:bg-stone-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500">
+                      보관 파일 받기
+                    </a>
+                    <% } %>
+                    <% if (!file.canDelete) { %>
+                    <form
+                      method="post"
+                      action="/xapi/books/audio-archive"
+                      enctype="multipart/form-data"
+                      class="m-0 flex shrink-0 flex-wrap items-center gap-1">
+                      <input
+                        type="hidden"
+                        name="bookId"
+                        value="<%= book.bookId %>" />
+                      <input
+                        type="hidden"
+                        name="fileId"
+                        value="<%= file.fileId %>" />
+                      <input
+                        type="hidden"
+                        name="from"
+                        value="<%= formAction %>" />
+                      <input
+                        type="file"
+                        name="archive"
+                        accept=".tar,application/x-tar"
+                        required
+                        aria-label="「<%= book.title %>」 오디오북 보관 파일"
+                        class="max-w-44 text-[11px] text-stone-600 file:mr-1 file:rounded-md file:border-0 file:bg-stone-100 file:px-2 file:py-1 file:text-[11px] file:text-stone-700" />
+                      <button
+                        type="submit"
+                        class="inline-flex h-7 items-center justify-center rounded-md border-0 bg-stone-100 px-2 text-xs font-semibold text-stone-700 ring-0 transition hover:bg-stone-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500">
+                        보관 파일로 복원
                       </button>
                     </form>
                     <% } %>

@@ -359,7 +359,7 @@ function isXapiPath(pathname) {
 
 /**
  * HTMX 요청 여부를 판단합니다.
- * @param {import('pocketpages').PagesRequest} request 요청 객체
+ * @param {Pick<import('pocketpages').PagesRequest, 'header'>} request 요청 객체
  * @returns {boolean}
  */
 function isHtmxRequest(request) {

@@ -1473,3 +1473,170 @@ test('A picture cover that shrinks to just over a screen still scrolls on into t
     .poll(() => readingSpot(page), { timeout: 10_000, message: 'scrolling leaves the cover' })
     .toMatch(/^1장/)
 })
+
+// 위로 올라가며 앞에 붙은 그림 페이지는 나중에 화면 아래에서 다시 잴 때도 epub.js가 그만큼 스크롤을 옮겨, 표지로 되돌아가길 반복했습니다.
+const picturePagesBook = zipSync({
+  'mimetype': strToU8('application/epub+zip'),
+  'META-INF/container.xml': strToU8(
+    '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+  ),
+  'book.opf': strToU8(
+    '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">picture-pages</dc:identifier><dc:title>그림 속표지</dc:title></metadata><manifest><item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/><item id="author" href="author.xhtml" media-type="application/xhtml+xml"/><item id="inner" href="inner.xhtml" media-type="application/xhtml+xml"/><item id="rights" href="rights.xhtml" media-type="application/xhtml+xml"/><item id="inner2" href="inner2.xhtml" media-type="application/xhtml+xml"/><item id="front" href="front.png" media-type="image/png"/><item id="rear" href="rear.png" media-type="image/png"/><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="cover"/><itemref idref="author"/><itemref idref="inner"/><itemref idref="rights"/><itemref idref="inner2"/><itemref idref="c1"/></spine></package>'
+  ),
+  'cover.xhtml': xhtml('<div><img alt="" src="front.png" /></div><div><img alt="" src="rear.png" /></div>'),
+  'author.xhtml': xhtml(
+    Array.from(
+      { length: 8 },
+      (_, index) => '<p>지은이 소개 ' + (index + 1) + '. 작가가 걸어온 길을 짧게 적은 문단입니다.</p>'
+    ).join('')
+  ),
+  'inner.xhtml': xhtml('<div><img alt="" src="front.png" /></div>'),
+  'rights.xhtml': xhtml('<p>판권 면입니다.</p><p>무단 복제를 금합니다.</p>'),
+  'inner2.xhtml': xhtml('<div><img alt="" src="rear.png" /></div>'),
+  'front.png': new Uint8Array(tallPng(1000, 1600)),
+  'rear.png': new Uint8Array(tallPng(1000, 1600)),
+  'c1.xhtml': xhtml(Array.from({ length: 6 }, () => chapterBody(1)).join('')),
+})
+
+test('Going back to the very top past picture pages and scrolling gently down never jumps back up', async ({
+  page,
+}) => {
+  await openReader(page, picturePagesBook)
+  const scrollTop = () => page.evaluate(() => document.querySelector('#epub-reader .epub-container').scrollTop)
+  await page.mouse.move(195, 500)
+  for (let step = 0; step < 40; step += 1) {
+    await page.mouse.wheel(0, 400)
+    await page.waitForTimeout(120)
+  }
+  await page.waitForTimeout(1500)
+  for (let step = 0; step < 80; step += 1) {
+    await page.mouse.wheel(0, -500)
+    await page.waitForTimeout(120)
+    if (step > 10 && (await scrollTop()) === 0) break
+  }
+  await page.waitForTimeout(2500)
+  await expect(page.locator('#epub-reader iframe').first(), 'back at the cover').toBeVisible()
+
+  await page.evaluate(() => {
+    window.__scrollTops = []
+    const container = document.querySelector('#epub-reader .epub-container')
+    const sample = () => {
+      window.__scrollTops.push(container.scrollTop)
+      window.requestAnimationFrame(sample)
+    }
+    sample()
+  })
+  for (let step = 0; step < 30; step += 1) {
+    await page.mouse.wheel(0, 60)
+    await page.waitForTimeout(150)
+  }
+  await page.waitForTimeout(2000)
+
+  const tops = await page.evaluate(() => window.__scrollTops)
+  const jumpsBack = tops.filter((top, index) => index > 0 && top < tops[index - 1] - 30).length
+  expect(jumpsBack, 'gentle downward scrolling never springs back').toBe(0)
+  expect(tops.at(-1), 'the reader moved down by the scrolled amount').toBeGreaterThan(1500)
+})
+
+function smallBook(id, files, spine) {
+  const manifest = Object.keys(files)
+    .map((name, index) => {
+      const type = name.endsWith('.png') ? 'image/png' : 'application/xhtml+xml'
+      return '<item id="i' + index + '" href="' + name + '" media-type="' + type + '"/>'
+    })
+    .join('')
+  const order = spine.map((name) => '<itemref idref="i' + Object.keys(files).indexOf(name) + '"/>').join('')
+  return zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+    ),
+    'book.opf': strToU8(
+      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">'
+        + id
+        + '</dc:identifier><dc:title>'
+        + id
+        + '</dc:title></metadata><manifest>'
+        + manifest
+        + '</manifest><spine>'
+        + order
+        + '</spine></package>'
+    ),
+    ...files,
+  })
+}
+
+// 표지 그림이 화면 크기로 줄어 화면보다 짧아지면 스크롤할 곳이 없어, epub.js가 다음 챕터를 붙일 기회가 다시 오지 않았습니다.
+const shortPictureCoverBook = smallBook(
+  'short-picture-cover',
+  {
+    'cover.xhtml': xhtml('<div><img alt="" src="front.png" /></div>'),
+    'front.png': new Uint8Array(tallPng(1000, 1600)),
+    'c1.xhtml': xhtml(chapterBody(1)),
+    'c2.xhtml': xhtml(chapterBody(2)),
+  },
+  ['cover.xhtml', 'c1.xhtml', 'c2.xhtml']
+)
+
+test('A picture cover that shrinks below the screen height still lets the reader scroll into the first chapter', async ({
+  page,
+}) => {
+  await openReader(page, shortPictureCoverBook)
+  await page.mouse.move(195, 500)
+  for (let step = 0; step < 8; step += 1) {
+    await page.mouse.wheel(0, 300)
+    await page.waitForTimeout(250)
+  }
+
+  await expect
+    .poll(() => readingSpot(page), { timeout: 10_000, message: 'scrolling leaves the cover' })
+    .toMatch(/^1장/)
+})
+
+// 높이 100% 상자 안에 그림만 둔 페이지는 epub.js가 그림 최대 높이를 0으로 정해, 표지와 삽화가 통째로 보이지 않았습니다.
+function fullHeightPicturePage(image) {
+  return strToU8(
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>p</title><style type="text/css">html, body { height:100%; margin:0; padding:0; } img { max-width:100%; max-height:90%; } .allcenter { width:100%; height:100%; text-align:center; display:-webkit-box; -webkit-box-orient:horizontal; -webkit-box-pack:center; -webkit-box-align:center; }</style></head><body><div class="allcenter"><img alt="" src="'
+      + image
+      + '" /></div></body></html>'
+  )
+}
+
+const fullHeightPictureBook = smallBook(
+  'full-height-pictures',
+  {
+    'cover.xhtml': fullHeightPicturePage('front.png'),
+    'c1.xhtml': xhtml(chapterBody(1)),
+    'inner.xhtml': fullHeightPicturePage('rear.png'),
+    'c2.xhtml': xhtml(chapterBody(2)),
+    'front.png': new Uint8Array(tallPng(1000, 1600)),
+    'rear.png': new Uint8Array(tallPng(1000, 1600)),
+  },
+  ['cover.xhtml', 'c1.xhtml', 'inner.xhtml', 'c2.xhtml']
+)
+
+test('Picture pages drawn inside a full-height box still show their picture', async ({ page }) => {
+  await openReader(page, fullHeightPictureBook)
+  const pictureHeights = () =>
+    page.evaluate(() =>
+      Array.from(document.querySelectorAll('#epub-reader iframe')).flatMap((frame) =>
+        Array.from(frame.contentDocument?.querySelectorAll('img') || []).map((image) =>
+          Math.round(image.getBoundingClientRect().height)
+        )
+      )
+    )
+
+  await expect.poll(pictureHeights, { message: 'the cover picture is drawn on open' }).toEqual([expect.any(Number)])
+  expect((await pictureHeights())[0], 'the cover picture has a real height').toBeGreaterThan(300)
+
+  await page.evaluate(() => {
+    const data = window.Alpine.$data(document.querySelector('section[x-data]'))
+    data.goToTocItem(data.tocItems.find((item) => /inner/.test(item.href)) || { href: 'inner.xhtml' })
+  })
+  await expect
+    .poll(async () => (await pictureHeights()).filter((height) => height > 300).length, {
+      timeout: 10_000,
+      message: 'the inner picture page is drawn too',
+    })
+    .toBeGreaterThan(0)
+})
