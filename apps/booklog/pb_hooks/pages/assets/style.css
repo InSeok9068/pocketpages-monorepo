@@ -73,6 +73,20 @@ summary.list-none::-webkit-details-marker {
   }
 }
 
+/* 금방 끝나는 이동에서 안내가 깜빡이지 않게, 0.5초가 지나도 진행 중일 때만 보입니다. */
+.booklog-delayed-reveal {
+  animation: booklog-delayed-reveal 0.2s ease-out 0.5s both;
+}
+
+@keyframes booklog-delayed-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .booklog-linked-section {
   outline: 2px solid #9e6125;
   outline-offset: 4px;

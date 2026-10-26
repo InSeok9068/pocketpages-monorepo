@@ -895,6 +895,8 @@ window.booklogAudio = (function () {
     if (session.fallback && session.fallbackSpeaking) {
       return { sectionIndex: session.sectionIndex, text: session.fallbackSpeaking.replace(/\s+/g, ' ').trim() }
     }
+    // 새 구간을 열면 이어 들을 위치로 옮기기 전까지 재생 시간이 0이라, 구간 첫 문장으로 화면이 튀지 않게 직전 위치를 유지합니다.
+    if (!session.fallback && !session.positionReady) return session.lastAnchor
     var elapsed = session.fallback ? session.fallbackElapsed : audioSeconds(session)
     var ratio = part.duration > 0 ? Math.min(1, elapsed / part.duration) : 0
     var text = part.text
@@ -914,7 +916,8 @@ window.booklogAudio = (function () {
       .slice(start < 0 ? 0 : start + 1)
       .trim()
       .split('\n')[0]
-    return { sectionIndex: session.sectionIndex, text: sentence.replace(/\s+/g, ' ').trim() }
+    session.lastAnchor = { sectionIndex: session.sectionIndex, text: sentence.replace(/\s+/g, ' ').trim() }
+    return session.lastAnchor
   }
 
   /**
@@ -1646,6 +1649,7 @@ window.booklogAudio = (function () {
       fallbackElapsed: 0,
       resumeSeconds: 0,
       positionReady: false,
+      lastAnchor: null,
       failed: false,
       completed: false,
       controller: new AbortController(),

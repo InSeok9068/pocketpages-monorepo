@@ -1768,6 +1768,35 @@ test('The listening position is the start of the sentence being read in the curr
   logic.stop()
 })
 
+test('Resuming does not report the first sentence of the part before the saved position is applied', async () => {
+  const text = '첫 문장입니다. 둘째 문장은 여기서 시작합니다. 셋째 문장입니다.'
+  const server = { progress: { sectionIndex: 0, chunkIndex: 0, seconds: 30, isCompleted: false }, downloads: 0, chunkCount: 1 }
+  const { logic, state, audio } = createPlayerHarness(
+    () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          chunkCount: 1,
+          nextSectionIndex: -1,
+          parts: [{ audioUrl: '/xapi/books/audio-file?chunkId=p', fallbackText: '', text, durationSeconds: 60 }],
+        })
+      ),
+    { server }
+  )
+  audio.play = function () {
+    this.paused = false
+    this.onplay?.()
+    return Promise.resolve()
+  }
+  logic.start(state, 0)
+  await flushPlayback()
+  assert.equal(logic.currentAnchor(), null, 'iOS keeps currentTime at 0 until the metadata arrives')
+  audio.onloadedmetadata()
+  assert.equal(audio.currentTime, 30)
+  assert.equal(logic.currentAnchor().text, '둘째 문장은 여기서 시작합니다. 셋째 문장입니다.')
+  logic.stop()
+})
+
 test('Playback times are shown as minutes or hours', () => {
   const { logic } = createPlayerHarness(() => chapterResponse(1, -1))
   assert.deepEqual(
