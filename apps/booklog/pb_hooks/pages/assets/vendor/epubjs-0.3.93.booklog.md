@@ -85,7 +85,7 @@ if (view.contents && !view.contentsPrepared) { /* existing content hook path */ 
 
 준비 callback이 없는 view의 기존 content hook 경로는 유지합니다. 개별 챕터가 준비되면 바로 표시하며, 전체 fill 완료까지 숨기지 않습니다. content hook 실패는 view의 display 실패로 전달되고 기존 큐 복구 경로를 사용합니다.
 
-`reader-scroll.spec.mjs`의 `New chapters finish their content hooks before contributing their first scroll height`는 비동기 스타일 변경과 폰트 로딩 종료가 첫 resize에 반영되고 hook이 중복 호출되지 않는지 확인합니다. 실제 4권 전후 비교는 `reports/epub-scroll-2026-10-27/REPORT.md`에 기록합니다. 500ms를 넘는 폰트는 기다리기를 끝내므로, 그 뒤의 폰트 교체에 따른 재배치까지 보장하지 않습니다.
+`reader-scroll.spec.mjs`의 `New chapters finish their content hooks before contributing their first scroll height`는 비동기 스타일 변경과 폰트 로딩 종료가 첫 resize에 반영되고 hook이 중복 호출되지 않는지 확인합니다. 500ms를 넘는 폰트는 기다리기를 끝내므로, 그 뒤의 폰트 교체에 따른 재배치까지 보장하지 않습니다.
 
 ## 검증
 
