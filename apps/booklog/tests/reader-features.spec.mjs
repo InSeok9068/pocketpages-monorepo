@@ -1761,9 +1761,11 @@ function watchVisibleJumps(page) {
     let previous = null
     const sample = () => {
       const top = container.getBoundingClientRect().top
-      const frame = Array.from(container.querySelectorAll('iframe')).find(
-        (candidate) => candidate.getBoundingClientRect().bottom > top + 1
-      )
+      // 막 붙어 아직 높이가 없는 챕터는 기준으로 삼지 않습니다.
+      const frame = Array.from(container.querySelectorAll('iframe')).find((candidate) => {
+        const box = candidate.getBoundingClientRect()
+        return box.bottom > top + 1 && box.height > 50
+      })
       if (frame) {
         const current = { frame, top: frame.getBoundingClientRect().top - top }
         if (previous && previous.frame === frame) {
@@ -1874,4 +1876,249 @@ test('Wheeling at the very top or bottom attaches the neighbouring chapter even 
     await page.waitForTimeout(150)
   }
   await expect.poll(async () => (await edges()).last, { timeout: 4_000, message: 'the next chapter attaches at the bottom' }).toBeGreaterThan(missedBottom)
+})
+
+// 화면 맨 위에 걸친 챕터 안에서 보던 문단보다 위의 그림이 늦게 커져도, 보던 문단은 제자리에 있어야 합니다.
+const lateImageBook = smallBook(
+  'late-image',
+  {
+    'c1.xhtml': xhtml(chapterBody(1)),
+    'c2.xhtml': xhtml(
+      '<h1>2장</h1><p>2장 첫 문단입니다.</p><div><img id="late" alt="" src="small.png" style="width:100%;height:120px" /></div>'
+        + Array.from({ length: 40 }, (_, index) => '<p>2장 그림 아래 문단 ' + (index + 1) + '입니다. 그림이 늦게 커져도 이 문단은 움직이면 안 됩니다.</p>').join('')
+    ),
+    'c3.xhtml': xhtml(chapterBody(3)),
+    'small.png': new Uint8Array(tallPng(400, 300)),
+  },
+  ['c1.xhtml', 'c2.xhtml', 'c3.xhtml']
+)
+
+function topParagraph(page) {
+  return page.evaluate(() => {
+    const container = document.querySelector('#epub-reader .epub-container')
+    const top = container.getBoundingClientRect().top
+    for (const frame of container.querySelectorAll('iframe')) {
+      const frameTop = frame.getBoundingClientRect().top
+      for (const node of frame.contentDocument?.querySelectorAll('p') || []) {
+        const box = node.getBoundingClientRect()
+        if (frameTop + box.bottom > top + 4) return { text: node.textContent.trim().slice(0, 24), y: Math.round(frameTop + box.top - top) }
+      }
+    }
+    return null
+  })
+}
+
+function growLateImage(page, height) {
+  return page.evaluate((height) => {
+    for (const frame of document.querySelectorAll('#epub-reader iframe')) {
+      const image = frame.contentDocument && frame.contentDocument.getElementById('late')
+      if (image) image.style.height = height + 'px'
+    }
+  }, height)
+}
+
+test('A picture above the reading paragraph that grows late keeps the paragraph in place', async ({ page }) => {
+  await captureRendition(page)
+  const state = await openReader(page, lateImageBook)
+  state.serverPosition = { locator: '', href: 'c2.xhtml', chapterLabel: '' }
+  await page.reload()
+  await expect
+    .poll(() => page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).bookReady))
+    .toBe(true)
+  await page.waitForTimeout(1200)
+  await page.evaluate(() => {
+    const container = document.querySelector('#epub-reader .epub-container')
+    const frame = Array.from(container.querySelectorAll('iframe')).find((candidate) => candidate.contentDocument && candidate.contentDocument.getElementById('late'))
+    const paragraph = frame.contentDocument.querySelectorAll('p')[12]
+    container.scrollTop += frame.getBoundingClientRect().top + paragraph.getBoundingClientRect().top - container.getBoundingClientRect().top
+  })
+  await page.waitForTimeout(800)
+
+  const before = await topParagraph(page)
+  await growLateImage(page, 700)
+  await page.waitForTimeout(800)
+  const after = await topParagraph(page)
+  expect(after.text, 'the same paragraph stays at the top while sitting still').toBe(before.text)
+  expect(Math.abs(after.y - before.y), 'the paragraph does not move while sitting still').toBeLessThanOrEqual(8)
+
+  await page.mouse.move(195, 500)
+  for (const [height, delta] of [[260, -60], [900, 60]]) {
+    const start = await topParagraph(page)
+    await page.mouse.wheel(0, delta)
+    await growLateImage(page, height)
+    await page.waitForTimeout(800)
+    const end = await topParagraph(page)
+    const paragraphs = await page.evaluate(() => {
+      const frame = Array.from(document.querySelectorAll('#epub-reader iframe')).find((candidate) => candidate.contentDocument && candidate.contentDocument.getElementById('late'))
+      return Array.from(frame.contentDocument.querySelectorAll('p')).map((node) => node.textContent.trim().slice(0, 24))
+    })
+    const startIndex = paragraphs.indexOf(start.text)
+    const endIndex = paragraphs.indexOf(end.text)
+    expect(Math.abs(endIndex - startIndex), 'scrolling ' + delta + 'px while the picture changes moves about one paragraph at most').toBeLessThanOrEqual(1)
+  }
+})
+
+function styledXhtml(style, body) {
+  return strToU8(
+    '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>c</title><style type="text/css">'
+      + style
+      + '</style></head><body>'
+      + body
+      + '</body></html>'
+  )
+}
+
+const reservedPictureBook = smallBook(
+  'reserved-pictures',
+  {
+    'c1.xhtml': xhtml(chapterBody(1)),
+    'p2.xhtml': xhtml('<div><img alt="" src="front.png" /></div>'),
+    'c3.xhtml': xhtml(chapterBody(3).replace('<p>3장 문단 20', '<div><img alt="" src="rear.png" /></div><p>3장 문단 20')),
+    'p4.xhtml': xhtml('<div><img alt="" src="front.png" /></div>'),
+    'c5.xhtml': xhtml(chapterBody(5)),
+    'front.png': new Uint8Array(tallPng(1000, 1600)),
+    'rear.png': new Uint8Array(tallPng(1200, 800)),
+  },
+  ['c1.xhtml', 'p2.xhtml', 'c3.xhtml', 'p4.xhtml', 'c5.xhtml']
+)
+
+const pictureStyleBook = smallBook(
+  'picture-styles',
+  {
+    'cover.xhtml': styledXhtml(
+      'html,body{height:100%;margin:0}',
+      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100%" height="100%" viewBox="0 0 1000 1600" preserveAspectRatio="xMidYMid meet"><image width="1000" height="1600" xlink:href="front.png" /></svg>'
+    ),
+    'c1.xhtml': styledXhtml(
+      '.fixed{height:200px}.w10{width:10%}',
+      '<p>그림 크기 확인 문단입니다.</p><div><img id="fixed" class="fixed" alt="" src="front.png" /></div><div><img id="narrow" class="w10" alt="" src="front.png" /></div><div><img id="plain" alt="" src="rear.png" /></div>'
+        + chapterBody(1)
+    ),
+    'front.png': new Uint8Array(tallPng(1000, 1600)),
+    'rear.png': new Uint8Array(tallPng(1200, 800)),
+  },
+  ['cover.xhtml', 'c1.xhtml']
+)
+
+test('Picture sizes keep book styles, ratios and SVG covers intact', async ({ page }) => {
+  await openReader(page, pictureStyleBook)
+  const cover = await page.evaluate(() => {
+    const frame = document.querySelector('#epub-reader iframe')
+    const svg = frame && frame.contentDocument && frame.contentDocument.querySelector('svg')
+    return svg ? Math.round(svg.getBoundingClientRect().height) : 0
+  })
+  expect(cover, 'the SVG cover is drawn').toBeGreaterThan(200)
+
+  await page.mouse.move(195, 500)
+  await expect
+    .poll(async () => {
+      await page.mouse.wheel(0, 300)
+      return page.evaluate(() =>
+        Array.from(document.querySelectorAll('#epub-reader iframe')).some(
+          (frame) => frame.contentDocument && frame.contentDocument.getElementById('fixed')
+        )
+      )
+    })
+    .toBe(true)
+  await page.waitForTimeout(1000)
+  const sizes = await page.evaluate(() => {
+    const frame = Array.from(document.querySelectorAll('#epub-reader iframe')).find(
+      (candidate) => candidate.contentDocument && candidate.contentDocument.getElementById('fixed')
+    )
+    const box = (id) => {
+      const rect = frame.contentDocument.getElementById(id).getBoundingClientRect()
+      return { width: Math.round(rect.width), height: Math.round(rect.height) }
+    }
+    return { fixed: box('fixed'), narrow: box('narrow'), plain: box('plain') }
+  })
+  expect(sizes.fixed.height, 'book CSS that fixes the height still wins').toBe(200)
+  expect(Math.abs(sizes.narrow.height - sizes.narrow.width * 1.6), 'a picture sized only by width keeps its ratio').toBeLessThanOrEqual(2)
+  expect(Math.abs(sizes.plain.height - sizes.plain.width * (800 / 1200)), 'a plain picture keeps its ratio').toBeLessThanOrEqual(2)
+})
+
+const manyPicturePagesBook = smallBook(
+  'many-picture-pages',
+  {
+    ...Object.fromEntries(
+      Array.from({ length: 12 }, (_, index) => ['p' + index + '.xhtml', xhtml('<div><img alt="" src="front.png" /></div>')])
+    ),
+    'c1.xhtml': xhtml(chapterBody(1)),
+    'c2.xhtml': xhtml(chapterBody(2)),
+    'front.png': new Uint8Array(tallPng(1000, 1600)),
+  },
+  [...Array.from({ length: 12 }, (_, index) => 'p' + index + '.xhtml'), 'c1.xhtml', 'c2.xhtml']
+)
+
+const tinyChaptersBook = smallBook(
+  'tiny-chapters',
+  Object.fromEntries(
+    Array.from({ length: 30 }, (_, index) => [
+      't' + index + '.xhtml',
+      xhtml('<h1>' + (index + 1) + '장</h1><p>' + (index + 1) + '장의 짧은 문단입니다.</p>'),
+    ])
+  ),
+  Array.from({ length: 30 }, (_, index) => 't' + index + '.xhtml')
+)
+
+async function travelToEnd(page, delta) {
+  const edge = () =>
+    page.evaluate((down) => {
+      const manager = window.__rendition.manager
+      const container = manager.container
+      return down
+        ? !manager.views.last().section.next() && container.scrollTop + container.clientHeight >= container.scrollHeight - 2
+        : !manager.views.first().section.prev() && container.scrollTop === 0
+    }, delta > 0)
+  const started = Date.now()
+  while (Date.now() - started < 30_000) {
+    if (await edge()) return true
+    await page.mouse.wheel(0, delta)
+    await page.waitForTimeout(60)
+  }
+  return edge()
+}
+
+for (const [name, book] of [
+  ['many picture pages in a row', manyPicturePagesBook],
+  ['a long chain of very short chapters', tinyChaptersBook],
+]) {
+  test('Scrolling through ' + name + ' reaches both ends without stalling or jumping up', async ({ page }) => {
+    await captureRendition(page)
+    await openReader(page, book)
+    await page.mouse.move(195, 500)
+    expect(await travelToEnd(page, 900), 'reaches the last chapter').toBe(true)
+    await watchVisibleJumps(page)
+    expect(await travelToEnd(page, -900), 'reaches the first chapter').toBe(true)
+    expect(await page.evaluate(() => window.__jumps), 'no visible jumps on the way up').toEqual([])
+  })
+}
+
+test('Reopening at the start and the end with a slow position response lands on that chapter', async ({ page }) => {
+  await captureRendition(page)
+  const state = await openReader(page, reservedPictureBook)
+  state.keepServerPosition = true
+  for (const [href, index, delay] of [
+    ['c5.xhtml', 4, 300],
+    ['c1.xhtml', 0, 150],
+  ]) {
+    state.serverPosition = { locator: '', href, chapterLabel: '' }
+    state.loadProgressDelay = delay
+    await page.reload()
+    await expect
+      .poll(() => page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).bookReady), {
+        timeout: 8_000,
+      })
+      .toBe(true)
+    await page.waitForTimeout(800)
+    const landed = await page.evaluate(() => {
+      const manager = window.__rendition.manager
+      const top = manager.container.getBoundingClientRect().top
+      const view = manager.views.all().find((candidate) => {
+        const box = candidate.element.getBoundingClientRect()
+        return box.bottom > top + 1 && box.height > 50
+      })
+      return view ? view.section.index : -1
+    })
+    expect(landed, 'reopening at ' + href).toBe(index)
+  }
 })

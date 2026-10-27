@@ -20,6 +20,8 @@ window.booklogReaderLogic = (function () {
   var intentStartedAt = 0
   var intentTimerId = 0
   var lastEdgeRetryAt = 0
+  var readingAnchor = null
+  var readingAnchorFrameId = 0
   var releaseRequired = false
   var releaseDirection = ''
   var autoPagingGeneration = 0
@@ -1956,6 +1958,7 @@ window.booklogReaderLogic = (function () {
     var target = autoPagingTarget || resolveAutoPagingTarget()
 
     markReadingSessionActivity(component)
+    scheduleReadingAnchorCapture()
     currentLocation = location || null
     syncActiveTocState(component, currentLocation)
 
@@ -3287,13 +3290,12 @@ window.booklogReaderLogic = (function () {
           })
         : rendition.display(target)
 
-    return Promise.resolve(displaying)
-      .then(function (location) {
-        return settleDisplayedTarget(target).then(function () {
-          refillSectionsAfterMove()
-          return rendition.currentLocation() || location
-        })
+    return Promise.resolve(displaying).then(function (location) {
+      return settleDisplayedTarget(target).then(function () {
+        refillSectionsAfterMove()
+        return rendition.currentLocation() || location
       })
+    })
   }
 
   // epub.js는 직접 스크롤을 옮긴 뒤 다음 스크롤 이벤트 하나를 무시하는데, 이미 그 자리여서 이벤트가 생기지 않으면 무시 표시가 남아
@@ -3338,6 +3340,7 @@ window.booklogReaderLogic = (function () {
     manager.createView = function () {
       var view = createView.apply(this, arguments)
       checkAfterShrink(this, view)
+      keepReadingAnchorOnResize(this, view)
       return view
     }
 
@@ -3408,6 +3411,111 @@ window.booklogReaderLogic = (function () {
           })
         }
       })
+    })
+  }
+
+  // 화면 맨 위에 걸친 챕터의 높이가 바뀌면 통째로 옮기지 않고, 보던 문단이 챕터 안에서 움직인 만큼만 옮겨 제자리에 둡니다.
+  function keepReadingAnchorOnResize(manager, view) {
+    if (!view || typeof view.on !== 'function') {
+      return
+    }
+
+    view.on('resized', function () {
+      var anchor = readingAnchor
+      var delta = 0
+
+      if (!anchor || anchor.view !== view || !anchor.node.isConnected || renditionInstance.manager !== manager) {
+        scheduleReadingAnchorCapture()
+        return
+      }
+
+      delta = Math.round(anchor.node.getBoundingClientRect().top - anchor.top)
+
+      if (Math.abs(delta) >= 1) {
+        markProgrammaticScroll()
+        manager.scrollBy(0, delta, true)
+        anchor.top += delta
+      }
+
+      scheduleReadingAnchorCapture()
+    })
+  }
+
+  function captureReadingAnchor() {
+    var manager = renditionInstance && renditionInstance.manager ? renditionInstance.manager : null
+    var container = manager ? manager.container : null
+    var visibleTop = 0
+    var views = []
+    var view = null
+    var frameTop = 0
+    var nodes = null
+    var low = 0
+    var high = 0
+    var middle = 0
+    var previous = readingAnchor
+
+    readingAnchor = null
+
+    if (!container || !manager.views || manager.settings.axis !== 'vertical') {
+      return
+    }
+
+    visibleTop = container.getBoundingClientRect().top
+    views = manager.views.all()
+
+    for (var index = 0; index < views.length; index += 1) {
+      var box = views[index].element.getBoundingClientRect()
+
+      if (box.bottom > visibleTop + 1) {
+        view = box.top < visibleTop - 1 && views[index].contents && views[index].iframe ? views[index] : null
+        frameTop = box.top
+        break
+      }
+    }
+
+    if (!view || !view.contents.document || !view.contents.document.body) {
+      return
+    }
+
+    // 본문은 이미 바뀌었는데 epub.js가 아직 챕터 높이를 다시 재지 않았다면, 바뀌기 전 기준을 그대로 둡니다.
+    if (
+      previous
+      && previous.view === view
+      && Date.now() - previous.at < 1000
+      && Math.abs(view.contents.textHeight() - view.height()) > 1
+    ) {
+      readingAnchor = previous
+      return
+    }
+
+    nodes = view.contents.document.body.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,blockquote,pre,table,figure,img,svg')
+    high = nodes.length - 1
+
+    if (high < 0) {
+      return
+    }
+
+    while (low < high) {
+      middle = (low + high) >> 1
+
+      if (frameTop + nodes[middle].getBoundingClientRect().bottom > visibleTop + 1) {
+        high = middle
+      } else {
+        low = middle + 1
+      }
+    }
+
+    readingAnchor = { view: view, node: nodes[low], top: nodes[low].getBoundingClientRect().top, at: Date.now() }
+  }
+
+  function scheduleReadingAnchorCapture() {
+    if (readingAnchorFrameId) {
+      return
+    }
+
+    readingAnchorFrameId = window.requestAnimationFrame(function () {
+      readingAnchorFrameId = 0
+      captureReadingAnchor()
     })
   }
 
@@ -4890,6 +4998,7 @@ window.booklogReaderLogic = (function () {
       var direction = ''
 
       markReadingSessionActivity(component)
+      scheduleReadingAnchorCapture()
 
       if (currentScrollTop > lastContainerScrollTop) {
         direction = 'next'
@@ -5041,10 +5150,34 @@ window.booklogReaderLogic = (function () {
       return
     }
 
+    var pictureOnly = !!doc.body && String(doc.body.textContent || '').replace(/\s+/g, '').length < 40
+
     Array.prototype.forEach.call(doc.querySelectorAll('img, svg'), function (image) {
-      if (parseFloat(win.getComputedStyle(image).maxHeight) === 0) {
+      var maxHeight = parseFloat(win.getComputedStyle(image).maxHeight)
+
+      // 그림만 있는 페이지는 epub.js가 접힌 본문 높이로 최대 높이를 정해, 그림이 몇 px로 줄어듭니다.
+      if (maxHeight === 0 || (pictureOnly && maxHeight < screenHeight * 0.5)) {
         image.style.setProperty('max-height', Math.round(screenHeight * 0.95) + 'px', 'important')
       }
+    })
+
+    // 높이 100% 상자에 둔 SVG 표지는 본문 높이를 내용에 맞추면 높이가 거의 0이 되어, viewBox 비율로 높이를 정합니다.
+    Array.prototype.forEach.call(doc.querySelectorAll('svg[viewBox]'), function (svg) {
+      var box = svg.getBoundingClientRect()
+      var viewBox = String(svg.getAttribute('viewBox') || '')
+        .trim()
+        .split(/[\s,]+/)
+        .map(Number)
+
+      if (box.height >= 50 || box.width <= 0 || viewBox.length !== 4 || !(viewBox[2] > 0) || !(viewBox[3] > 0)) {
+        return
+      }
+
+      svg.style.setProperty(
+        'height',
+        Math.round(Math.min(screenHeight * 0.95, (box.width * viewBox[3]) / viewBox[2])) + 'px',
+        'important'
+      )
     })
   }
 
