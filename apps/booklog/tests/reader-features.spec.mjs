@@ -1761,10 +1761,15 @@ function watchVisibleJumps(page) {
     let previous = null
     const sample = () => {
       const top = container.getBoundingClientRect().top
-      // 막 붙어 아직 높이가 없는 챕터는 기준으로 삼지 않습니다.
+      // 막 붙어 아직 높이가 없거나 숨겨진 iframe은 화면 위치의 비교 대상이 아닙니다.
       const frame = Array.from(container.querySelectorAll('iframe')).find((candidate) => {
-        const box = candidate.getBoundingClientRect()
-        return box.bottom > top + 1 && box.height > 50
+        const bounds = candidate.getBoundingClientRect()
+        return (
+          bounds.height > 50
+          && bounds.bottom > top + 1
+          && bounds.top < top + container.clientHeight
+          && window.getComputedStyle(candidate).visibility !== 'hidden'
+        )
       })
       if (frame) {
         const current = { frame, top: frame.getBoundingClientRect().top - top }

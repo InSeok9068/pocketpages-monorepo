@@ -41,6 +41,7 @@ window.booklogReaderLogic = (function () {
   var READING_SESSION_IDLE_MS = 180000
   var NAVIGATION_SAVE_WAIT_MS = 2000
   var INITIAL_RESTORE_TIMEOUT_MS = 8000
+  var INITIAL_FONT_TIMEOUT_MS = 500
   var DISPLAY_SETTLE_TIMEOUT_MS = 1500
   var DISPLAY_SETTLE_RETRY_MS = 80
   var VISIBLE_TOP_TOLERANCE_PX = 64
@@ -3339,6 +3340,16 @@ window.booklogReaderLogic = (function () {
 
     manager.createView = function () {
       var view = createView.apply(this, arguments)
+      var rendition = renditionInstance
+
+      // 이미지·본문 스타일을 적용한 뒤 첫 높이를 재야 임시 스크롤 범위가 줄면서 화면이 되돌아가지 않습니다.
+      view.prepareContents = function () {
+        return rendition.hooks.content.trigger(view.contents, rendition).then(function () {
+          return waitForInitialContentFonts(view.contents).then(function () {
+            view.contentsPrepared = true
+          })
+        })
+      }
       checkAfterShrink(this, view)
       keepReadingAnchorOnResize(this, view)
       return view
@@ -3364,6 +3375,34 @@ window.booklogReaderLogic = (function () {
       view.onDisplayed = self.afterDisplayed.bind(self)
       return view
     }
+  }
+
+  // 본문 폰트가 반영된 뒤 첫 높이를 재되, 지연된 폰트 때문에 챕터 표시를 무한히 기다리지 않습니다.
+  function waitForInitialContentFonts(contents) {
+    var doc = contents && contents.document ? contents.document : null
+    var fonts = doc && doc.fonts ? doc.fonts : null
+
+    if (!fonts || !doc.body) return Promise.resolve()
+
+    // 레이아웃을 읽어 이번 본문에서 실제 사용하는 폰트의 로딩을 시작합니다.
+    doc.body.getBoundingClientRect()
+    if (fonts.status !== 'loading') return Promise.resolve(fonts.ready)
+
+    return new Promise(function (resolve) {
+      var timerId = window.setTimeout(function () {
+        console.debug('page/books/[bookId]/read:initial-font-timeout', {
+          timeoutMs: INITIAL_FONT_TIMEOUT_MS,
+        })
+        resolve()
+      }, INITIAL_FONT_TIMEOUT_MS)
+
+      function finish() {
+        window.clearTimeout(timerId)
+        resolve()
+      }
+
+      Promise.resolve(fonts.ready).then(finish, finish)
+    })
   }
 
   function checkAfterShrink(manager, view) {

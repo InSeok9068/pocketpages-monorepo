@@ -68,6 +68,25 @@ t=>{this.emit(DISPLAY_ERROR,t)}
 t=>{this.displaying=void 0,this.emit(DISPLAY_ERROR,t),i.reject(t)}
 ```
 
+## 첫 높이 측정 전 본문 준비
+
+Booklog continuous manager는 새 view에 `prepareContents()`를 연결합니다. iframe view는 `layout.format()` 뒤, 첫 `expand()` 전에 이 promise를 기다립니다. 이미지 제한 크기·테마·앱 본문 스타일을 먼저 적용하고, 사용 중인 폰트가 loading이면 최대 500ms 동안 `document.fonts.ready`를 기다립니다. 임시 높이가 스크롤 범위에 들어갔다가 줄어드는 상황을 줄입니다. 준비된 view는 `contentsPrepared`로 표시하고, `Rendition.afterDisplayed()`는 content hook을 중복 실행하지 않습니다. render hook과 rendered 이벤트는 기존 표시 경로에 유지합니다.
+
+```js
+// iframe view.render(), after layout.format()
+Promise.resolve(this.prepareContents ? this.prepareContents() : undefined).then(() => {
+  this.addListeners()
+  this.expand()
+  if (this.settings.forceRight) this.element.style.marginLeft = this.width() + 'px'
+})
+// Rendition.afterDisplayed(): content hooks were already run for prepared views
+if (view.contents && !view.contentsPrepared) { /* existing content hook path */ }
+```
+
+준비 callback이 없는 view의 기존 content hook 경로는 유지합니다. 개별 챕터가 준비되면 바로 표시하며, 전체 fill 완료까지 숨기지 않습니다. content hook 실패는 view의 display 실패로 전달되고 기존 큐 복구 경로를 사용합니다.
+
+`reader-scroll.spec.mjs`의 `New chapters finish their content hooks before contributing their first scroll height`는 비동기 스타일 변경과 폰트 로딩 종료가 첫 resize에 반영되고 hook이 중복 호출되지 않는지 확인합니다. 실제 4권 전후 비교는 `reports/epub-scroll-2026-10-27/REPORT.md`에 기록합니다. 500ms를 넘는 폰트는 기다리기를 끝내므로, 그 뒤의 폰트 교체에 따른 재배치까지 보장하지 않습니다.
+
 ## 검증
 
 `apps/booklog/tests/reader-scroll.spec.mjs`의 `Scroll stress` 시나리오, `reader-features.spec.mjs`의 그림 페이지 다시 열기·빠른 위쪽 스크롤·끝에서 챕터 붙이기 검사와 기존 navigation/scroll/audio 검사를 사용합니다. 고정 seed 입력 계획과 프레임별 문단 좌표, 표시 중 view가 파괴되는지, 로딩 종료 후 위치가 유지되는지를 확인합니다. 실제 iPhone Safari 관성 스크롤의 대체 검증은 아닙니다.

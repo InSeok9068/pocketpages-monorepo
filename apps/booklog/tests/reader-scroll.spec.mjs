@@ -525,6 +525,83 @@ test('Slow upward gestures at a loading chapter boundary keep the reading positi
   expect(errors).toEqual([])
 })
 
+for (const fontDelay of [180, 1600]) {
+  test(`New chapters finish their content hooks before contributing their first scroll height (${fontDelay}ms font)`, async ({
+    page,
+  }) => {
+    const errors = await openReader(page)
+    // 실제 font loading 상태를 거치되 외부 폰트 파일에 의존하지 않습니다.
+    await page.route('**/prepare-test.woff2', async (route) => {
+      await page.waitForTimeout(fontDelay)
+      await route.fulfill({ status: 404, body: '' })
+    })
+    await page.evaluate(() => {
+      const rendition = window.__scrollTest.rendition
+      const manager = rendition.manager
+      const observed = (window.__preparedHeights = [])
+      const hookCalls = (window.__prepareHookCalls = {})
+      rendition.hooks.content.register(function (contents) {
+        const index = contents.sectionIndex
+        hookCalls[index] = (hookCalls[index] || 0) + 1
+        return new Promise(function (resolve) {
+          setTimeout(function () {
+            const style = contents.document.createElement('style')
+            style.textContent =
+              '@font-face{font-family:PrepareTest;src:url("http://127.0.0.1:8090/prepare-test.woff2")}body{font-family:PrepareTest,serif}'
+            contents.document.head.appendChild(style)
+            contents.document.body.style.paddingTop = '450px'
+            contents.document.body.dataset.testPrepared = 'yes'
+            resolve()
+          }, 80)
+        })
+      })
+      const create = manager.createView
+      manager.createView = function () {
+        const view = create.apply(this, arguments)
+        let first = true
+        view.on('resized', function () {
+          if (!first) return
+          first = false
+          observed.push({
+            index: view.section.index,
+            prepared: view.contents.document.body.dataset.testPrepared,
+            fonts: view.contents.document.fonts.status,
+          })
+        })
+        return view
+      }
+      window.Alpine.$data(document.querySelector('section[x-data]')).goToTocItem({
+        href: 'chapter-9.xhtml',
+        label: '챕터 9',
+      })
+    })
+    await expect.poll(() => page.evaluate(() => window.__preparedHeights.length)).toBeGreaterThan(0)
+    await page.waitForTimeout(1200)
+    const result = await page.evaluate(() => ({ heights: window.__preparedHeights, calls: window.__prepareHookCalls }))
+    expect(
+      result.heights.every((entry) => entry.prepared === 'yes'),
+      'first height already includes delayed styles'
+    ).toBe(true)
+    if (fontDelay === 180) {
+      expect(
+        result.heights.every((entry) => entry.fonts === 'loaded'),
+        'font loading settles before the first height'
+      ).toBe(true)
+    } else {
+      expect(
+        result.heights.some((entry) => entry.fonts === 'loading'),
+        'a slow font does not block the chapter until the font request finishes'
+      ).toBe(true)
+      await page.waitForTimeout(fontDelay)
+    }
+    expect(
+      Object.values(result.calls).every((count) => count === 1),
+      'content hooks run once per view'
+    ).toBe(true)
+    expect(errors).toEqual([])
+  })
+}
+
 test('The reader hides its scrollbars while scrolling keeps working', async ({ page }) => {
   const errors = await openReader(page)
   const before = await screen(page)
