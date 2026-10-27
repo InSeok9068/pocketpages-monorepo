@@ -2178,7 +2178,64 @@ window.booklogReaderLogic = (function () {
   }
 
   /**
-   * epub.js 위치가 화면 위쪽 그림 영역에 있으면 화면에 처음 보이는 글자 위치를 찾습니다.
+   * 화면 위쪽에서 보이는 첫 문자를 범위로 찾습니다.
+   * @param {Document} doc EPUB 문서
+   * @param {Text} node 본문 텍스트
+   * @param {DOMRect} rect 글자 줄 위치
+   * @param {number} visibleTop 화면 위쪽
+   * @param {number} visibleBottom 화면 아래쪽
+   * @returns {Range | null} 첫 글자 범위
+   */
+  function getVisibleTextRange(doc, node, rect, visibleTop, visibleBottom) {
+    var view = doc.defaultView
+    var style = view.getComputedStyle(node.parentElement)
+    var writingMode = String(style.writingMode || style.webkitWritingMode || '')
+    var isVertical = writingMode.indexOf('vertical') === 0
+    var x = isVertical ? rect.left + rect.width / 2 : style.direction === 'rtl' ? rect.right - 1 : rect.left + 1
+    var y = Math.max(rect.top + 1, Math.min(visibleTop + 1, rect.bottom - 1))
+    var range = null
+    var position = null
+    var characterRange = null
+
+    if (typeof doc.caretRangeFromPoint === 'function') {
+      range = doc.caretRangeFromPoint(x, y)
+    } else if (typeof doc.caretPositionFromPoint === 'function') {
+      position = doc.caretPositionFromPoint(x, y)
+      if (position) {
+        range = doc.createRange()
+        range.setStart(position.offsetNode, position.offset)
+        range.collapse(true)
+      }
+    }
+
+    if (range && range.startContainer === node) {
+      return range
+    }
+
+    characterRange = doc.createRange()
+
+    for (var offset = 0; offset < node.length; offset += 1) {
+      characterRange.setStart(node, offset)
+      characterRange.setEnd(node, offset + 1)
+
+      var characterRect = characterRange.getBoundingClientRect()
+
+      if (
+        characterRect.height
+        && characterRect.bottom > visibleTop
+        && characterRect.top < visibleBottom
+      ) {
+        characterRange.setStart(node, offset)
+        characterRange.collapse(true)
+        return characterRange
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * epub.js 위치가 화면 위에 있으면 화면에서 처음 보이는 글자 위치를 찾습니다.
    * @param {string} locator epub.js가 계산한 시작 CFI
    * @returns {{ locator: string, href: string } | null} 바꿀 위치, 그대로 쓰면 null
    */
@@ -2213,6 +2270,8 @@ window.booklogReaderLogic = (function () {
       var doc = view.contents && view.contents.document ? view.contents.document : null
       var walker = null
       var node = null
+      var visibleTop = 0
+      var visibleBottom = 0
 
       if (
         !frameRect
@@ -2224,6 +2283,8 @@ window.booklogReaderLogic = (function () {
         continue
       }
 
+      visibleTop = containerRect.top - frameRect.top
+      visibleBottom = containerRect.bottom - frameRect.top
       walker = doc.createTreeWalker(doc.body, 4)
 
       while ((node = walker.nextNode())) {
@@ -2236,18 +2297,28 @@ window.booklogReaderLogic = (function () {
 
         range = doc.createRange()
         range.selectNodeContents(node)
-        rect = range.getBoundingClientRect()
+        var rects = range.getClientRects()
 
-        if (frameRect.top + rect.top >= containerRect.bottom) {
-          return null
-        }
+        for (var rectIndex = 0; rectIndex < rects.length; rectIndex += 1) {
+          rect = rects[rectIndex]
 
-        if (frameRect.top + rect.bottom > containerRect.top) {
-          range.collapse(true)
+          if (rect.bottom <= visibleTop) {
+            continue
+          }
+
+          if (rect.top >= visibleBottom) {
+            return null
+          }
+
+          var visibleRange = getVisibleTextRange(doc, node, rect, visibleTop, visibleBottom)
+
+          if (!visibleRange) {
+            return null
+          }
 
           try {
             return {
-              locator: String(view.contents.cfiFromRange(range) || ''),
+              locator: String(view.contents.cfiFromRange(visibleRange) || ''),
               href: String(view.section && view.section.href ? view.section.href : ''),
             }
           } catch (exception) {
