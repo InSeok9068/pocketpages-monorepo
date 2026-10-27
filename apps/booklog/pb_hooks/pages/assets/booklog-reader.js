@@ -44,6 +44,8 @@ window.booklogReaderLogic = (function () {
   var INITIAL_FONT_TIMEOUT_MS = 500
   var SCROLL_IDLE_TRIM_MS = 500
   var SCROLL_STABLE_MS = 300
+  var SCROLL_REVERT_MIN_PX = 150
+  var CHAPTER_PRELOAD_OFFSET_PX = 1500
   var DISPLAY_SETTLE_TIMEOUT_MS = 1500
   var DISPLAY_SETTLE_RETRY_MS = 80
   var VISIBLE_TOP_TOLERANCE_PX = 64
@@ -3554,7 +3556,11 @@ window.booklogReaderLogic = (function () {
     window.requestAnimationFrame(function () {
       var next = container.scrollTop
       var lost = written - before
-      var reverted = Math.abs(lost) > 2 && Math.abs(next - before) < Math.abs(next - written)
+      // 같은 방향으로 빠르게 스크롤한 경우를 되돌림으로 오인하지 않도록, 보정 쪽으로 전혀 움직이지 않고 보정 전 위치 근처에 남은 경우만 되돌림으로 봅니다.
+      var reverted =
+        Math.abs(lost) >= SCROLL_REVERT_MIN_PX
+        && (next - before) * Math.sign(lost) <= 5
+        && Math.abs(next - before) < Math.abs(lost) / 4
 
       traceReader(
         'scroll-write',
@@ -3673,6 +3679,13 @@ window.booklogReaderLogic = (function () {
           position: position,
         })
       })
+      // epub.js는 위에 붙인 챕터만 보정합니다. 처음 띄운 챕터나 아래에 붙인 챕터도 화면 위로 지나간 뒤 늦은 그림 로딩으로 커지면
+      // 보던 곳이 밀리므로 같은 기준으로 보정합니다.
+      view.on('resized', function (size) {
+        if (!view.booklogPrepended) {
+          counterResizeAbove(viewManager, view, size, false)
+        }
+      })
       traceViewList(this.views)
       watchContainerScroll(this)
       checkAfterShrink(this, view)
@@ -3714,30 +3727,35 @@ window.booklogReaderLogic = (function () {
       return clear.apply(this, arguments)
     }
 
+    function counterResizeAbove(self, view, size, prepended) {
+      var counterIndex = view.section ? view.section.index : -1
+      var counterDelta = Math.round(Number(size && size.heightDelta) || 0)
+
+      if (shouldCounterPrependedResize(self, view, size, prepended)) {
+        var counterBefore = self.container ? self.container.scrollTop : 0
+
+        traceReader('counter', { index: counterIndex, delta: counterDelta, prepended: prepended })
+        self.counter(size)
+        guardScrollWrite('counter', self.container, counterBefore, { index: counterIndex, delta: counterDelta })
+      } else if (prepended && counterDelta && isReaderTraceOn() && self.container && view.element) {
+        traceReader('counter-skipped', {
+          index: counterIndex,
+          delta: counterDelta,
+          height: Math.round(Number(size && size.height) || 0),
+          viewTop: Math.round(view.element.getBoundingClientRect().top - self.container.getBoundingClientRect().top),
+          scrollTop: Math.round(self.container.scrollTop),
+        })
+      }
+      view.expanded = true
+    }
+
     manager.prepend = function (section) {
       var self = this
       var view = self.createView(section)
 
+      view.booklogPrepended = true
       view.on('resized', function (size) {
-        var counterIndex = view.section ? view.section.index : -1
-        var counterDelta = Math.round(Number(size && size.heightDelta) || 0)
-
-        if (shouldCounterPrependedResize(self, view, size)) {
-          var counterBefore = self.container ? self.container.scrollTop : 0
-
-          traceReader('counter', { index: counterIndex, delta: counterDelta })
-          self.counter(size)
-          guardScrollWrite('counter', self.container, counterBefore, { index: counterIndex, delta: counterDelta })
-        } else if (counterDelta && isReaderTraceOn() && self.container && view.element) {
-          traceReader('counter-skipped', {
-            index: counterIndex,
-            delta: counterDelta,
-            height: Math.round(Number(size && size.height) || 0),
-            viewTop: Math.round(view.element.getBoundingClientRect().top - self.container.getBoundingClientRect().top),
-            scrollTop: Math.round(self.container.scrollTop),
-          })
-        }
-        view.expanded = true
+        counterResizeAbove(self, view, size, true)
       })
       view.on('axis', function (axis) {
         self.updateAxis(axis)
@@ -3976,17 +3994,22 @@ window.booklogReaderLogic = (function () {
     })
   }
 
-  function shouldCounterPrependedResize(manager, view, size) {
+  function shouldCounterPrependedResize(manager, view, size, prepended) {
     var element = view && view.element ? view.element : null
     var container = manager.container
 
     if (manager.settings.axis !== 'vertical' || manager.settings.fullsize || !element || !container || !size) {
-      return true
+      return prepended
     }
 
     var visibleTop = container.getBoundingClientRect().top
     var viewTop = element.getBoundingClientRect().top
     var previousHeight = (Number(size.height) || 0) - (Number(size.heightDelta) || 0)
+
+    // 아래에 막 붙인 챕터는 화면 아래에 생기므로 처음 높이가 잡힐 때 옮기면 안 됩니다.
+    if (!prepended && previousHeight <= 0) {
+      return false
+    }
 
     // 막 붙인 챕터는 맨 위에 끼워 넣은 것이라 항상 그만큼 옮깁니다. iOS 바운스로 scrollTop이 음수면 새 챕터가 화면 맨 위보다
     // 아래에 있는 것처럼 보여 걸친 챕터로 오판했고, 보정 없이 계속 맨 위에 머물러 앞 챕터가 표지까지 연달아 붙었습니다.
@@ -5715,6 +5738,8 @@ window.booklogReaderLogic = (function () {
       height: '100%',
       manager: 'continuous',
       flow: 'scrolled',
+      // 빠른 관성 스크롤이 챕터 끝에 닿아 끊기기 전에 다음 챕터를 붙이도록 기본 500px보다 넉넉히 둡니다.
+      offset: CHAPTER_PRELOAD_OFFSET_PX,
       allowScriptedContent: false,
     })
     var startedRendition = renditionInstance
