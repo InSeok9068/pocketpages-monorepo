@@ -29,6 +29,10 @@ window.booklogReaderDiagnostics = (function () {
     'pageshow',
     'pagehide',
     'edge-fill-done',
+    'scroll-write',
+    'image-height-fix',
+    'follow-scroll',
+    'refill-after-move',
   ]
 
   if (available) {

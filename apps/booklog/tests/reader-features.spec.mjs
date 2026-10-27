@@ -2279,12 +2279,15 @@ test('Scroll diagnostics stay off until started and then record the whole reopen
   expect(reopen[request].details.waitsForQueue).toEqual(expect.any(Boolean))
   expect(diagnosticEvents(reopen, 'restore-position-received')[0].details.href).toBe('c3.xhtml')
 
-  const progress = diagnosticEvents(reopen, 'progress-change').at(-1)
-  expect(progress.details.from, 'the first real percent is recorded with where it came from').toBe('')
+  const progress = diagnosticEvents(reopen, 'progress-change').find((entry) => entry.details.href.includes('c3'))
+  expect(progress, 'the percent after reaching the saved chapter is recorded with where it came from').toBeTruthy()
+  expect(progress.details.from).toEqual(expect.any(String))
   expect(Number(progress.details.to)).toBeGreaterThan(30)
-  expect(progress.details.href).toContain('c3')
 
-  const snapshot = reopen.at(-1).state
+  const snapshot = reopen.filter((entry) => entry.state && entry.state.views).at(-1).state
+  expect(reopen.at(-1).state, 'frequent records keep a light state').toEqual(
+    expect.objectContaining({ progress: expect.any(String), scrollTop: expect.any(Number) })
+  )
   expect(snapshot).toEqual(
     expect.objectContaining({
       ready: true,
@@ -2446,4 +2449,175 @@ test('Readers without diagnostics see no diagnostics controls and record nothing
   await expect(page.getByLabel('스크롤 진단', { exact: true })).toHaveCount(0)
   expect(await page.evaluate(() => window.booklogReaderDiagnostics.isEnabled())).toBe(false)
   expect(await page.evaluate((key) => localStorage.getItem(key), READER_DIAGNOSTICS_KEY)).toBeNull()
+})
+
+// iOS는 맨 위에서 더 당기면 바운스로 scrollTop이 음수가 되어, 막 붙인 앞 챕터가 화면 맨 위보다 아래에 놓입니다.
+// 그때 보정을 건너뛰어 맨 위에 계속 머물렀고, 앞 챕터가 표지까지 연달아 붙어 처음으로 가 버렸습니다.
+test('A chapter attached above while the top bounces below the screen edge keeps the reader in place', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    document.addEventListener('DOMContentLoaded', () => {
+      const style = document.createElement('style')
+      style.textContent = '#epub-reader .epub-container { padding-top: 30px !important; box-sizing: border-box; }'
+      document.head.appendChild(style)
+    })
+  })
+  const state = await mockReader(page, featureBook)
+  state.serverPosition = { locator: '', href: 'c5.xhtml', chapterLabel: '5장' }
+  await page.goto('/books/book/read')
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const root = document.querySelector('section[x-data]')
+        const data = window.Alpine && root ? window.Alpine.$data(root) : null
+        return !!(data && data.bookReady && !data.loading)
+      })
+    )
+    .toBe(true)
+  await page.mouse.move(195, 500)
+  for (let step = 0; step < 6; step += 1) {
+    await page.mouse.wheel(0, -120)
+    await page.waitForTimeout(150)
+  }
+  await page.waitForTimeout(2500)
+
+  expect(await readingSpot(page), 'the reader stays just above chapter 5, not back at the start').toMatch(/^[45]장/)
+  const sections = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#epub-reader .epub-container iframe')).map(
+      (frame) => frame.contentDocument?.querySelector('h1')?.textContent || ''
+    )
+  )
+  expect(sections, 'earlier chapters are not attached in a chain').not.toContain('1장')
+})
+
+// iOS는 관성 스크롤 중에 코드가 바꾼 스크롤 위치를 덮어써, 위쪽 챕터를 지우며 줄인 위치가 되돌아가 흰 화면 뒤 진행률이 크게 건너뛰었습니다.
+const twelveChapterBook = buildBook(12)
+
+test('Chapters above are removed only after scrolling stops, not while the reader keeps scrolling', async ({ page }) => {
+  await enableDiagnosticsBeforeLoad(page)
+  await openReader(page, twelveChapterBook, adminReaderBody)
+  await page.mouse.move(195, 500)
+  const startedAt = await page.evaluate(() => performance.now())
+  // 관성 스크롤이 느려지는 끝 무렵처럼, epub.js가 정리를 시작하는 0.25초보다 긴 간격으로 계속 움직입니다.
+  for (let step = 0; step < 32; step += 1) {
+    await page.mouse.wheel(0, 600)
+    await page.waitForTimeout(350)
+  }
+  const stoppedAt = await page.evaluate(() => performance.now())
+  await page.waitForTimeout(2000)
+
+  expect(
+    await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).currentProgressPercent),
+    'scrolling stopped before the end of the book'
+  ).not.toBe('100')
+  const events = (await readerDiagnostics(page)).filter((entry) => entry.t > startedAt)
+  const removedWhileScrolling = events.filter((entry) => entry.event === 'view-remove' && entry.t < stoppedAt)
+  expect(removedWhileScrolling, 'no chapter above is removed while scrolling').toEqual([])
+  expect(
+    events.some((entry) => entry.event === 'trim-deferred' && entry.t < stoppedAt),
+    'the cleanup was put off'
+  ).toBe(true)
+  expect(
+    events.some((entry) => entry.event === 'view-remove' && entry.t > stoppedAt),
+    'and done once scrolling stopped'
+  ).toBe(true)
+  expect(await readingSpot(page), 'reading went on past the first chapters').toMatch(/^([4-9]|1[01])장/)
+  const frames = await page.evaluate(() => document.querySelectorAll('#epub-reader iframe').length)
+  expect(frames, 'the chapters left above were cleaned up').toBeLessThanOrEqual(3)
+})
+
+test('Scroll diagnostics show whether each correction was applied, skipped or overwritten', async ({ page }) => {
+  await enableDiagnosticsBeforeLoad(page)
+  await captureRendition(page)
+  const state = await openReader(page, lateImageBook, adminReaderBody)
+  state.serverPosition = { locator: '', href: 'c3.xhtml', chapterLabel: '' }
+  await page.reload()
+  await waitForReaderReady(page)
+  await page.waitForTimeout(1200)
+  const opened = await readerDiagnostics(page)
+  expect(diagnosticEvents(opened, 'refill-after-move').length, 'the re-check after the restore move is recorded').toBeGreaterThan(0)
+  const counter = diagnosticEvents(opened, 'scroll-write').find((entry) => entry.details.kind === 'counter')
+  expect(counter, 'a chapter attached above records the scroll it wrote').toBeTruthy()
+  expect(counter.details).toEqual(
+    expect.objectContaining({ before: expect.any(Number), written: expect.any(Number), next: expect.any(Number) })
+  )
+  expect(counter.details.written - counter.details.before, 'it moved by the attached height').toBe(counter.details.delta)
+  expect(counter.details.reverted, 'the browser kept the written position').toBe(false)
+
+  await page.evaluate(() => {
+    const container = document.querySelector('#epub-reader .epub-container')
+    const frame = Array.from(container.querySelectorAll('iframe')).find(
+      (candidate) => candidate.contentDocument && candidate.contentDocument.getElementById('late')
+    )
+    const paragraph = frame.contentDocument.querySelectorAll('p')[12]
+    container.scrollTop +=
+      frame.getBoundingClientRect().top + paragraph.getBoundingClientRect().top - container.getBoundingClientRect().top
+  })
+  await page.waitForTimeout(800)
+  const before = (await readerDiagnostics(page)).length
+  await growLateImage(page, 700)
+  await page.waitForTimeout(800)
+  const grown = (await readerDiagnostics(page)).slice(before)
+  const resized = diagnosticEvents(grown, 'view-resized').find((entry) => entry.details.delta > 0)
+  expect(resized.details.position, 'the resize says the chapter straddled the top of the screen').toBe('straddling')
+  const skipped = diagnosticEvents(grown, 'counter-skipped')[0]
+  expect(skipped, 'a straddling chapter that grew is recorded as not countered').toBeTruthy()
+  expect(skipped.details.viewTop, 'with where it sat on screen').toBeLessThan(0)
+  expect(skipped.details).toEqual(expect.objectContaining({ delta: resized.details.delta, scrollTop: expect.any(Number) }))
+  const anchor = diagnosticEvents(grown, 'scroll-write').find((entry) => entry.details.kind === 'anchor')
+  expect(anchor, 'the paragraph correction records its scroll write').toBeTruthy()
+  expect(anchor.details.reverted).toBe(false)
+})
+
+test('Scroll diagnostics record the picture height fixes each chapter needed', async ({ page }) => {
+  await enableDiagnosticsBeforeLoad(page)
+  await openReader(page, fullHeightPictureBook, adminReaderBody)
+  await page.waitForTimeout(800)
+  const fixes = diagnosticEvents(await readerDiagnostics(page), 'image-height-fix')
+  expect(fixes.length, 'the cover fix is recorded').toBeGreaterThan(0)
+  expect(fixes[0].details).toEqual(
+    expect.objectContaining({
+      index: expect.any(Number),
+      collapsed: expect.any(Number),
+      pictureOnly: expect.any(Number),
+      svg: expect.any(Number),
+    })
+  )
+  expect(fixes[0].details.collapsed + fixes[0].details.pictureOnly + fixes[0].details.svg).toBeGreaterThan(0)
+})
+
+test('Scroll diagnostics record removing chapters above after scrolling with the scroll it wrote', async ({ page }) => {
+  await enableDiagnosticsBeforeLoad(page)
+  await openReader(page, twelveChapterBook, adminReaderBody)
+  await page.mouse.move(195, 500)
+  for (let step = 0; step < 32; step += 1) {
+    await page.mouse.wheel(0, 600)
+    await page.waitForTimeout(350)
+  }
+  await page.waitForTimeout(2000)
+  const events = await readerDiagnostics(page)
+  const erase = diagnosticEvents(events, 'scroll-write').filter((entry) => entry.details.kind === 'erase-above')
+  expect(erase.length, 'each removal above records its scroll write').toBeGreaterThan(0)
+  expect(erase.every((entry) => typeof entry.details.reverted === 'boolean')).toBe(true)
+})
+
+test('Scroll diagnostics record why a chapter was not attached while sitting at the top edge', async ({ page }) => {
+  await enableDiagnosticsBeforeLoad(page)
+  await openReader(page, twelveChapterBook, adminReaderBody)
+  await page.evaluate(() => {
+    window.Alpine.$data(document.querySelector('section[x-data]')).loading = true
+  })
+  await page.mouse.move(195, 500)
+  for (let step = 0; step < 6; step += 1) {
+    await page.mouse.wheel(0, -400)
+    await page.waitForTimeout(120)
+  }
+  await page.evaluate(() => {
+    window.Alpine.$data(document.querySelector('section[x-data]')).loading = false
+  })
+  const skips = diagnosticEvents(await readerDiagnostics(page), 'edge-skip')
+  expect(skips.length, 'wheeling at the top while the reader is busy is recorded').toBeGreaterThan(0)
+  expect(skips[0].details).toEqual(expect.objectContaining({ direction: 'prev', loading: true }))
+  expect(skips.length, 'and kept to a few records').toBeLessThanOrEqual(2)
 })

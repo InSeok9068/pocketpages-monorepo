@@ -35,7 +35,7 @@ const epub = zipSync({
   ),
 })
 
-const renderReaderBody = (aiAudioAvailable) => render(
+const renderReaderBody = (aiAudioAvailable, showAudioDetail = false) => render(
   readFileSync(new URL('(reader)/books/[bookId]/read.ejs', pagesRoot), 'utf8').replace(
     /<script server>[\s\S]*?<\/script>/,
     ''
@@ -51,7 +51,7 @@ const renderReaderBody = (aiAudioAvailable) => render(
     initialShelfStatus: 'finished',
     aiAudioAvailable,
     bookTitle: '이동 테스트',
-    showAudioDetail: false,
+    showAudioDetail,
   }
 )
 const readerBody = renderReaderBody(false)
@@ -129,7 +129,9 @@ async function mockSite(page, options) {
       }
       return route.fulfill({
         contentType: 'text/html',
-        body: html(options && options.aiAudio ? renderReaderBody(true) : readerBody),
+        body: html(
+          options && options.aiAudio ? renderReaderBody(true, !!(options && options.diagnostics)) : readerBody
+        ),
       })
     }
   )
@@ -580,4 +582,42 @@ test('Restoring near the end of the last chapter does not wait for a chapter tha
   })
   expect(top).toContain('마지막 문단')
   expect(restoreMs).toBeLessThan(1000)
+})
+
+test('Scroll diagnostics record the listening follow moving the page', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.addInitScript(() =>
+    localStorage.setItem('booklog-reader-diagnostics-on:nav-user:nav-hash', String(Date.now()))
+  )
+  const xhtml = (body) =>
+    strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + body + '</body></html>')
+  const paragraphs = Array.from(
+    { length: 60 },
+    (_, index) => '<p>문단 ' + (index + 1) + '번째 이야기입니다. 듣는 위치를 화면에서 따라가는지 확인합니다.</p>'
+  ).join('')
+  const followBook = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+    ),
+    'book.opf': strToU8(
+      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">follow</dc:identifier><dc:title>따라가기</dc:title></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+    ),
+    'body.xhtml': xhtml(paragraphs),
+  })
+  await mockSite(page, { epub: followBook, aiAudio: true, diagnostics: true })
+  await page.goto('/books/book/read')
+  await waitForReader(page)
+  await page.waitForTimeout(1000)
+  await page.evaluate(() => {
+    window.booklogAudio.currentAnchor = () => window.__listening
+    window.Alpine.$data(document.querySelector('section[x-data]')).cloudAudioSession = true
+    window.__listening = { sectionIndex: 0, text: '문단 40번째 이야기입니다.' }
+  })
+  await expect
+    .poll(async () => {
+      const events = JSON.parse(await page.evaluate(() => window.booklogReaderDiagnostics.exportText())).events
+      return events.filter((entry) => entry.event === 'follow-scroll').map((entry) => entry.details)
+    })
+    .toEqual([expect.objectContaining({ delta: expect.any(Number), ratio: expect.any(Number) })])
 })

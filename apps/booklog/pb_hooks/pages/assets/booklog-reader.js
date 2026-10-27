@@ -42,6 +42,7 @@ window.booklogReaderLogic = (function () {
   var NAVIGATION_SAVE_WAIT_MS = 2000
   var INITIAL_RESTORE_TIMEOUT_MS = 8000
   var INITIAL_FONT_TIMEOUT_MS = 500
+  var SCROLL_IDLE_TRIM_MS = 500
   var DISPLAY_SETTLE_TIMEOUT_MS = 1500
   var DISPLAY_SETTLE_RETRY_MS = 80
   var VISIBLE_TOP_TOLERANCE_PX = 64
@@ -1306,6 +1307,50 @@ window.booklogReaderLogic = (function () {
     }
   }
 
+  function isReaderTraceOn() {
+    var diagnostics = window.booklogReaderDiagnostics
+
+    return !!(diagnostics && diagnostics.isEnabled())
+  }
+
+  // 코드가 바꾼 스크롤 위치가 다음 프레임에도 남아 있는지 기록합니다. iOS는 관성 스크롤·바운스 중에 이 값을 덮어씁니다.
+  function traceScrollWrite(kind, container, before, details) {
+    if (!container || !isReaderTraceOn()) {
+      return
+    }
+
+    var written = container.scrollTop
+
+    window.requestAnimationFrame(function () {
+      var next = container.scrollTop
+
+      traceReader(
+        'scroll-write',
+        Object.assign(
+          {
+            kind: kind,
+            before: Math.round(before),
+            written: Math.round(written),
+            next: Math.round(next),
+            reverted: Math.abs(written - before) > 2 && Math.abs(next - before) < Math.abs(next - written),
+          },
+          details || {}
+        )
+      )
+    })
+  }
+
+  var lastEdgeSkipTraceAt = 0
+
+  function traceEdgeSkip(target, direction, reasons) {
+    if (!isReaderTraceOn() || getDistanceToEdge(target, direction) > 1 || Date.now() - lastEdgeSkipTraceAt < 500) {
+      return
+    }
+
+    lastEdgeSkipTraceAt = Date.now()
+    traceReader('edge-skip', Object.assign({ direction: direction }, reasons))
+  }
+
   function readerDiagnosticState(full) {
     var component = activeComponent
     var manager = renditionInstance && renditionInstance.manager ? renditionInstance.manager : null
@@ -1420,6 +1465,7 @@ window.booklogReaderLogic = (function () {
         : box.viewTop + Math.max(0, (viewHeight - (box.bottom - box.top)) / 2)
     // 본문은 챕터 iframe 안에 있어 WebKit이 문단의 scrollIntoView를 바깥 스크롤 영역에서 맞추지 않으므로, 바깥 영역을 직접 옮깁니다.
     markProgrammaticScroll()
+    traceReader('follow-scroll', { delta: Math.round(box.top - targetTop), ratio: targetTopRatio || 0 })
     scroller.scrollBy({ top: Math.round(box.top - targetTop), behavior: 'smooth' })
   }
 
@@ -3339,7 +3385,9 @@ window.booklogReaderLogic = (function () {
             waitedMs: Date.now() - startedAt,
             clamped: desiredScrollTop < 0 || desiredScrollTop > maxScrollTop,
           })
+          var settleBefore = container.scrollTop
           container.scrollTop = Math.max(0, Math.min(maxScrollTop, desiredScrollTop))
+          traceScrollWrite('settle', container, settleBefore, { delta: Math.round(delta) })
           resolve()
           return
         }
@@ -3389,6 +3437,7 @@ window.booklogReaderLogic = (function () {
     }
 
     manager.ignore = false
+    traceReader('refill-after-move')
 
     try {
       // 큐 밖에서 확인하면 다른 확인과 겹쳐, 불러오던 챕터를 epub.js가 두 번 표시하거나 지워 이동이 끝나지 않습니다.
@@ -3411,6 +3460,57 @@ window.booklogReaderLogic = (function () {
   // epub.js(0.3.93 continuous)는 위에 붙인 챕터가 커질 때마다 그만큼 스크롤을 옮기는데, 챕터가 화면 아래로 내려온 뒤에도 계속 옮겨
   // 그림 페이지가 다시 잴 때마다 화면이 튑니다. 바뀐 높이가 보던 화면보다 위일 때만 옮기도록 prepend를 같은 동작으로 다시 둡니다.
   // 또 epub.js는 스크롤할 때만 다음 챕터를 붙이므로, 챕터가 줄어 화면보다 짧아지면 스크롤할 곳이 없어 그대로 멈춥니다.
+  function watchContainerScroll(manager) {
+    var container = manager.container
+
+    if (!container || container.booklogScrollWatched) {
+      return
+    }
+
+    container.booklogScrollWatched = true
+    container.addEventListener(
+      'scroll',
+      function () {
+        manager.booklogLastScrollAt = Date.now()
+      },
+      { passive: true }
+    )
+  }
+
+  function isContainerScrolling(manager) {
+    return Date.now() - (manager.booklogLastScrollAt || 0) < SCROLL_IDLE_TRIM_MS
+  }
+
+  function scheduleIdleTrim(manager) {
+    if (manager.booklogIdleTrimId) {
+      return
+    }
+
+    manager.booklogIdleTrimId = window.setTimeout(function () {
+      manager.booklogIdleTrimId = 0
+
+      if (!renditionInstance || renditionInstance.manager !== manager) {
+        return
+      }
+
+      if (isContainerScrolling(manager)) {
+        scheduleIdleTrim(manager)
+        return
+      }
+
+      traceReader('trim-after-idle')
+      Promise.resolve(
+        manager.q.enqueue(function () {
+          return manager.trim()
+        })
+      ).catch(function (exception) {
+        console.warn('page/books/[bookId]/read:idle-trim:failed', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+      })
+    }, SCROLL_IDLE_TRIM_MS)
+  }
+
   // epub.js는 첫 챕터를 그릴 때 챕터 목록을 만들어, 그 목록이 생긴 뒤 한 번만 붙이기·지우기를 기록하도록 감쌉니다.
   function traceViewList(views) {
     if (!views || views.booklogTraced) {
@@ -3426,7 +3526,11 @@ window.booklogReaderLogic = (function () {
       }
 
       views[name] = function (view) {
-        traceReader('view-' + name, { index: view && view.section ? view.section.index : -1 })
+        traceReader(
+          'view-' + name,
+          { index: view && view.section ? view.section.index : -1 },
+          { caller: name === 'remove' }
+        )
         return original.apply(this, arguments)
       }
     })
@@ -3460,17 +3564,58 @@ window.booklogReaderLogic = (function () {
           })
         })
       }
+      var viewManager = this
+
       view.on('resized', function (size) {
+        var height = size ? Math.round(Number(size.height) || 0) : 0
+        var delta = size ? Math.round(Number(size.heightDelta) || 0) : 0
+        var container = viewManager.container
+        var viewTop = 0
+        var position = ''
+
+        if (isReaderTraceOn() && container && view.element) {
+          viewTop = Math.round(view.element.getBoundingClientRect().top - container.getBoundingClientRect().top)
+          position = viewTop + height - delta <= 1 ? 'above' : viewTop < -1 ? 'straddling' : 'below'
+        }
+
         traceReader('view-resized', {
           index: view.section ? view.section.index : -1,
-          height: size ? Math.round(Number(size.height) || 0) : 0,
-          delta: size ? Math.round(Number(size.heightDelta) || 0) : 0,
+          height: height,
+          delta: delta,
+          viewTop: viewTop,
+          position: position,
         })
       })
       traceViewList(this.views)
+      watchContainerScroll(this)
       checkAfterShrink(this, view)
       keepReadingAnchorOnResize(this, view)
       return view
+    }
+
+    var erase = manager.erase
+
+    // iOS는 관성 스크롤 중에 코드가 바꾼 스크롤 위치를 덮어씁니다. 위쪽 챕터를 지우며 줄인 위치가 되돌아가면 내용 끝을 넘어 흰 화면이 되고,
+    // 지운 높이만큼 앞으로 건너뛰어 진행률이 튑니다. 스크롤이 움직이는 동안에는 위쪽 챕터를 남겨 두고 멈춘 뒤에 정리합니다.
+    // 아래쪽 챕터는 지워도 보던 위치가 바뀌지 않아 바로 지웁니다.
+    manager.erase = function (view, above) {
+      if (above && this.settings.axis === 'vertical' && isContainerScrolling(this)) {
+        traceReader('trim-deferred', { index: view && view.section ? view.section.index : -1 })
+        scheduleIdleTrim(this)
+        return
+      }
+
+      var eraseContainer = this.container
+      var eraseBefore = eraseContainer ? eraseContainer.scrollTop : 0
+      var erased = erase.apply(this, arguments)
+
+      if (above) {
+        traceScrollWrite('erase-above', eraseContainer, eraseBefore, {
+          index: view && view.section ? view.section.index : -1,
+        })
+      }
+
+      return erased
     }
 
     var clear = manager.clear
@@ -3485,12 +3630,23 @@ window.booklogReaderLogic = (function () {
       var view = self.createView(section)
 
       view.on('resized', function (size) {
+        var counterIndex = view.section ? view.section.index : -1
+        var counterDelta = Math.round(Number(size && size.heightDelta) || 0)
+
         if (shouldCounterPrependedResize(self, view, size)) {
-          traceReader('counter', {
-            index: view.section ? view.section.index : -1,
-            delta: Math.round(Number(size && size.heightDelta) || 0),
-          })
+          var counterBefore = self.container ? self.container.scrollTop : 0
+
+          traceReader('counter', { index: counterIndex, delta: counterDelta })
           self.counter(size)
+          traceScrollWrite('counter', self.container, counterBefore, { index: counterIndex, delta: counterDelta })
+        } else if (counterDelta && isReaderTraceOn() && self.container && view.element) {
+          traceReader('counter-skipped', {
+            index: counterIndex,
+            delta: counterDelta,
+            height: Math.round(Number(size && size.height) || 0),
+            viewTop: Math.round(view.element.getBoundingClientRect().top - self.container.getBoundingClientRect().top),
+            scrollTop: Math.round(self.container.scrollTop),
+          })
         }
         view.expanded = true
       })
@@ -3632,9 +3788,12 @@ window.booklogReaderLogic = (function () {
       delta = Math.round(anchor.node.getBoundingClientRect().top - anchor.top)
 
       if (Math.abs(delta) >= 1) {
+        var anchorBefore = manager.container ? manager.container.scrollTop : 0
+
         traceReader('anchor-correct', { index: view.section ? view.section.index : -1, delta: delta })
         markProgrammaticScroll()
         manager.scrollBy(0, delta, true)
+        traceScrollWrite('anchor', manager.container, anchorBefore, { delta: delta })
         anchor.top += delta
       }
 
@@ -3731,6 +3890,12 @@ window.booklogReaderLogic = (function () {
     var visibleTop = container.getBoundingClientRect().top
     var viewTop = element.getBoundingClientRect().top
     var previousHeight = (Number(size.height) || 0) - (Number(size.heightDelta) || 0)
+
+    // 막 붙인 챕터는 맨 위에 끼워 넣은 것이라 항상 그만큼 옮깁니다. iOS 바운스로 scrollTop이 음수면 새 챕터가 화면 맨 위보다
+    // 아래에 있는 것처럼 보여 걸친 챕터로 오판했고, 보정 없이 계속 맨 위에 머물러 앞 챕터가 표지까지 연달아 붙었습니다.
+    if (previousHeight <= 0) {
+      return true
+    }
 
     // 화면 맨 위에 걸친 챕터는 보던 문단 아래에서 높이가 바뀌는 경우가 많아, 통째로 옮기면 보던 곳이 그만큼 튑니다.
     return viewTop + previousHeight <= visibleTop + 1
@@ -5159,6 +5324,12 @@ window.booklogReaderLogic = (function () {
     }
 
     if (component.loading || isRestoringPosition || autoPagingInFlight || isAutoPagingSettling()) {
+      traceEdgeSkip(target, direction, {
+        loading: !!component.loading,
+        restoring: isRestoringPosition,
+        inFlight: autoPagingInFlight,
+        settling: isAutoPagingSettling(),
+      })
       resetAutoPagingIntent()
       if (getDistanceToEdge(target, direction) <= 1) {
         intentTimerId = window.setTimeout(function () {
@@ -5171,6 +5342,7 @@ window.booklogReaderLogic = (function () {
 
     if (releaseRequired) {
       if (!hasReleasedAutoPagingEdge(target) && !canRetryEdgeAttach(target, direction)) {
+        traceEdgeSkip(target, direction, { releaseRequired: true, releaseDirection: releaseDirection })
         resetAutoPagingIntent()
         return
       }
@@ -5390,12 +5562,14 @@ window.booklogReaderLogic = (function () {
     }
 
     var pictureOnly = !!doc.body && String(doc.body.textContent || '').replace(/\s+/g, '').length < 40
+    var fixes = { collapsed: 0, pictureOnly: 0, svg: 0 }
 
     Array.prototype.forEach.call(doc.querySelectorAll('img, svg'), function (image) {
       var maxHeight = parseFloat(win.getComputedStyle(image).maxHeight)
 
       // 그림만 있는 페이지는 epub.js가 접힌 본문 높이로 최대 높이를 정해, 그림이 몇 px로 줄어듭니다.
       if (maxHeight === 0 || (pictureOnly && maxHeight < screenHeight * 0.5)) {
+        fixes[maxHeight === 0 ? 'collapsed' : 'pictureOnly'] += 1
         image.style.setProperty('max-height', Math.round(screenHeight * 0.95) + 'px', 'important')
       }
     })
@@ -5412,12 +5586,24 @@ window.booklogReaderLogic = (function () {
         return
       }
 
+      fixes.svg += 1
       svg.style.setProperty(
         'height',
         Math.round(Math.min(screenHeight * 0.95, (box.width * viewBox[3]) / viewBox[2])) + 'px',
         'important'
       )
     })
+
+    if ((fixes.collapsed || fixes.pictureOnly || fixes.svg) && isReaderTraceOn()) {
+      var fixedView = renditionInstance.manager.views.all().find(function (candidate) {
+        return candidate.contents && candidate.contents.document === doc
+      })
+
+      traceReader(
+        'image-height-fix',
+        Object.assign({ index: fixedView && fixedView.section ? fixedView.section.index : -1 }, fixes)
+      )
+    }
   }
 
   function renderBookBuffer(component, buffer) {
