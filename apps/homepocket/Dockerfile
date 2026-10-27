@@ -29,7 +29,7 @@ RUN set -eu; \
   esac; \
   CURL_RETRY="--retry 5 --retry-delay 5 --retry-max-time 120 --retry-all-errors --retry-connrefused"; \
   curl -fsSL ${CURL_RETRY} -o /tmp/pocketbase.zip \
-    "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_${PB_ARCH}.zip"; \
+    "https://ganigeorgiev.com/meta/pocketbase/pocketbase/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_${PB_ARCH}.zip"; \
   unzip /tmp/pocketbase.zip -d /out; \
   chmod +x /out/pocketbase
 

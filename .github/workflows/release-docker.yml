@@ -92,19 +92,18 @@ jobs:
       - name: Resolve latest PocketBase version
         id: pb
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           CURL_RETRY=(--retry 5 --retry-delay 5 --retry-max-time 120 --retry-all-errors --retry-connrefused)
-          LATEST_JSON="$(curl -fsSL "${CURL_RETRY[@]}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/pocketbase/pocketbase/releases/latest)"
-          PB_VERSION="$(printf '%s' "$LATEST_JSON" | tr -d '\n' | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\([^"]*\)".*/\1/p')"
+          LATEST_JSON="$(curl -fsSL "${CURL_RETRY[@]}" --get \
+            'https://ganigeorgiev.com/api/collections/releases/records' \
+            --data-urlencode 'perPage=1' \
+            --data-urlencode 'skipTotal=1' \
+            --data-urlencode 'sort=-semver' \
+            --data-urlencode 'filter=channel.name="default" && channel.repository.name="pocketbase" && channel.repository.project.name="pocketbase"')"
+          PB_VERSION="$(printf '%s' "$LATEST_JSON" | jq -er '.items[0].tag | select(type == "string") | ltrimstr("v")')"
 
-          if [[ -z "$PB_VERSION" ]]; then
+          if [[ ! "$PB_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Failed to resolve PocketBase version"
             exit 1
           fi
