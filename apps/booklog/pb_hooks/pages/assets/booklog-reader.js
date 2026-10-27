@@ -1297,6 +1297,59 @@ window.booklogReaderLogic = (function () {
     return !!box && box.bottom > box.viewTop && box.top < box.viewBottom
   }
 
+  // 진단을 켠 경우에만 기록하고, 꺼져 있으면 확인 한 번으로 끝납니다.
+  function traceReader(event, details, options) {
+    var diagnostics = window.booklogReaderDiagnostics
+
+    if (diagnostics && diagnostics.isEnabled()) {
+      diagnostics.record(event, details, options)
+    }
+  }
+
+  function readerDiagnosticState(full) {
+    var component = activeComponent
+    var manager = renditionInstance && renditionInstance.manager ? renditionInstance.manager : null
+    var container = manager ? manager.container : null
+    var location = currentLocation && currentLocation.start ? currentLocation.start : null
+    var queue = manager && manager.q ? manager.q : null
+
+    if (!full) {
+      return {
+        progress: component ? component.currentProgressPercent : '',
+        scrollTop: container ? Math.round(container.scrollTop) : -1,
+        scrollHeight: container ? container.scrollHeight : -1,
+        queue: queue ? (queue.running ? 1 : 0) + queue.length() : -1,
+      }
+    }
+
+    return {
+      loading: !!(component && component.loading),
+      ready: !!(component && component.bookReady),
+      progress: component ? component.currentProgressPercent : '',
+      locations: component ? component.progressLocationsStatus : '',
+      restoring: isRestoringPosition,
+      displaying: !!(renditionInstance && renditionInstance.displaying),
+      queue: queue ? (queue.running ? 1 : 0) + queue.length() : -1,
+      scrollTop: container ? Math.round(container.scrollTop) : -1,
+      scrollHeight: container ? container.scrollHeight : -1,
+      clientHeight: container ? container.clientHeight : -1,
+      at: location ? { index: location.index, href: String(location.href || ''), cfi: String(location.cfi || '').slice(0, 80) } : null,
+      views:
+        manager && manager.views
+          ? manager.views.all().map(function (view) {
+              var element = view.element
+              return [
+                view.section ? view.section.index : -1,
+                element ? element.offsetHeight : 0,
+                view.displayed ? 1 : 0,
+                element && element.style.visibility === 'hidden' ? 1 : 0,
+                element ? Math.round(element.getBoundingClientRect().top - container.getBoundingClientRect().top) : 0,
+              ]
+            })
+          : [],
+    }
+  }
+
   function markUserScroll() {
     lastUserScrollAt = Date.now()
   }
@@ -1932,6 +1985,20 @@ window.booklogReaderLogic = (function () {
     var location = currentLocation && currentLocation.start ? currentLocation.start : null
     var locator = location && location.cfi ? String(location.cfi) : ''
     var progressPercent = getProgressPercentFromLocator(locator)
+    var previousPercent = component.currentProgressPercent
+
+    if (
+      progressPercent !== previousPercent
+      && (previousPercent === '' || progressPercent === '' || Math.abs(Number(progressPercent) - Number(previousPercent)) >= 3)
+    ) {
+      traceReader('progress-change', {
+        from: previousPercent,
+        to: progressPercent,
+        href: location ? String(location.href || '') : '',
+        index: location ? location.index : -1,
+        cfi: locator.slice(0, 80),
+      })
+    }
 
     component.currentProgressPercent = progressPercent
 
@@ -2969,6 +3036,7 @@ window.booklogReaderLogic = (function () {
       })
       .then(function (result) {
         if (result.status === 409 && result.payload && result.payload.conflict) {
+          traceReader('save-conflict', { skip: !!(options && options.skipOnConflict) })
           if (!options || !options.skipOnConflict) {
             openPositionConflict(component, result.payload)
           }
@@ -3010,6 +3078,7 @@ window.booklogReaderLogic = (function () {
     }
 
     pendingConflictPosition = { locator: locator, href: href }
+    traceReader('position-conflict-open', { href: href, cfi: locator.slice(0, 80) }, { caller: true })
     component.positionConflictLabel = String(payload && payload.chapterLabel ? payload.chapterLabel : '').trim()
     component.positionConflictOpen = true
   }
@@ -3168,6 +3237,8 @@ window.booklogReaderLogic = (function () {
       return
     }
 
+    traceReader('page-restored-from-cache')
+
     isLeavingPage = false
     skipNextPopState = false
 
@@ -3263,6 +3334,11 @@ window.booklogReaderLogic = (function () {
           || Date.now() - startedAt >= DISPLAY_SETTLE_TIMEOUT_MS
         ) {
           prepareManualNavigation()
+          traceReader('settle-target', {
+            delta: Math.round(delta),
+            waitedMs: Date.now() - startedAt,
+            clamped: desiredScrollTop < 0 || desiredScrollTop > maxScrollTop,
+          })
           container.scrollTop = Math.max(0, Math.min(maxScrollTop, desiredScrollTop))
           resolve()
           return
@@ -3284,8 +3360,12 @@ window.booklogReaderLogic = (function () {
     var rendition = renditionInstance
     var queue = rendition.manager ? rendition.manager.q : null
     // 이동은 보이지 않는 챕터를 모두 지우므로, 큐에서 챕터를 불러오던 확인이 있으면 끝난 뒤에 옮깁니다.
+    var waitsForQueue = !!(queue && (queue.running || queue.length()))
+
+    traceReader('display-at', { target: String(target || '').slice(0, 100), waitsForQueue: waitsForQueue }, { caller: true })
+
     var displaying =
-      queue && (queue.running || queue.length())
+      waitsForQueue
         ? Promise.resolve(queue.enqueue(function () {})).then(function () {
             return rendition.display(target)
           })
@@ -3331,6 +3411,27 @@ window.booklogReaderLogic = (function () {
   // epub.js(0.3.93 continuous)는 위에 붙인 챕터가 커질 때마다 그만큼 스크롤을 옮기는데, 챕터가 화면 아래로 내려온 뒤에도 계속 옮겨
   // 그림 페이지가 다시 잴 때마다 화면이 튑니다. 바뀐 높이가 보던 화면보다 위일 때만 옮기도록 prepend를 같은 동작으로 다시 둡니다.
   // 또 epub.js는 스크롤할 때만 다음 챕터를 붙이므로, 챕터가 줄어 화면보다 짧아지면 스크롤할 곳이 없어 그대로 멈춥니다.
+  // epub.js는 첫 챕터를 그릴 때 챕터 목록을 만들어, 그 목록이 생긴 뒤 한 번만 붙이기·지우기를 기록하도록 감쌉니다.
+  function traceViewList(views) {
+    if (!views || views.booklogTraced) {
+      return
+    }
+
+    views.booklogTraced = true
+    ;['append', 'prepend', 'remove'].forEach(function (name) {
+      var original = views[name]
+
+      if (typeof original !== 'function') {
+        return
+      }
+
+      views[name] = function (view) {
+        traceReader('view-' + name, { index: view && view.section ? view.section.index : -1 })
+        return original.apply(this, arguments)
+      }
+    })
+  }
+
   function patchContinuousViews(manager) {
     if (!manager || typeof manager.prepend !== 'function' || typeof manager.createView !== 'function') {
       return
@@ -3344,15 +3445,39 @@ window.booklogReaderLogic = (function () {
 
       // 이미지·본문 스타일을 적용한 뒤 첫 높이를 재야 임시 스크롤 범위가 줄면서 화면이 되돌아가지 않습니다.
       view.prepareContents = function () {
+        var startedAt = Date.now()
+
         return rendition.hooks.content.trigger(view.contents, rendition).then(function () {
+          var hooksMs = Date.now() - startedAt
+
           return waitForInitialContentFonts(view.contents).then(function () {
             view.contentsPrepared = true
+            traceReader('view-prepared', {
+              index: view.section ? view.section.index : -1,
+              hooksMs: hooksMs,
+              fontsMs: Date.now() - startedAt - hooksMs,
+            })
           })
         })
       }
+      view.on('resized', function (size) {
+        traceReader('view-resized', {
+          index: view.section ? view.section.index : -1,
+          height: size ? Math.round(Number(size.height) || 0) : 0,
+          delta: size ? Math.round(Number(size.heightDelta) || 0) : 0,
+        })
+      })
+      traceViewList(this.views)
       checkAfterShrink(this, view)
       keepReadingAnchorOnResize(this, view)
       return view
+    }
+
+    var clear = manager.clear
+
+    manager.clear = function () {
+      traceReader('manager-clear', { views: this.views ? this.views.length : 0 }, { caller: true })
+      return clear.apply(this, arguments)
     }
 
     manager.prepend = function (section) {
@@ -3361,6 +3486,10 @@ window.booklogReaderLogic = (function () {
 
       view.on('resized', function (size) {
         if (shouldCounterPrependedResize(self, view, size)) {
+          traceReader('counter', {
+            index: view.section ? view.section.index : -1,
+            delta: Math.round(Number(size && size.heightDelta) || 0),
+          })
           self.counter(size)
         }
         view.expanded = true
@@ -3374,6 +3503,35 @@ window.booklogReaderLogic = (function () {
       self.views.prepend(view)
       view.onDisplayed = self.afterDisplayed.bind(self)
       return view
+    }
+
+    var resize = manager.resize
+
+    // iOS 주소창·도구막대가 접히면 높이만 바뀌는데, epub.js는 그때마다 모든 챕터를 지우고 다시 그려 흰 화면과 위치 튐이 생깁니다.
+    // 이어 보기의 챕터 높이는 본문 길이로 정해져 화면 높이와 무관하므로, 폭이 같으면 스크롤 범위만 갱신합니다.
+    manager.resize = function (width, height) {
+      var size = this.stage.size(width, height)
+      var previous = this._stageSize
+
+      traceReader('manager-resize', {
+        from: previous ? previous.width + 'x' + previous.height : '',
+        to: size.width + 'x' + size.height,
+        heightOnly: !!previous && size.width === previous.width && size.height !== previous.height,
+      })
+
+      if (
+        this.settings.axis === 'vertical'
+        && this._stageSize
+        && size.width === this._stageSize.width
+        && size.height !== this._stageSize.height
+      ) {
+        this._stageSize = size
+        this._bounds = this.bounds()
+        this.viewSettings.height = size.height
+        return
+      }
+
+      return resize.apply(this, arguments)
     }
   }
 
@@ -3393,6 +3551,7 @@ window.booklogReaderLogic = (function () {
         console.debug('page/books/[bookId]/read:initial-font-timeout', {
           timeoutMs: INITIAL_FONT_TIMEOUT_MS,
         })
+        traceReader('font-timeout', { timeoutMs: INITIAL_FONT_TIMEOUT_MS })
         resolve()
       }, INITIAL_FONT_TIMEOUT_MS)
 
@@ -3434,6 +3593,8 @@ window.booklogReaderLogic = (function () {
           return
         }
 
+        traceReader('check-after-shrink', { index: view.section ? view.section.index : -1 })
+
         try {
           Promise.resolve(
             manager.q.enqueue(function () {
@@ -3471,6 +3632,7 @@ window.booklogReaderLogic = (function () {
       delta = Math.round(anchor.node.getBoundingClientRect().top - anchor.top)
 
       if (Math.abs(delta) >= 1) {
+        traceReader('anchor-correct', { index: view.section ? view.section.index : -1, delta: delta })
         markProgrammaticScroll()
         manager.scrollBy(0, delta, true)
         anchor.top += delta
@@ -3587,7 +3749,9 @@ window.booklogReaderLogic = (function () {
     }
 
     var rendition = renditionInstance
+    var restoreStartedAt = Date.now()
 
+    traceReader('restore-start', { retry: isRetry, silent: !shouldShowMessage }, { caller: true })
     isRestoringPosition = true
     if (!isRetry) {
       prepareManualNavigation()
@@ -3607,6 +3771,13 @@ window.booklogReaderLogic = (function () {
         var href = String(payload && payload.href ? payload.href : '')
         var target = locator || href
 
+        traceReader('restore-position-received', {
+          ms: Date.now() - restoreStartedAt,
+          href: href,
+          cfi: locator.slice(0, 80),
+          hasSavedPosition: payload ? payload.hasSavedPosition : null,
+        })
+
         if (!target) {
           if (payload.hasSavedPosition !== false) {
             throw new Error('읽기 위치 응답을 확인하지 못했습니다.')
@@ -3625,6 +3796,7 @@ window.booklogReaderLogic = (function () {
           && buildProgressKey(getCurrentProgressPayload(component)) !== restorePendingLocationKey
         ) {
           serverPositionKey = target
+          traceReader('restore-conflict', { href: href })
           openPositionConflict(component, payload)
           return false
         }
@@ -3653,6 +3825,7 @@ window.booklogReaderLogic = (function () {
                 payload && payload.chapterLabel ? payload.chapterLabel : component.currentChapterLabel || ''
               )
               updateCurrentLocation(component, location || renditionInstance.currentLocation())
+              traceReader('restore-landed', { ms: Date.now() - restoreStartedAt, target: target.slice(0, 80) })
 
               progress = getCurrentProgressPayload(component)
               lastPersistedProgressKey = buildProgressKey(progress)
@@ -3668,6 +3841,7 @@ window.booklogReaderLogic = (function () {
             },
             function () {
               // 저장 위치가 이 파일에 없으면(다른 EPUB로 바뀐 경우 등) 매번 실패하므로, 위치 없음으로 보고 다음 저장이 덮어쓰게 합니다.
+              traceReader('restore-target-missing', { target: target.slice(0, 80) })
               serverPositionKey = target
               if (shouldShowMessage) {
                 component.showSavePositionMessage('저장된 위치를 이 파일에서 찾지 못해 처음부터 표시합니다.')
@@ -3687,6 +3861,11 @@ window.booklogReaderLogic = (function () {
         return restored
       })
       .catch(function (exception) {
+        traceReader('restore-failed', {
+          ms: Date.now() - restoreStartedAt,
+          stale: rendition !== renditionInstance,
+          message: String(exception && exception.message ? exception.message : exception).slice(0, 200),
+        })
         if (rendition !== renditionInstance) {
           return false
         }
@@ -3733,10 +3912,12 @@ window.booklogReaderLogic = (function () {
         bookId: bookId,
         timeoutMs: INITIAL_RESTORE_TIMEOUT_MS,
       })
+      traceReader('restore-timeout-rebuild', { timeoutMs: INITIAL_RESTORE_TIMEOUT_MS })
       isRestoringPosition = false
       discardRenderedBook()
 
       return renderBookBuffer(component, renderedBookBuffer).then(function () {
+        traceReader('restore-timeout-rebuilt')
         component.errorMessage = POSITION_RESTORE_PENDING_MESSAGE
         restorePendingLocationKey = buildProgressKey(getCurrentProgressPayload(component))
         return false
@@ -3938,6 +4119,8 @@ window.booklogReaderLogic = (function () {
     var normalizedSettings = normalizeReaderSettings(settings)
     var fontSizeValue = String(normalizedSettings.fontSizePercent) + '%'
     var keepPosition = !!(renditionInstance && component && !component.loading && (!options || !options.skipLayoutSync))
+
+    traceReader('settings-apply', { settings: normalizedSettings, keepPosition: keepPosition })
 
     // 연달아 바꾸는 중이면 첫 변경 전 위치를 그대로 쓰고, 밀린 위치를 다시 기준으로 잡지 않습니다.
     if (keepPosition && !settingsRelayoutAnchor) {
@@ -4878,6 +5061,7 @@ window.booklogReaderLogic = (function () {
 
     autoPagingInFlight = true
     resetAutoPagingIntent()
+    traceReader('edge-fill', { direction: direction })
 
     Promise.resolve()
       .then(function () {
@@ -4886,6 +5070,7 @@ window.booklogReaderLogic = (function () {
       })
       .then(function () {
         if (generation !== autoPagingGeneration) return
+        traceReader('edge-fill-done', { direction: direction })
         finalizeAutoPagingTransition(direction, syncAutoPagingTarget())
         console.debug('page/books/[bookId]/read:auto-page:requested', {
           direction: direction,
@@ -4894,6 +5079,10 @@ window.booklogReaderLogic = (function () {
       .catch(function (exception) {
         if (generation !== autoPagingGeneration) return
         resetAutoPagingState()
+        traceReader('edge-fill-failed', {
+          direction: direction,
+          message: String(exception && exception.message ? exception.message : exception).slice(0, 200),
+        })
         console.warn('page/books/[bookId]/read:auto-page:failed', {
           direction: direction,
           message: String(exception && exception.message ? exception.message : exception),
@@ -4957,6 +5146,7 @@ window.booklogReaderLogic = (function () {
     }
 
     lastEdgeRetryAt = Date.now()
+    traceReader('edge-retry', { direction: direction })
     return true
   }
 
@@ -5072,8 +5262,13 @@ window.booklogReaderLogic = (function () {
 
   function startProgressLocationGeneration(component) {
     var locations = bookInstance && bookInstance.locations ? bookInstance.locations : null
+    var generationStartedAt = Date.now()
 
     function handleReady() {
+      traceReader('progress-locations-ready', {
+        ms: Date.now() - generationStartedAt,
+        cached: component.progressLocationsStatus === 'ready',
+      })
       component.progressLocationsStatus = 'ready'
       syncCurrentProgressState(component)
 
@@ -5102,6 +5297,9 @@ window.booklogReaderLogic = (function () {
     }
 
     function handleFailure(exception) {
+      traceReader('progress-locations-failed', {
+        message: String(exception && exception.message ? exception.message : exception).slice(0, 200),
+      })
       component.progressLocationsStatus = 'failed'
       console.warn('page/books/[bookId]/read:progress-locations:failed', {
         message: String(exception && exception.message ? exception.message : exception),
@@ -5161,6 +5359,8 @@ window.booklogReaderLogic = (function () {
 
   function discardRenderedBook() {
     var container = document.getElementById('epub-reader')
+
+    traceReader('book-discard', null, { caller: true })
 
     try {
       if (renditionInstance) {
@@ -5235,6 +5435,50 @@ window.booklogReaderLogic = (function () {
       allowScriptedContent: false,
     })
     var startedRendition = renditionInstance
+    var display = startedRendition.display
+
+    // 화면 전체를 다시 그리는 모든 경로(이동·복원·화면 크기 변화)를 호출 경로와 함께 남깁니다.
+    startedRendition.display = function (target) {
+      var startedAt = Date.now()
+      var label = String(target === undefined || target === null ? '' : target).slice(0, 100)
+
+      if (!window.booklogReaderDiagnostics || !window.booklogReaderDiagnostics.isEnabled()) {
+        return display.apply(this, arguments)
+      }
+
+      traceReader('display-start', { target: label }, { caller: true })
+
+      return Promise.resolve(display.apply(this, arguments)).then(
+        function (location) {
+          traceReader('display-done', { target: label, ms: Date.now() - startedAt })
+          return location
+        },
+        function (exception) {
+          traceReader('display-failed', {
+            target: label,
+            ms: Date.now() - startedAt,
+            message: String(exception && exception.message ? exception.message : exception).slice(0, 200),
+          })
+          throw exception
+        }
+      )
+    }
+    var lastTracedSection = null
+
+    startedRendition.on('relocated', function (location) {
+      var start = location && location.start ? location.start : null
+
+      if (start && start.index === lastTracedSection) {
+        return
+      }
+
+      lastTracedSection = start ? start.index : null
+      traceReader('relocated', {
+        index: start ? start.index : -1,
+        href: start ? String(start.href || '') : '',
+        cfi: start ? String(start.cfi || '').slice(0, 80) : '',
+      })
+    })
     Promise.resolve(startedRendition.started).then(function () {
       patchContinuousViews(startedRendition.manager)
     })
@@ -5371,6 +5615,12 @@ window.booklogReaderLogic = (function () {
     })
 
     readerContainer = container
+    var initStartedAt = Date.now()
+
+    if (window.booklogReaderDiagnostics) {
+      window.booklogReaderDiagnostics.setSnapshot(readerDiagnosticState)
+    }
+    traceReader('reader-init', { online: navigator.onLine })
 
     Promise.resolve()
       .then(function () {
@@ -5389,6 +5639,7 @@ window.booklogReaderLogic = (function () {
             bookId: bookId,
             cacheKey: readerCacheKey,
           })
+          traceReader('book-cache-hit', { ms: Date.now() - initStartedAt, bytes: cachedBuffer.byteLength || 0 })
 
           bookCacheWritePromise = touchCachedBookBuffer().catch(function () {})
           return renderBookBuffer(component, cachedBuffer).catch(function (exception) {
@@ -5410,11 +5661,13 @@ window.booklogReaderLogic = (function () {
           bookId: bookId,
           cacheKey: readerCacheKey,
         })
+        traceReader('book-cache-miss', { ms: Date.now() - initStartedAt })
 
         return renderDownloadedBook(component)
       })
       .then(function () {
         component.loadingSavedPosition = true
+        traceReader('book-rendered', { ms: Date.now() - initStartedAt })
 
         return restoreInitialPosition(component).finally(function () {
           component.loadingSavedPosition = false
@@ -5429,6 +5682,7 @@ window.booklogReaderLogic = (function () {
         startReadingSession(component)
         startProgressLocationGeneration(component)
         restoreSavedHighlightAnnotations()
+        traceReader('reader-ready', { ms: Date.now() - initStartedAt })
         console.debug('page/books/[bookId]/read:rendered', {
           bookId: bookId,
         })
@@ -5436,6 +5690,7 @@ window.booklogReaderLogic = (function () {
       .catch(function (exception) {
         component.loading = false
         component.errorMessage = String(exception && exception.message ? exception.message : exception)
+        traceReader('reader-failed', { ms: Date.now() - initStartedAt, message: component.errorMessage.slice(0, 200) })
         console.error('page/books/[bookId]/read:failed', {
           message: component.errorMessage,
         })
@@ -5515,6 +5770,7 @@ window.booklogReaderLogic = (function () {
     }
     component.readAloudOpen = false
     component.loading = true
+    traceReader('listen-go-to-position', { index: anchor.sectionIndex })
     resumeFollowNow()
     prepareManualNavigation()
     Promise.resolve(section.load(bookInstance.load.bind(bookInstance)))
@@ -5595,6 +5851,7 @@ window.booklogReaderLogic = (function () {
       // 다음 챕터로 넘어갔는데 아직 화면에 없으면, 보고 있던 경우에만 한 번 그 챕터를 엽니다.
       if (!view && watching && section && listeningFollow.openedSection !== anchor.sectionIndex) {
         listeningFollow.openedSection = anchor.sectionIndex
+        traceReader('listen-follow-open-section', { index: anchor.sectionIndex })
         prepareManualNavigation()
         markProgrammaticScroll()
         displayAt(section.href)

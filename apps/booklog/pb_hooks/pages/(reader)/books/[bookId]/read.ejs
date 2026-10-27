@@ -580,16 +580,73 @@
       class="mx-auto flex max-h-[calc(100dvh-5rem)] max-w-xl flex-col gap-3 overflow-y-auto rounded-[1.55rem] border border-stone-200/80 bg-[rgba(255,255,255,0.95)] p-3 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md">
       <div class="flex items-center justify-between gap-3 px-1">
         <h2 class="text-base font-semibold text-stone-950">메뉴</h2>
-        <button
-          type="button"
-          x-on:click="controlsVisible = false"
-          class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none"
-          aria-label="메뉴 닫기">
-          <span
-            class="i-lucide-x h-4 w-4"
-            aria-hidden="true"></span>
-        </button>
+        <div class="flex shrink-0 items-center gap-1">
+          <% if (showAudioDetail) { %>
+          <details class="relative">
+            <summary
+              title="스크롤 진단"
+              aria-label="스크롤 진단"
+              class="inline-flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full text-stone-400 hover:bg-stone-100">
+              <span
+                class="i-lucide-bug h-4 w-4"
+                aria-hidden="true"></span>
+            </summary>
+            <div
+              class="absolute top-full right-0 z-10 w-60 space-y-2 rounded-lg border border-solid border-stone-200 bg-white p-3 shadow-lg">
+              <p class="m-0 text-xs leading-5 text-stone-500">
+                화면 깜빡임·위치 튐을 확인할 때만 켜세요. 켜 두면 리더를 다시 열어도 24시간 동안 이어서 기록합니다.
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  id="reader-scroll-diagnostics-toggle"
+                  type="button"
+                  aria-pressed="false"
+                  x-on:click="window.booklogReaderDiagnostics.toggle()"
+                  class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700">
+                  기록 시작
+                </button>
+                <button
+                  id="reader-scroll-diagnostics-copy"
+                  type="button"
+                  x-on:click="window.booklogReaderDiagnostics.copy($el)"
+                  class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700 disabled:opacity-50">
+                  기록 복사
+                </button>
+                <button
+                  type="button"
+                  x-on:click="window.booklogReaderDiagnostics.clear()"
+                  class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700">
+                  기록 삭제
+                </button>
+              </div>
+            </div>
+          </details>
+          <% } %>
+          <button
+            type="button"
+            x-on:click="controlsVisible = false"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none"
+            aria-label="메뉴 닫기">
+            <span
+              class="i-lucide-x h-4 w-4"
+              aria-hidden="true"></span>
+          </button>
+        </div>
       </div>
+      <% if (showAudioDetail) { %>
+      <p
+        id="reader-scroll-diagnostics-status"
+        role="status"
+        hidden
+        class="m-0 px-1 text-xs text-stone-500"></p>
+      <textarea
+        id="reader-scroll-diagnostics-text"
+        aria-label="직접 복사할 스크롤 진단 기록"
+        readonly
+        hidden
+        rows="5"
+        class="box-border w-full rounded-lg border border-solid border-stone-200 bg-stone-50 p-2 font-mono text-xs text-stone-700"></textarea>
+      <% } %>
 
       <div class="grid grid-cols-3 gap-2">
         <button
@@ -2021,5 +2078,6 @@
     initialShelfStatus: '<%= initialShelfStatus %>',
   }
 </script>
+<script src="<%= asset('/assets/booklog-reader-diagnostics.js') %>"></script>
 <script src="<%= asset('/assets/booklog-audio.js') %>"></script>
 <script src="<%= asset('/assets/booklog-reader.js') %>"></script>

@@ -85,7 +85,7 @@ function buildBook(chapterCount) {
 
 const featureBook = buildBook(CHAPTER_COUNT)
 
-function renderReaderBody(initialShelfStatus) {
+function renderReaderBody(initialShelfStatus, options = {}) {
   return render(
     readFileSync(new URL('(reader)/books/[bookId]/read.ejs', pagesRoot), 'utf8').replace(
       /<script server>[\s\S]*?<\/script>/,
@@ -102,7 +102,7 @@ function renderReaderBody(initialShelfStatus) {
       initialShelfStatus,
       aiAudioAvailable: false,
       bookTitle: '기능 확인',
-      showAudioDetail: false,
+      showAudioDetail: !!options.showAudioDetail,
     }
   )
 }
@@ -2126,4 +2126,324 @@ test('Reopening at the start and the end with a slow position response lands on 
     })
     expect(landed, 'reopening at ' + href).toBe(index)
   }
+})
+
+// iOS Safari는 스크롤하며 주소창·도구막대를 접어 화면 높이만 바꾸는데, 그때마다 모든 챕터를 다시 그려 흰 화면과 위치 튐이 생겼습니다.
+test('A height-only screen change keeps the drawn chapters and the reading spot without a blank frame', async ({
+  page,
+}) => {
+  await openReader(page)
+  await goToChapter(page, 3)
+  await page.mouse.move(195, 500)
+  for (let step = 0; step < 6; step += 1) {
+    await page.mouse.wheel(0, 300)
+    await page.waitForTimeout(120)
+  }
+  await page.waitForTimeout(1200)
+  const spot = await readingSpot(page)
+
+  await page.evaluate(() => {
+    const container = document.querySelector('#epub-reader .epub-container')
+    window.__frames = new Set(container.querySelectorAll('iframe'))
+    window.__blankFrames = 0
+    const sample = () => {
+      const box = container.getBoundingClientRect()
+      const covered = Array.from(container.querySelectorAll('iframe')).some((frame) => {
+        const bounds = frame.getBoundingClientRect()
+        return (
+          bounds.height > 0
+          && bounds.top < box.bottom
+          && bounds.bottom > box.top
+          && window.getComputedStyle(frame).visibility !== 'hidden'
+        )
+      })
+      if (!covered) window.__blankFrames += 1
+      window.__sampling = window.requestAnimationFrame(sample)
+    }
+    sample()
+  })
+
+  for (const height of [770, 742, 800, 844]) {
+    await page.setViewportSize({ width: 390, height })
+    await page.waitForTimeout(400)
+  }
+  await page.waitForTimeout(800)
+
+  const result = await page.evaluate(() => {
+    window.cancelAnimationFrame(window.__sampling)
+    const frames = Array.from(document.querySelectorAll('#epub-reader .epub-container iframe'))
+    return { blank: window.__blankFrames, kept: frames.every((frame) => window.__frames.has(frame)) }
+  })
+  expect(result.blank, 'no frame without a visible chapter').toBe(0)
+  expect(result.kept, 'the drawn chapters are not redrawn').toBe(true)
+  expect(await readingSpot(page), 'the same paragraph stays at the top').toBe(spot)
+})
+
+const adminReaderBody = renderReaderBody('reading', { showAudioDetail: true })
+const READER_DIAGNOSTICS_ON_KEY = 'booklog-reader-diagnostics-on:feature-user:feature-hash'
+const READER_DIAGNOSTICS_KEY = 'booklog-reader-diagnostics:feature-user:feature-hash'
+
+function readerDiagnostics(page) {
+  return page.evaluate(() => JSON.parse(window.booklogReaderDiagnostics.exportText()).events)
+}
+
+function diagnosticEvents(list, name) {
+  return list.filter((entry) => entry.event === name)
+}
+
+function waitForReaderReady(page) {
+  return expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const root = document.querySelector('section[x-data]')
+          const data = window.Alpine && root ? window.Alpine.$data(root) : null
+          return !!(data && data.bookReady && !data.loading)
+        }),
+      { timeout: 20_000 }
+    )
+    .toBe(true)
+}
+
+async function openScrollDiagnostics(page) {
+  await page.evaluate(() => {
+    window.Alpine.$data(document.querySelector('section[x-data]')).controlsVisible = true
+  })
+  await page.getByLabel('스크롤 진단', { exact: true }).click()
+}
+
+function enableDiagnosticsBeforeLoad(page) {
+  return page.addInitScript((key) => localStorage.setItem(key, String(Date.now())), READER_DIAGNOSTICS_ON_KEY)
+}
+
+test('Scroll diagnostics stay off until started and then record the whole reopen with its causes', async ({ page }) => {
+  const state = await mockReader(page, featureBook, adminReaderBody)
+  state.serverPosition = { locator: 'epubcfi(/6/6!/4/2/1:0)', href: 'c3.xhtml', chapterLabel: '3장' }
+  await page.goto('/books/book/read')
+  await waitForReaderReady(page)
+
+  expect(await readerDiagnostics(page), 'nothing is recorded before starting').toEqual([])
+  expect(await page.evaluate((key) => localStorage.getItem(key), READER_DIAGNOSTICS_ON_KEY)).toBeNull()
+
+  await openScrollDiagnostics(page)
+  const toggle = page.locator('#reader-scroll-diagnostics-toggle')
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+  await expect(toggle).toHaveText('기록 중지')
+  await expect(page.locator('#reader-scroll-diagnostics-status')).toContainText('기록을 시작했습니다')
+
+  await page.reload()
+  await waitForReaderReady(page)
+  await expect
+    .poll(async () => diagnosticEvents(await readerDiagnostics(page), 'progress-locations-ready').length, {
+      timeout: 15_000,
+    })
+    .toBeGreaterThan(0)
+  await page.waitForTimeout(500)
+  const events = await readerDiagnostics(page)
+  const reopen = events.filter((entry) => entry.page === events.at(-1).page)
+  const names = reopen.map((entry) => entry.event)
+
+  const start = diagnosticEvents(reopen, 'diagnostics-start')[0]
+  expect(start.details.reason, 'recording continues after reopening').toBe('reopen')
+  expect(start.details).toEqual(
+    expect.objectContaining({ userAgent: expect.any(String), standalone: false, dpr: expect.any(Number) })
+  )
+  expect(start.details.viewport.inner).toBe('390x844')
+
+  const restoreMove = reopen.findIndex(
+    (entry) => entry.event === 'display-start' && entry.details.target.includes('/6/6!')
+  )
+  const restoreMoveDone = reopen.findIndex(
+    (entry, index) => index > restoreMove && entry.event === 'display-done' && entry.details.target.includes('/6/6!')
+  )
+  const order = ['reader-init', 'book-rendered', 'restore-start', 'restore-position-received']
+  const positions = order
+    .map((name) => names.indexOf(name))
+    .concat([restoreMove, restoreMoveDone])
+    .concat(['restore-landed', 'reader-ready'].map((name) => names.indexOf(name)))
+  expect(
+    positions.every((position) => position >= 0),
+    'every lifecycle step is recorded: ' + names.join(',')
+  ).toBe(true)
+  expect(
+    [...positions].sort((left, right) => left - right),
+    'in the order they happen: ' + names.join(',')
+  ).toEqual(positions)
+  expect(names.some((name) => name === 'book-cache-hit' || name === 'book-cache-miss')).toBe(true)
+  expect(names, 'progress locations are recorded whether cached or generated').toContain('progress-locations-ready')
+
+  const request = reopen.findIndex((entry) => entry.event === 'display-at' && entry.details.target.includes('/6/6!'))
+  expect(request, 'the move request is recorded before the redraw').toBeGreaterThan(names.indexOf('restore-start'))
+  expect(request).toBeLessThan(restoreMove)
+  expect(reopen[request].details.waitsForQueue).toEqual(expect.any(Boolean))
+  expect(diagnosticEvents(reopen, 'restore-position-received')[0].details.href).toBe('c3.xhtml')
+
+  const progress = diagnosticEvents(reopen, 'progress-change').at(-1)
+  expect(progress.details.from, 'the first real percent is recorded with where it came from').toBe('')
+  expect(Number(progress.details.to)).toBeGreaterThan(30)
+  expect(progress.details.href).toContain('c3')
+
+  const snapshot = reopen.at(-1).state
+  expect(snapshot).toEqual(
+    expect.objectContaining({
+      ready: true,
+      loading: false,
+      locations: 'ready',
+      scrollTop: expect.any(Number),
+      clientHeight: expect.any(Number),
+      views: expect.any(Array),
+    })
+  )
+  expect(snapshot.views.length).toBeGreaterThan(0)
+  expect(snapshot.views[0]).toHaveLength(5)
+  expect(diagnosticEvents(reopen, 'view-prepared')[0].details).toEqual(
+    expect.objectContaining({ index: expect.any(Number), hooksMs: expect.any(Number), fontsMs: expect.any(Number) })
+  )
+  expect(JSON.stringify(events), 'book text is never recorded').not.toContain('책을 천천히 읽으며')
+})
+
+test('Scroll diagnostics name a full redraw, its blank frames, skipped height-only resizes and chapter attaches', async ({
+  page,
+}) => {
+  await enableDiagnosticsBeforeLoad(page)
+  await openReader(page, featureBook, adminReaderBody)
+  await goToChapter(page, 3)
+  await page.mouse.move(195, 500)
+  for (let step = 0; step < 12; step += 1) {
+    await page.mouse.wheel(0, 500)
+    await page.waitForTimeout(100)
+  }
+  await page.waitForTimeout(1500)
+  const scrolled = await readerDiagnostics(page)
+  expect(diagnosticEvents(scrolled, 'view-append').length, 'attached chapters are recorded').toBeGreaterThan(0)
+  expect(diagnosticEvents(scrolled, 'view-resized').length).toBeGreaterThan(0)
+  expect(diagnosticEvents(scrolled, 'relocated').length).toBeGreaterThan(0)
+  const before = scrolled.length
+
+  await page.setViewportSize({ width: 390, height: 742 })
+  await page.waitForTimeout(800)
+  const heightOnly = (await readerDiagnostics(page)).slice(before)
+  expect(diagnosticEvents(heightOnly, 'window-resize').length, 'the browser resize itself is recorded').toBeGreaterThan(
+    0
+  )
+  expect(diagnosticEvents(heightOnly, 'manager-resize').at(-1).details).toEqual(
+    expect.objectContaining({ heightOnly: true, to: '390x742' })
+  )
+  expect(diagnosticEvents(heightOnly, 'manager-clear'), 'a height-only change does not redraw').toEqual([])
+  const afterHeight = before + heightOnly.length
+
+  await page.setViewportSize({ width: 360, height: 742 })
+  await expect
+    .poll(async () => diagnosticEvents((await readerDiagnostics(page)).slice(afterHeight), 'display-done').length, {
+      timeout: 10_000,
+    })
+    .toBeGreaterThan(0)
+  await page.waitForTimeout(800)
+  const widthChange = (await readerDiagnostics(page)).slice(afterHeight)
+  expect(diagnosticEvents(widthChange, 'manager-resize').at(-1).details.heightOnly).toBe(false)
+  const clear = diagnosticEvents(widthChange, 'manager-clear')[0]
+  expect(clear.details.views, 'how many chapters were wiped').toBeGreaterThan(0)
+  expect(clear.caller, 'the wipe is traced back to the resize').toEqual(expect.arrayContaining(['resize']))
+  expect(
+    diagnosticEvents(widthChange, 'display-start')[0].caller,
+    'the redraw is traced back to the resize'
+  ).toEqual(expect.arrayContaining(['onResized']))
+  const blank = diagnosticEvents(widthChange, 'blank-end')
+  expect(blank.length, 'the blank screen during the redraw is measured').toBeGreaterThan(0)
+  expect(blank[0].details.ms).toBeGreaterThan(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+})
+
+test('Scroll diagnostics record the eight-second restore fallback with what was stuck', async ({ page }) => {
+  test.setTimeout(60_000)
+  await enableDiagnosticsBeforeLoad(page)
+  await page.addInitScript(() => {
+    let realEpub = null
+    Object.defineProperty(window, 'ePub', {
+      configurable: true,
+      get: () =>
+        realEpub
+        && function (...args) {
+          const book = realEpub(...args)
+          const renderTo = book.renderTo.bind(book)
+          book.renderTo = (...renderArgs) => {
+            const rendition = renderTo(...renderArgs)
+            const display = rendition.display.bind(rendition)
+            rendition.display = (target) => {
+              if (!window.__restoreHung && String(target || '').indexOf('/6/6!') >= 0) {
+                window.__restoreHung = true
+                return new Promise(() => {})
+              }
+              return display(target)
+            }
+            return rendition
+          }
+          return book
+        },
+      set: (value) => {
+        realEpub = value
+      },
+    })
+  })
+  const state = await mockReader(page, featureBook, adminReaderBody)
+  state.serverPosition = { locator: 'epubcfi(/6/6!/4/2/1:0)', href: 'c3.xhtml', chapterLabel: '3장' }
+  await page.goto('/books/book/read')
+  await waitForReaderReady(page)
+
+  const events = await readerDiagnostics(page)
+  const names = events.map((entry) => entry.event)
+  const stuck = diagnosticEvents(events, 'display-start').find((entry) => entry.details.target.includes('/6/6!'))
+  expect(stuck, 'the move that never finished is recorded').toBeTruthy()
+  expect(
+    diagnosticEvents(events, 'display-done').some((entry) => entry.details.target === stuck.details.target),
+    'and it never reports done'
+  ).toBe(false)
+  for (const name of ['restore-timeout-rebuild', 'book-discard', 'restore-timeout-rebuilt', 'reader-ready']) {
+    expect(names, name).toContain(name)
+  }
+  expect(names.indexOf('restore-timeout-rebuild')).toBeLessThan(names.indexOf('restore-timeout-rebuilt'))
+  expect(names[names.indexOf('book-discard') - 1], 'the rebuild is what discarded the book').toBe(
+    'restore-timeout-rebuild'
+  )
+  expect(
+    diagnosticEvents(events, 'restore-timeout-rebuild')[0].state.restoring,
+    'the stuck restore is visible in the state'
+  ).toBe(true)
+})
+
+test('Clearing scroll diagnostics deletes the records and stops recording', async ({ page }) => {
+  await enableDiagnosticsBeforeLoad(page)
+  await openReader(page, featureBook, adminReaderBody)
+  expect((await readerDiagnostics(page)).length).toBeGreaterThan(0)
+
+  await openScrollDiagnostics(page)
+  await page.getByRole('button', { name: '기록 복사' }).click()
+  await expect(page.locator('#reader-scroll-diagnostics-status')).toContainText('복사')
+  await page.getByRole('button', { name: '기록 삭제' }).click()
+  await expect(page.locator('#reader-scroll-diagnostics-status')).toContainText('삭제하고 기록을 중지했습니다')
+  await expect(page.locator('#reader-scroll-diagnostics-toggle')).toHaveText('기록 시작')
+  expect(await readerDiagnostics(page)).toEqual([])
+  expect(
+    await page.evaluate(
+      (keys) => keys.map((key) => localStorage.getItem(key)),
+      [READER_DIAGNOSTICS_ON_KEY, READER_DIAGNOSTICS_KEY]
+    )
+  ).toEqual([null, null])
+
+  await page.evaluate(() => {
+    window.Alpine.$data(document.querySelector('section[x-data]')).controlsVisible = false
+  })
+  await page.mouse.move(195, 500)
+  await page.mouse.wheel(0, 800)
+  await page.waitForTimeout(1500)
+  expect(await readerDiagnostics(page), 'nothing more is recorded after stopping').toEqual([])
+})
+
+test('Readers without diagnostics see no diagnostics controls and record nothing', async ({ page }) => {
+  await enableDiagnosticsBeforeLoad(page)
+  await openReader(page)
+  await expect(page.getByLabel('스크롤 진단', { exact: true })).toHaveCount(0)
+  expect(await page.evaluate(() => window.booklogReaderDiagnostics.isEnabled())).toBe(false)
+  expect(await page.evaluate((key) => localStorage.getItem(key), READER_DIAGNOSTICS_KEY)).toBeNull()
 })
