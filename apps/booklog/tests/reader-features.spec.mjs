@@ -1,4 +1,4 @@
-/* global window, document, indexedDB */
+/* global window, document, indexedDB, Element */
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -2620,4 +2620,60 @@ test('Scroll diagnostics record why a chapter was not attached while sitting at 
   expect(skips.length, 'wheeling at the top while the reader is busy is recorded').toBeGreaterThan(0)
   expect(skips[0].details).toEqual(expect.objectContaining({ direction: 'prev', loading: true }))
   expect(skips.length, 'and kept to a few records').toBeLessThanOrEqual(2)
+})
+
+// iOS는 관성 스크롤 중에 코드가 쓴 스크롤 위치를 다음 프레임에 덮어써, 위에 붙인 챕터만큼 화면이 한 챕터 뒤로 건너뛰었습니다.
+// 다음 프레임에 큰 스크롤 쓰기 하나를 원래 값으로 되돌려 그 동작을 흉내 냅니다.
+test('A scroll correction the browser overwrites on the next frame is detected and applied again', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__revertNextBigWrite = false
+    window.__reverted = 0
+    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')
+    Object.defineProperty(Element.prototype, 'scrollTop', {
+      configurable: true,
+      get() {
+        return descriptor.get.call(this)
+      },
+      set(value) {
+        const before = descriptor.get.call(this)
+        descriptor.set.call(this, value)
+        if (
+          window.__revertNextBigWrite
+          && this.classList
+          && this.classList.contains('epub-container')
+          && Math.abs(value - before) > 1000
+        ) {
+          window.__revertNextBigWrite = false
+          window.__reverted += 1
+          window.requestAnimationFrame(() => descriptor.set.call(this, before))
+        }
+      },
+    })
+  })
+  await enableDiagnosticsBeforeLoad(page)
+  const state = await mockReader(page, featureBook, adminReaderBody)
+  state.serverPosition = { locator: '', href: 'c4.xhtml', chapterLabel: '4장' }
+  await page.goto('/books/book/read')
+  await waitForReaderReady(page)
+  await page.waitForTimeout(1500)
+  const before = (await readerDiagnostics(page)).length
+  await page.evaluate(() => {
+    const container = document.querySelector('#epub-reader .epub-container')
+    const frame = Array.from(container.querySelectorAll('iframe')).find(
+      (candidate) => candidate.contentDocument && candidate.contentDocument.body.textContent.includes('2장 문단 1입니다')
+    )
+    container.scrollTop += frame.getBoundingClientRect().top - container.getBoundingClientRect().top + 200
+    window.__revertNextBigWrite = true
+  })
+  await page.waitForTimeout(2500)
+
+  expect(await page.evaluate(() => window.__reverted), 'one correction was overwritten').toBe(1)
+  const events = (await readerDiagnostics(page)).slice(before)
+  const overwritten = diagnosticEvents(events, 'scroll-write').find((entry) => entry.details.reverted)
+  expect(overwritten, 'the overwrite is detected').toBeTruthy()
+  const recovered = diagnosticEvents(events, 'scroll-write-recovered')[0]
+  expect(recovered, 'and the lost correction is applied again').toBeTruthy()
+  expect(recovered.details.held, 'the second write stays').toBe(true)
+  expect(recovered.details.lost).toBe(overwritten.details.written - overwritten.details.before)
+  expect(await readingSpot(page), 'the reader stays in chapter 2 instead of jumping a chapter back').toMatch(/^2장/)
 })

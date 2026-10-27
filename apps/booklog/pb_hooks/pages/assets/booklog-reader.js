@@ -43,6 +43,7 @@ window.booklogReaderLogic = (function () {
   var INITIAL_RESTORE_TIMEOUT_MS = 8000
   var INITIAL_FONT_TIMEOUT_MS = 500
   var SCROLL_IDLE_TRIM_MS = 500
+  var SCROLL_STABLE_MS = 300
   var DISPLAY_SETTLE_TIMEOUT_MS = 1500
   var DISPLAY_SETTLE_RETRY_MS = 80
   var VISIBLE_TOP_TOLERANCE_PX = 64
@@ -3481,34 +3482,120 @@ window.booklogReaderLogic = (function () {
     return Date.now() - (manager.booklogLastScrollAt || 0) < SCROLL_IDLE_TRIM_MS
   }
 
+  // iOS는 관성 스크롤이 느려지는 끝 무렵에 scroll 이벤트를 드문드문 보내, 이벤트가 끊긴 것만으로는 멈췄는지 알 수 없습니다.
+  // 위쪽 챕터 정리가 기다리는 동안만 매 프레임 스크롤 위치를 보고, 위치가 그대로 머물고 이벤트도 끊겼을 때 정리합니다.
   function scheduleIdleTrim(manager) {
-    if (manager.booklogIdleTrimId) {
+    if (manager.booklogIdleFrameId || !manager.container) {
       return
     }
 
-    manager.booklogIdleTrimId = window.setTimeout(function () {
-      manager.booklogIdleTrimId = 0
+    var lastTop = manager.container.scrollTop
+    var stableSince = performance.now()
 
-      if (!renditionInstance || renditionInstance.manager !== manager) {
+    function check(now) {
+      manager.booklogIdleFrameId = 0
+
+      if (!renditionInstance || renditionInstance.manager !== manager || !manager.container) {
         return
       }
 
-      if (isContainerScrolling(manager)) {
-        scheduleIdleTrim(manager)
+      var top = manager.container.scrollTop
+
+      if (top !== lastTop) {
+        lastTop = top
+        stableSince = now
+      }
+
+      if (now - stableSince < SCROLL_STABLE_MS || isContainerScrolling(manager)) {
+        manager.booklogIdleFrameId = window.requestAnimationFrame(check)
         return
       }
 
-      traceReader('trim-after-idle')
+      traceReader('trim-after-idle', { stableMs: Math.round(now - stableSince) })
       Promise.resolve(
         manager.q.enqueue(function () {
-          return manager.trim()
+          manager.booklogIdleTrimming = true
+
+          try {
+            return manager.trim()
+          } finally {
+            manager.booklogIdleTrimming = false
+          }
         })
       ).catch(function (exception) {
         console.warn('page/books/[bookId]/read:idle-trim:failed', {
           message: String(exception && exception.message ? exception.message : exception),
         })
       })
-    }, SCROLL_IDLE_TRIM_MS)
+    }
+
+    manager.booklogIdleFrameId = window.requestAnimationFrame(check)
+  }
+
+  function stopMomentum(container) {
+    var overflowY = container.style.overflowY
+
+    container.style.overflowY = 'hidden'
+    container.getBoundingClientRect()
+    window.requestAnimationFrame(function () {
+      container.style.overflowY = overflowY
+    })
+  }
+
+  // iOS는 관성 스크롤 중에 코드가 쓴 스크롤 위치를 다음 프레임에 자기 값으로 덮어씁니다. 덮어쓴 것이 보이면 관성을 잠깐 멈추고
+  // 잃은 만큼만 다시 옮깁니다. 보정은 더하기라 그 사이 다른 챕터가 더 붙었어도 잃은 양만 더하면 위치가 맞습니다.
+  function guardScrollWrite(kind, container, before, details) {
+    if (!container) {
+      return
+    }
+
+    var written = container.scrollTop
+
+    window.requestAnimationFrame(function () {
+      var next = container.scrollTop
+      var lost = written - before
+      var reverted = Math.abs(lost) > 2 && Math.abs(next - before) < Math.abs(next - written)
+
+      traceReader(
+        'scroll-write',
+        Object.assign(
+          { kind: kind, before: Math.round(before), written: Math.round(written), next: Math.round(next), reverted: reverted },
+          details || {}
+        )
+      )
+
+      if (!reverted) {
+        return
+      }
+
+      stopMomentum(container)
+      markProgrammaticScroll()
+
+      var from = container.scrollTop
+
+      container.scrollTop = from + lost
+
+      var reapplied = container.scrollTop
+
+      window.requestAnimationFrame(function () {
+        var settled = container.scrollTop
+
+        traceReader(
+          'scroll-write-recovered',
+          Object.assign(
+            {
+              kind: kind,
+              lost: Math.round(lost),
+              from: Math.round(from),
+              written: Math.round(reapplied),
+              next: Math.round(settled),
+              held: Math.abs(settled - reapplied) < Math.abs(lost) / 2,
+            },
+            details || {}
+          )
+        )
+      })
+    })
   }
 
   // epub.js는 첫 챕터를 그릴 때 챕터 목록을 만들어, 그 목록이 생긴 뒤 한 번만 붙이기·지우기를 기록하도록 감쌉니다.
@@ -3599,8 +3686,10 @@ window.booklogReaderLogic = (function () {
     // 지운 높이만큼 앞으로 건너뛰어 진행률이 튑니다. 스크롤이 움직이는 동안에는 위쪽 챕터를 남겨 두고 멈춘 뒤에 정리합니다.
     // 아래쪽 챕터는 지워도 보던 위치가 바뀌지 않아 바로 지웁니다.
     manager.erase = function (view, above) {
-      if (above && this.settings.axis === 'vertical' && isContainerScrolling(this)) {
-        traceReader('trim-deferred', { index: view && view.section ? view.section.index : -1 })
+      if (above && this.settings.axis === 'vertical' && !this.booklogIdleTrimming) {
+        if (!this.booklogIdleFrameId) {
+          traceReader('trim-deferred', { index: view && view.section ? view.section.index : -1 })
+        }
         scheduleIdleTrim(this)
         return
       }
@@ -3610,7 +3699,7 @@ window.booklogReaderLogic = (function () {
       var erased = erase.apply(this, arguments)
 
       if (above) {
-        traceScrollWrite('erase-above', eraseContainer, eraseBefore, {
+        guardScrollWrite('erase-above', eraseContainer, eraseBefore, {
           index: view && view.section ? view.section.index : -1,
         })
       }
@@ -3638,7 +3727,7 @@ window.booklogReaderLogic = (function () {
 
           traceReader('counter', { index: counterIndex, delta: counterDelta })
           self.counter(size)
-          traceScrollWrite('counter', self.container, counterBefore, { index: counterIndex, delta: counterDelta })
+          guardScrollWrite('counter', self.container, counterBefore, { index: counterIndex, delta: counterDelta })
         } else if (counterDelta && isReaderTraceOn() && self.container && view.element) {
           traceReader('counter-skipped', {
             index: counterIndex,
@@ -3848,7 +3937,15 @@ window.booklogReaderLogic = (function () {
       return
     }
 
-    nodes = view.contents.document.body.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,blockquote,pre,table,figure,img,svg')
+    // 스크롤할 때마다 긴 챕터의 문단을 다시 모으지 않도록, 같은 문서면 처음 모은 목록을 그대로 씁니다.
+    if (!view.booklogAnchorNodes || view.booklogAnchorDocument !== view.contents.document) {
+      view.booklogAnchorDocument = view.contents.document
+      view.booklogAnchorNodes = view.contents.document.body.querySelectorAll(
+        'p,h1,h2,h3,h4,h5,h6,li,blockquote,pre,table,figure,img,svg'
+      )
+    }
+
+    nodes = view.booklogAnchorNodes
     high = nodes.length - 1
 
     if (high < 0) {
