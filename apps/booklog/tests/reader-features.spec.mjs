@@ -2447,8 +2447,46 @@ test('Readers without diagnostics see no diagnostics controls and record nothing
   await enableDiagnosticsBeforeLoad(page)
   await openReader(page)
   await expect(page.getByLabel('스크롤 진단', { exact: true })).toHaveCount(0)
+  await expect(page.locator('#reader-scroll-diagnostics-indicator')).toHaveCount(0)
   expect(await page.evaluate(() => window.booklogReaderDiagnostics.isEnabled())).toBe(false)
   expect(await page.evaluate((key) => localStorage.getItem(key), READER_DIAGNOSTICS_KEY)).toBeNull()
+})
+
+test('A red dot on the menu button shows while scroll diagnostics are recording, also after reopening', async ({
+  page,
+}) => {
+  await openReader(page, featureBook, adminReaderBody)
+  const dot = page.locator('#reader-scroll-diagnostics-indicator')
+  await expect(dot).toBeHidden()
+
+  await openScrollDiagnostics(page)
+  await page.getByRole('button', { name: '기록 시작' }).click()
+  await expect(dot).toBeVisible()
+  const placement = await dot.evaluate((element) => {
+    const bar = element.parentElement
+    const menu = bar.querySelector('button[aria-label="메뉴 열기"]')
+    const box = element.getBoundingClientRect()
+    const host = bar.getBoundingClientRect()
+    const button = menu.getBoundingClientRect()
+    return {
+      aboveBar: box.bottom <= host.top,
+      overMenu: box.left >= button.left && box.right <= button.right,
+      size: Math.round(box.width),
+      color: window.getComputedStyle(element).backgroundColor,
+    }
+  })
+  expect(placement.aboveBar, 'the dot floats above the back and menu bar').toBe(true)
+  expect(placement.overMenu, 'the dot sits over the menu button').toBe(true)
+  expect(placement.size).toBe(8)
+  expect(placement.color).not.toBe('rgba(0, 0, 0, 0)')
+
+  await page.reload()
+  await waitForReaderReady(page)
+  await expect(dot, 'recording continues after reopening, so the dot stays').toBeVisible()
+
+  await openScrollDiagnostics(page)
+  await page.getByRole('button', { name: '기록 중지' }).click()
+  await expect(dot).toBeHidden()
 })
 
 // iOS는 맨 위에서 더 당기면 바운스로 scrollTop이 음수가 되어, 막 붙인 앞 챕터가 화면 맨 위보다 아래에 놓입니다.

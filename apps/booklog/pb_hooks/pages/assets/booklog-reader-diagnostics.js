@@ -237,10 +237,12 @@ window.booklogReaderDiagnostics = (function () {
 
   function updateToggle() {
     var button = document.getElementById('reader-scroll-diagnostics-toggle')
+    var indicator = document.getElementById('reader-scroll-diagnostics-indicator')
     if (button) {
       button.textContent = enabled ? '기록 중지' : '기록 시작'
       button.setAttribute('aria-pressed', String(enabled))
     }
+    if (indicator) indicator.hidden = !enabled
   }
 
   function showStatus(text) {
