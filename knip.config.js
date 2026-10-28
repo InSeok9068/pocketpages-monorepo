@@ -6,7 +6,7 @@ const { extractServerBlocks } = require('./tools/vscode-pocketpages/packages/lan
 module.exports = {
   $schema: 'https://unpkg.com/knip@6/schema.json',
   ignoreDependencies: ['@iconify-json/lucide', '@pocketpages/test-support', '@unocss/cli', 'cheerio', 'patch-package', 'tailwindcss'],
-  ignoreBinaries: ['taskkill'],
+  ignoreBinaries: ['lame', 'taskkill'],
   compilers: {
     ejs: (text) =>
       extractServerBlocks(text)
