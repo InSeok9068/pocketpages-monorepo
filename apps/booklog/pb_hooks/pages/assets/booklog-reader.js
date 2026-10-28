@@ -48,7 +48,7 @@ window.booklogReaderLogic = (function () {
   var CHAPTER_PRELOAD_OFFSET_PX = 1500
   var DISPLAY_SETTLE_TIMEOUT_MS = 1500
   var DISPLAY_SETTLE_RETRY_MS = 80
-  var VISIBLE_TOP_TOLERANCE_PX = 64
+  var VISIBLE_TOP_TOLERANCE_PX = 4
   var FOLLOW_BOTTOM_MARGIN_PX = 180
   var FOLLOW_TARGET_TOP_RATIO = 1 / 5
   var LISTEN_FOLLOW_INTERVAL_MS = 1000
@@ -2163,6 +2163,27 @@ window.booklogReaderLogic = (function () {
     return [locator, href, pageNumber].join('::')
   }
 
+  // 줄이 시작하는 자리의 폭 없는 범위를 Chrome은 윗줄 끝으로 재므로, 그 자리 바로 뒤 글자로 줄 위치를 잽니다.
+  function getRangeTop(range) {
+    var node = range.startContainer
+    var offset = range.startOffset
+
+    if (range.collapsed && node.nodeType === 3 && offset < node.length) {
+      var character = node.ownerDocument.createRange()
+
+      character.setStart(node, offset)
+      character.setEnd(node, offset + 1)
+
+      var rect = character.getBoundingClientRect()
+
+      if (rect.height) {
+        return rect.top
+      }
+    }
+
+    return range.getBoundingClientRect().top
+  }
+
   function getCfiScreenTop(cfi) {
     var range = null
     var frame = null
@@ -2174,11 +2195,64 @@ window.booklogReaderLogic = (function () {
       return null
     }
 
-    return range && frame ? frame.getBoundingClientRect().top + range.getBoundingClientRect().top : null
+    return range && frame ? frame.getBoundingClientRect().top + getRangeTop(range) : null
   }
 
   /**
-   * epub.js 위치가 화면 위쪽 그림 영역에 있으면 화면에 처음 보이는 글자 위치를 찾습니다.
+   * 화면 위쪽에서 보이는 첫 문자를 범위로 찾습니다.
+   * @param {Document} doc EPUB 문서
+   * @param {Text} node 본문 텍스트
+   * @param {DOMRect} rect 글자 줄 위치
+   * @param {number} visibleTop 화면 위쪽
+   * @param {number} visibleBottom 화면 아래쪽
+   * @returns {Range | null} 첫 글자 범위
+   */
+  function getVisibleTextRange(doc, node, rect, visibleTop, visibleBottom) {
+    var x = rect.left + 1
+    var y = Math.max(rect.top + 1, Math.min(visibleTop + 1, rect.bottom - 1))
+    var start = 0
+    var caret = null
+    var range = doc.createRange()
+
+    if (typeof doc.caretRangeFromPoint === 'function') {
+      caret = doc.caretRangeFromPoint(x, y)
+      start = caret && caret.startContainer === node ? caret.startOffset : 0
+    } else if (typeof doc.caretPositionFromPoint === 'function') {
+      caret = doc.caretPositionFromPoint(x, y)
+      start = caret && caret.offsetNode === node ? caret.offset : 0
+    }
+
+    // Chrome은 줄 첫 자리를 물으면 윗줄 끝 위치를 돌려줄 때가 있어, 글자의 실제 위치로 화면 맨 위 줄인지 확인하며 넘깁니다.
+    // 줄이 바뀌는 공백은 윗줄 끝에 붙어 다시 열 때 윗줄로 돌아가므로, epub.js처럼 공백 다음 글자를 고릅니다.
+    for (var offset = start; offset < node.length; offset += 1) {
+      if (/\s/.test(node.data.charAt(offset))) {
+        continue
+      }
+
+      range.setStart(node, offset)
+      range.setEnd(node, offset + 1)
+
+      var characterRect = range.getBoundingClientRect()
+
+      if (!characterRect.height) {
+        continue
+      }
+
+      if (characterRect.top >= visibleBottom) {
+        return null
+      }
+
+      if (characterRect.bottom > visibleTop) {
+        range.collapse(true)
+        return range
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * epub.js 위치가 화면 위에 있으면 화면에서 처음 보이는 글자 위치를 찾습니다.
    * @param {string} locator epub.js가 계산한 시작 CFI
    * @returns {{ locator: string, href: string } | null} 바꿀 위치, 그대로 쓰면 null
    */
@@ -2195,7 +2269,8 @@ window.booklogReaderLogic = (function () {
     containerRect = container.getBoundingClientRect()
     startTop = getCfiScreenTop(locator)
 
-    // 글자 위치는 epub.js가 화면 첫 줄로 잡아 주므로, 글자가 없는 그림 페이지가 걸린 경우만 바꿉니다.
+    // epub.js는 화면 맨 위 아래에서 시작하는 첫 단어를 고르므로 정상이면 위치가 화면 위로 올라가지 않습니다.
+    // 화면 맨 위가 문단 마지막 줄에 걸리면 그런 단어가 없어 문단 첫 단어를, 그림 페이지면 그림 앞을 돌려주므로 그때만 바꿉니다.
     if (startTop !== null && startTop >= containerRect.top - VISIBLE_TOP_TOLERANCE_PX) {
       return null
     }
@@ -2213,6 +2288,8 @@ window.booklogReaderLogic = (function () {
       var doc = view.contents && view.contents.document ? view.contents.document : null
       var walker = null
       var node = null
+      var visibleTop = 0
+      var visibleBottom = 0
 
       if (
         !frameRect
@@ -2224,6 +2301,8 @@ window.booklogReaderLogic = (function () {
         continue
       }
 
+      visibleTop = containerRect.top - frameRect.top
+      visibleBottom = containerRect.bottom - frameRect.top
       walker = doc.createTreeWalker(doc.body, 4)
 
       while ((node = walker.nextNode())) {
@@ -2236,18 +2315,28 @@ window.booklogReaderLogic = (function () {
 
         range = doc.createRange()
         range.selectNodeContents(node)
-        rect = range.getBoundingClientRect()
+        var rects = range.getClientRects()
 
-        if (frameRect.top + rect.top >= containerRect.bottom) {
-          return null
-        }
+        for (var rectIndex = 0; rectIndex < rects.length; rectIndex += 1) {
+          rect = rects[rectIndex]
 
-        if (frameRect.top + rect.bottom > containerRect.top) {
-          range.collapse(true)
+          if (rect.bottom <= visibleTop) {
+            continue
+          }
+
+          if (rect.top >= visibleBottom) {
+            return null
+          }
+
+          var visibleRange = getVisibleTextRange(doc, node, rect, visibleTop, visibleBottom)
+
+          if (!visibleRange) {
+            return null
+          }
 
           try {
             return {
-              locator: String(view.contents.cfiFromRange(range) || ''),
+              locator: String(view.contents.cfiFromRange(visibleRange) || ''),
               href: String(view.section && view.section.href ? view.section.href : ''),
             }
           } catch (exception) {
@@ -3366,8 +3455,7 @@ window.booklogReaderLogic = (function () {
           return
         }
 
-        delta =
-          frame.getBoundingClientRect().top + range.getBoundingClientRect().top - container.getBoundingClientRect().top
+        delta = frame.getBoundingClientRect().top + getRangeTop(range) - container.getBoundingClientRect().top
         desiredScrollTop = container.scrollTop + delta
         maxScrollTop = container.scrollHeight - container.clientHeight
 

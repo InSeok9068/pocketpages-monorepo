@@ -336,6 +336,72 @@ test('Leaving with only the bottom of a picture page above the text saves the te
   expect(requests.savedLocators.at(-1)).toMatch(/^epubcfi\(\/6\/6!/)
 })
 
+// 화면 맨 위가 문단 마지막 줄에 걸리면 epub.js가 문단 첫 단어를 위치로 돌려줘, 다시 열면 그 문단 처음으로 돌아갔습니다.
+for (const { label, sentences } of [
+  { label: 'long', sentences: 30 },
+  { label: 'two-line', sentences: 3 },
+]) {
+  test(`Reopening after saving on the last line of a ${label} paragraph returns within a line`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const xhtml = (body) => strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + body + '</body></html>')
+    const paragraph = (index) =>
+      '<p id="p' + index + '">'
+      + Array.from({ length: sentences }, (_, sentence) => '문단 ' + index + '의 ' + (sentence + 1) + '번째 문장입니다.').join(' ')
+      + '</p>'
+    const book = zipSync({
+      'mimetype': strToU8('application/epub+zip'),
+      'META-INF/container.xml': strToU8(
+        '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+      ),
+      'book.opf': strToU8(
+        '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">last-line</dc:identifier><dc:title>마지막 줄</dc:title></metadata><manifest><item id="intro" href="intro.xhtml" media-type="application/xhtml+xml"/><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="intro"/><itemref idref="body"/></spine></package>'
+      ),
+      'intro.xhtml': xhtml(Array.from({ length: 60 }, (_, index) => '<p>서문 ' + (index + 1) + '</p>').join('')),
+      'body.xhtml': xhtml(Array.from({ length: 30 }, (_, index) => paragraph(index + 1)).join('')),
+    })
+    const requests = await mockSite(page, { epub: book, savedLocator: 'epubcfi(/6/4!/4/2/1:0)' })
+    await page.goto('/books/book/read')
+    await waitForReader(page)
+    await page.waitForTimeout(1000)
+
+    const placeOnLastLine = () =>
+      page.evaluate(() => {
+        const container = document.querySelector('#epub-reader .epub-container')
+        const view = [...container.querySelectorAll('iframe')].find((frame) => frame.contentDocument.getElementById('p8'))
+        const target = view.contentDocument.getElementById('p8')
+        const lineHeight = parseFloat(view.contentWindow.getComputedStyle(target).lineHeight) || 24
+        const bottom = view.getBoundingClientRect().top + target.getBoundingClientRect().bottom
+        container.scrollTop += bottom - container.getBoundingClientRect().top - lineHeight / 2
+        return lineHeight
+      })
+    const paragraphTop = () =>
+      page.evaluate(() => {
+        const container = document.querySelector('#epub-reader .epub-container')
+        const view = [...container.querySelectorAll('iframe')].find((frame) => frame.contentDocument.getElementById('p8'))
+        if (!view) return null
+        return view.getBoundingClientRect().top + view.contentDocument.getElementById('p8').getBoundingClientRect().top - container.getBoundingClientRect().top
+      })
+
+    const lineHeight = await placeOnLastLine()
+    await page.waitForTimeout(1000)
+    const before = await paragraphTop()
+    expect(before, 'the screen top sits on the last line of paragraph 8').toBeLessThan(-lineHeight / 4)
+    const saves = requests.savedLocators.length
+    await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).saveCurrentPosition())
+    await expect.poll(() => requests.savedLocators.length).toBeGreaterThan(saves)
+    expect(requests.savedLocators.at(-1), 'the saved place is on the visible line, not the paragraph start').not.toMatch(
+      /\/1:0\)$/
+    )
+
+    await page.reload()
+    await waitForReader(page)
+    await page.waitForTimeout(1500)
+    const after = await paragraphTop()
+    expect(after, 'paragraph 8 is drawn after reopening').not.toBeNull()
+    expect(Math.abs(after - before), 'reopening returns to the same line').toBeLessThanOrEqual(lineHeight)
+  })
+}
+
 test('AI audio from the reading position starts at the first sentence on screen, not the paragraph start', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const xhtml = (body) => strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + body + '</body></html>')
