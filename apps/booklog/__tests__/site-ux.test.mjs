@@ -421,7 +421,7 @@ test('Push settings still save when the push service is blocked, and push turned
   assert.equal(await reading.inputValue(), '3')
   assert.equal(await highlight.inputValue(), '7')
   assert.equal(await weekly.isChecked(), true)
-  assert.match(await notice.innerText(), /알림이 모두 꺼져 있어 알림이 오지 않았습니다/)
+  assert.match(await notice.innerText(), /받을 알림이 모두 꺼져 있어 기본 주기를 채웠습니다\. 저장하면 적용됩니다\./)
   await submit()
   assert.deepEqual(await saved(), { push: true, reading: 3, highlight: 7, weekly: true })
 

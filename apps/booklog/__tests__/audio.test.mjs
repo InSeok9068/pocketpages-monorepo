@@ -1108,6 +1108,78 @@ test('A page that ends with endnotes keeps the narrative before the first note w
   assert.equal(section.chunks.join(''), summary.trim())
 })
 
+test('Endnote trimming preserves short narrative, title with narrative, and ambiguous single paragraphs', () => {
+  const notes = [1, 2, 3, 4, 5, 6]
+    .map((n) => '<p><a href="paper.xhtml#ref' + n + '">' + n + '.</a> 참고 논문 ' + n + '</p>')
+    .join('')
+  const cases = [
+    [
+      '제목 없는 짧은 본문',
+      '<p>이 논문은 불확실한 상황에서 내리는 판단을 다룬다.</p>',
+      '이 논문은 불확실한 상황에서 내리는 판단을 다룬다.',
+    ],
+    ['제목과 짧은 본문', '<h1>요약</h1><p>판단에는 편향이 있다.</p>', '요약\n\n판단에는 편향이 있다.'],
+    ['문단 제목과 본문', '<p>프롤로그</p><p>비가 왔다.</p>', '프롤로그\n\n비가 왔다.'],
+    ['아주 짧은 문장', '<p>끝.</p>', '끝.'],
+    ['문장부호 없는 본문', '<p>그는 돌아오지 않았다</p>', '그는 돌아오지 않았다'],
+    ['제목 여부가 모호한 문단', '<p>작은 시작</p>', '작은 시작'],
+    [
+      '정상 위첨자와 주석 번호',
+      '<p>면적은 2 km<sup>2</sup>다.<sup><a href="paper.xhtml#n1">1</a></sup></p>',
+      '면적은 2 km2다.',
+    ],
+  ]
+  for (const [label, html, expected] of cases) {
+    assert.ok(expected.replace(/\s+/g, '').length < 100, label)
+    const sections = audioSectionsForFiles({
+      'appendix.xhtml': '<html><body>' + html + '<p>/ 주 /</p>' + notes + '</body></html>',
+    })
+    assert.equal(sections.length, 1, label)
+    assert.equal(sections[0].chunks.join(''), expected, label)
+  }
+})
+
+test('Endnote trimming excludes only explicit headings or unmistakable section titles left before notes', () => {
+  const notes = [1, 2, 3, 4, 5, 6]
+    .map((n) => '<p><a href="paper.xhtml#ref' + n + '">' + n + '.</a> 참고 논문 ' + n + '</p>')
+    .join('')
+  const cases = [
+    '<h1>요약</h1>',
+    '<h2><span>부록 논문</span></h2><h3>요약</h3>',
+    '<p>프롤로그</p>',
+    '<p><img src="note-title.png"/></p><p>프롤로그</p>',
+    '<p><img src="note-title.png"/></p>',
+    '',
+  ]
+  for (const html of cases) {
+    // 파일명 제외 규칙에 기대지 않고 미주 앞의 제목만으로 판별해야 합니다.
+    assert.deepEqual(
+      audioSectionsForFiles({
+        'appendix.xhtml': '<html><body>' + html + '<p>/ 주 /</p>' + notes + '</body></html>',
+      }),
+      [],
+      html
+    )
+  }
+})
+
+test('Short chapters without trailing notes keep their text and ordinary superscripts', () => {
+  const sections = audioSectionsForFiles({
+    'short.xhtml': '<html><body><p>끝.</p></body></html>',
+    'title.xhtml': '<html><body><h1>프롤로그</h1></body></html>',
+    'paragraph.xhtml': '<html><body><p>작은 시작</p></body></html>',
+    'units.xhtml': '<html><body><p>2 km<sup>2</sup>, 용어<sup>gloss</sup>.</p></body></html>',
+  })
+  assert.deepEqual(
+    sections.map((section) => section.sectionIndex),
+    [0, 1, 2, 3]
+  )
+  assert.deepEqual(
+    sections.map((section) => section.chunks.join('')),
+    ['끝.', '프롤로그', '작은 시작', '2 km2, 용어gloss.']
+  )
+})
+
 test('Narration joins letter-spaced Latin titles and drops decorative bullets only', () => {
   const [section] = audioSectionsForFiles({
     'chapter.xhtml':

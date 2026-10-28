@@ -1,7 +1,11 @@
+const { storeCache } = require('@pocketpages/utils')
 const generation = require(__hooks + '/pages/_private/book-audio-generation-service.js')
 
 const COMPRESS_BITRATES = [96, 64, 48]
 const CHUNKS_PER_RUN = 5
+const QUERY_BATCH_SIZE = 50
+const RETRY_CACHE_NAMESPACE = 'booklog:audio-compress-retry'
+const RETRY_DELAY_MS = 30 * 60 * 1000
 
 /**
  * 관리자가 고를 수 있는 압축 비트레이트인지 확인합니다.
@@ -112,44 +116,70 @@ function compressChunk(app, chunkId, kbps) {
   }
 }
 
+function compressionRetryKey(chunk, kbps) {
+  // 새로 생성된 파일이나 변경된 목표 비트레이트는 이전 실패를 기다리지 않습니다.
+  return [chunk.get('id'), kbps, chunk.get('audio_file'), chunk.get('generated_at')].join(':')
+}
+
+function findCompressionCandidates(app, job, kbps) {
+  const candidates = []
+  for (let offset = 0; ; offset += QUERY_BATCH_SIZE) {
+    const chunks = app.findRecordsByFilter(
+      'book_audio_chunks',
+      candidateFilter(),
+      'section_index,chunk_index,split_path,id',
+      QUERY_BATCH_SIZE,
+      offset,
+      { fileId: String(job.get('file_id')), configHash: String(job.get('config_hash')), kbps: kbps }
+    )
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index]
+      if (storeCache.get(RETRY_CACHE_NAMESPACE, compressionRetryKey(chunk, kbps))) continue
+      candidates.push(chunk)
+      if (candidates.length >= CHUNKS_PER_RUN) return candidates
+    }
+    if (chunks.length < QUERY_BATCH_SIZE) return candidates
+  }
+}
+
 /**
- * 압축을 요청한 작업에서 아직 목표보다 큰 구간을 몇 개씩 다시 압축합니다.
+ * 압축을 요청한 작업에서 재시도 가능한 구간을 최대 5개 압축합니다.
  * @param {types.BooklogApp} app DB 앱
  * @returns {{ jobId: string, compressed: number, failed: number }} 처리 결과
  */
 function compressNextChunks(app) {
-  const jobs = app.findRecordsByFilter('book_audio_jobs', 'compress_kbps > 0', 'updated,id', 50, 0)
-  for (let index = 0; index < jobs.length; index += 1) {
-    const job = jobs[index]
-    const kbps = Number(job.get('compress_kbps'))
-    if (!isSupportedBitrate(kbps)) continue
-    const chunks = app.findRecordsByFilter(
-      'book_audio_chunks',
-      candidateFilter(),
-      'section_index,chunk_index,split_path',
-      CHUNKS_PER_RUN,
-      0,
-      { fileId: String(job.get('file_id')), configHash: String(job.get('config_hash')), kbps: kbps }
-    )
-    if (!chunks.length) continue
-    const result = { jobId: String(job.get('id')), compressed: 0, failed: 0 }
-    chunks.forEach(function (chunk) {
-      try {
-        if (compressChunk(app, String(chunk.get('id')), kbps)) result.compressed += 1
-      } catch (exception) {
-        result.failed += 1
-        app
-          .logger()
-          .error(
-            'jobs/audio-compress:chunk-failed',
-            'chunkId',
-            String(chunk.get('id')),
-            'error',
-            String(exception && exception.message ? exception.message : exception)
-          )
-      }
-    })
-    return result
+  for (let offset = 0; ; offset += QUERY_BATCH_SIZE) {
+    const jobs = app.findRecordsByFilter('book_audio_jobs', 'compress_kbps > 0', 'updated,id', QUERY_BATCH_SIZE, offset)
+    for (let index = 0; index < jobs.length; index += 1) {
+      const job = jobs[index]
+      const kbps = Number(job.get('compress_kbps'))
+      if (!isSupportedBitrate(kbps)) continue
+      // 압축하면 조회 대상이 줄어드므로, 페이지 조회를 마친 뒤 파일을 변경합니다.
+      const chunks = findCompressionCandidates(app, job, kbps)
+      if (!chunks.length) continue
+      const result = { jobId: String(job.get('id')), compressed: 0, failed: 0 }
+      chunks.forEach(function (chunk) {
+        const retryKey = compressionRetryKey(chunk, kbps)
+        try {
+          if (compressChunk(app, String(chunk.get('id')), kbps)) result.compressed += 1
+          storeCache.remove(RETRY_CACHE_NAMESPACE, retryKey)
+        } catch (exception) {
+          storeCache.set(RETRY_CACHE_NAMESPACE, retryKey, true, { ttlMs: RETRY_DELAY_MS })
+          result.failed += 1
+          app
+            .logger()
+            .error(
+              'jobs/audio-compress:chunk-failed',
+              'chunkId',
+              String(chunk.get('id')),
+              'error',
+              String(exception && exception.message ? exception.message : exception)
+            )
+        }
+      })
+      return result
+    }
+    if (jobs.length < QUERY_BATCH_SIZE) break
   }
   return { jobId: '', compressed: 0, failed: 0 }
 }

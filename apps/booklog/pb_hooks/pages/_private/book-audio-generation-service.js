@@ -76,7 +76,7 @@ function updateClaimed(app, chunkId, claimedAt, apply) {
 
 function markFailed(app, chunkId, claimedAt, message, countAttempt, splitWhenRepeated) {
   let split = false
-  updateClaimed(app, chunkId, claimedAt, function (current, txApp) {
+  const saved = updateClaimed(app, chunkId, claimedAt, function (current, txApp) {
     const attempts = Number(current.get('attempt_count') || 0) + (countAttempt ? 1 : 0)
     const parts =
       splitWhenRepeated && attempts >= SPLIT_AFTER_ATTEMPTS ? splitInHalf(String(current.get('input_text'))) : null
@@ -98,7 +98,12 @@ function markFailed(app, chunkId, claimedAt, message, countAttempt, splitWhenRep
     current.set('error_message', message)
     current.set('next_retry_at', new Date(Date.now() + (countAttempt ? RETRY_DELAY_MS * attempts : 0)).toISOString())
   })
-  return split
+  // false는 실패 저장 완료, null은 소유권 상실을 구분합니다.
+  return saved ? split : null
+}
+
+function claimLostResult() {
+  return { ok: false, statusCode: 409, blocked: false, split: false, error: 'claim expired', detail: '' }
 }
 
 function splitChunk(txApp, parent, parts) {
@@ -164,6 +169,9 @@ function splitInHalf(text, minChars) {
 function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
   try {
     const chunk = app.findRecordById('book_audio_chunks', chunkId)
+    if (chunk.get('status') !== 'generating' || String(chunk.get('generation_started_at')) !== claimedAt) {
+      return claimLostResult()
+    }
     const ai = require('@pocketpages/ai').createAiClient({ geminiApiKey: apiKey, timeoutSeconds: 300, maxAttempts: 1 })
     const result = ai.geminiSpeech({
       model: String(chunk.get('model')),
@@ -190,6 +198,7 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
         !quota,
         blocked
       )
+      if (split === null) return claimLostResult()
       const body = result.responseJson || {}
       return {
         ok: false,
@@ -209,7 +218,14 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
     const short = inputText.length >= SHORT_CHECK_MIN_CHARS && rate > MAX_CHARS_PER_SECOND
     const rateLabel = '초당 ' + rate.toFixed(1) + '자'
     if (short && Number(chunk.get('attempt_count') || 0) < SHORT_RETRY_LIMIT) {
-      markFailed(app, chunkId, claimedAt, '음성이 원문보다 짧게 생성되어(' + rateLabel + ') 다시 만듭니다.', true)
+      const split = markFailed(
+        app,
+        chunkId,
+        claimedAt,
+        '음성이 원문보다 짧게 생성되어(' + rateLabel + ') 다시 만듭니다.',
+        true
+      )
+      if (split === null) return claimLostResult()
       return {
         ok: false,
         statusCode: 502,
@@ -235,17 +251,20 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
       )
       current.set('next_retry_at', '')
     })
+    if (!saved) return claimLostResult()
     return {
       ok: true,
-      statusCode: saved ? 200 : 409,
+      statusCode: 200,
       blocked: false,
       split: false,
-      error: saved ? '' : 'claim expired',
+      error: '',
       detail: '',
     }
   } catch (exception) {
     try {
-      markFailed(app, chunkId, claimedAt, '음성 생성 또는 저장에 실패했습니다.', true)
+      if (markFailed(app, chunkId, claimedAt, '음성 생성 또는 저장에 실패했습니다.', true) === null) {
+        return claimLostResult()
+      }
     } catch (_saveError) {
       /* 소유권 만료 후 다음 생성에서 다시 시도합니다. */
     }

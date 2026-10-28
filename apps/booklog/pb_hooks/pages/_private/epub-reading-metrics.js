@@ -514,10 +514,9 @@ function buildAudioBookFromBytes(epubBytes) {
     const html = entryPath && archive[entryPath] ? readArchiveText(archive, entryPath) : ''
     // 미주는 첫 주석 문단부터 빼고, 그 앞의 본문(부록 논문의 요약 등)은 남깁니다. 제목만 남으면 페이지째 뺍니다.
     const noteStart = html ? findNoteStart(entryPath, html) : -1
-    const text = html
-      ? withoutTrailingNoteHeading(htmlToAudioText(noteStart >= 0 ? html.slice(0, noteStart) : html), noteStart)
-      : ''
-    const narratable = noteStart < 0 || text.replace(/\s+/g, '').length >= 100
+    const narrativeHtml = noteStart >= 0 ? html.slice(0, noteStart) : html
+    const text = html ? withoutTrailingNoteHeading(htmlToAudioText(narrativeHtml), noteStart) : ''
+    const narratable = noteStart < 0 || !hasOnlyHeadingBeforeNotes(narrativeHtml, text)
     if (text && narratable && !isNonNarrativeSection(entryPath, html, text)) {
       sections.push({ sectionIndex, chunks: splitAudioText(text) })
     }
@@ -604,6 +603,14 @@ function findNoteStart(entryPath, html) {
     match = paragraphPattern.exec(html)
   }
   return backlinked >= 5 && backlinked >= total / 2 ? firstNote : -1
+}
+
+function hasOnlyHeadingBeforeNotes(html, text) {
+  const withoutHeadings = html.replace(/<h([1-6])\b[^>]*>[\s\S]*?<\/h\1\s*>/gi, '')
+  const remaining = withoutTrailingNoteHeading(htmlToAudioText(withoutHeadings), 0)
+  if (!remaining) return true
+  // 일반 p 하나는 본문일 수도 있으므로, 명확한 도입·맺음 제목만 의미로 판별합니다.
+  return /^(프롤로그|에필로그|prologue|epilogue)$/i.test(text.replace(headingDecorations, ''))
 }
 
 function withoutTrailingNoteHeading(text, noteStart) {

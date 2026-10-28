@@ -106,6 +106,10 @@ function run() {
   if (!claimedAt) return { jobId, chunkId, statusCode: 409 }
   logger.info('jobs/audio-book:generate', 'jobId', jobId, 'chunkId', chunkId)
   const result = generation.generateClaimedChunk($app, apiKey, chunkId, claimedAt)
+  if (result.statusCode === 409) {
+    logger.info('jobs/audio-book:claim-lost', 'jobId', jobId, 'chunkId', chunkId)
+    return { jobId, chunkId, statusCode: 409 }
+  }
   $app.runInTransaction(function (txApp) {
     const current = txApp.findRecordById('book_audio_jobs', jobId)
     if (result.statusCode === 429) {
