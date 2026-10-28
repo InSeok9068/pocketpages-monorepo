@@ -209,7 +209,12 @@ window.booklogReaderDiagnostics = (function () {
   }
 
   function onError(event) {
-    record('error', { message: String(event.message || '').slice(0, 200), source: String(event.filename || '').split('/').pop() })
+    record('error', {
+      message: String(event.message || '').slice(0, 200),
+      source: String(event.filename || '')
+        .split('/')
+        .pop(),
+    })
   }
 
   function onRejection(event) {
@@ -258,7 +263,8 @@ window.booklogReaderDiagnostics = (function () {
     record('diagnostics-start', {
       reason: reason,
       userAgent: navigator.userAgent || '',
-      standalone: !!navigator.standalone || !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches),
+      standalone:
+        !!navigator.standalone || !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches),
       dpr: window.devicePixelRatio || 1,
       viewport: viewportDetails(),
       wasDiscarded: !!document.wasDiscarded,
@@ -315,7 +321,11 @@ window.booklogReaderDiagnostics = (function () {
       field.value = ''
       field.hidden = true
     }
-    showStatus(storageOk ? '진단 기록을 삭제하고 기록을 중지했습니다.' : '기록은 중지했지만 기기에 저장된 기록을 삭제하지 못했습니다.')
+    showStatus(
+      storageOk
+        ? '진단 기록을 삭제하고 기록을 중지했습니다.'
+        : '기록은 중지했지만 기기에 저장된 기록을 삭제하지 못했습니다.'
+    )
   }
 
   /**

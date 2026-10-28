@@ -1381,7 +1381,9 @@ window.booklogReaderLogic = (function () {
       scrollTop: container ? Math.round(container.scrollTop) : -1,
       scrollHeight: container ? container.scrollHeight : -1,
       clientHeight: container ? container.clientHeight : -1,
-      at: location ? { index: location.index, href: String(location.href || ''), cfi: String(location.cfi || '').slice(0, 80) } : null,
+      at: location
+        ? { index: location.index, href: String(location.href || ''), cfi: String(location.cfi || '').slice(0, 80) }
+        : null,
       views:
         manager && manager.views
           ? manager.views.all().map(function (view) {
@@ -2038,7 +2040,9 @@ window.booklogReaderLogic = (function () {
 
     if (
       progressPercent !== previousPercent
-      && (previousPercent === '' || progressPercent === '' || Math.abs(Number(progressPercent) - Number(previousPercent)) >= 3)
+      && (previousPercent === ''
+        || progressPercent === ''
+        || Math.abs(Number(progressPercent) - Number(previousPercent)) >= 3)
     ) {
       traceReader('progress-change', {
         from: previousPercent,
@@ -3501,14 +3505,17 @@ window.booklogReaderLogic = (function () {
     // 이동은 보이지 않는 챕터를 모두 지우므로, 큐에서 챕터를 불러오던 확인이 있으면 끝난 뒤에 옮깁니다.
     var waitsForQueue = !!(queue && (queue.running || queue.length()))
 
-    traceReader('display-at', { target: String(target || '').slice(0, 100), waitsForQueue: waitsForQueue }, { caller: true })
+    traceReader(
+      'display-at',
+      { target: String(target || '').slice(0, 100), waitsForQueue: waitsForQueue },
+      { caller: true }
+    )
 
-    var displaying =
-      waitsForQueue
-        ? Promise.resolve(queue.enqueue(function () {})).then(function () {
-            return rendition.display(target)
-          })
-        : rendition.display(target)
+    var displaying = waitsForQueue
+      ? Promise.resolve(queue.enqueue(function () {})).then(function () {
+          return rendition.display(target)
+        })
+      : rendition.display(target)
 
     return Promise.resolve(displaying).then(function (location) {
       return settleDisplayedTarget(target).then(function () {
@@ -3653,7 +3660,13 @@ window.booklogReaderLogic = (function () {
       traceReader(
         'scroll-write',
         Object.assign(
-          { kind: kind, before: Math.round(before), written: Math.round(written), next: Math.round(next), reverted: reverted },
+          {
+            kind: kind,
+            before: Math.round(before),
+            written: Math.round(written),
+            next: Math.round(next),
+            reverted: reverted,
+          },
           details || {}
         )
       )
