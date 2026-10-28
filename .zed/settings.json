@@ -1,4 +1,5 @@
 {
+  "file_scan_exclusions": ["**/.docs", "**/.cache", "**/.githooks", "..."],
   "lsp": {
     "tailwindcss-language-server": {
       "settings": {
