@@ -47,6 +47,29 @@ onBootstrap(function (event) {
     author: '관리 저자 (지은이), 관리 역자 (옮긴이)',
   })
   saveRecord('books', { id: 'unusedbook00001', title: '미사용 관리 책' })
+  const { dateutil } = require('@pocketpages/utils')
+  for (let index = 0; index < 3; index += 1) {
+    const bookId = 'lastreadbook00' + index
+    saveRecord('books', { id: bookId, title: '독서정렬검증 ' + index })
+    const file = saveRecord('book_files', {
+      book_id: bookId,
+      stored_file: $filesystem.fileFromBytes([80, 75, 3, 4], 'last-read.epub'),
+      original_name: 'last-read.epub',
+      mime_type: 'application/epub+zip',
+      file_size: 4,
+      file_hash: $security.sha256('last-read-' + index),
+    })
+    saveRecord('book_shelves', {
+      user_id: 'reviewuser00004', book_id: bookId, book_file_id: file.get('id'), status: 'queued',
+      last_read_at: index === 0 ? '' : dateutil.toDbDateTime(index === 1 ? '2026-01-01T00:00:00Z' : '2026-02-01T00:00:00Z'),
+    })
+    if (index === 1) {
+      saveRecord('book_shelves', {
+        user_id: 'reviewuser00001', book_id: bookId, book_file_id: file.get('id'), status: 'reading',
+        last_read_at: dateutil.toDbDateTime('2026-03-01T00:00:00Z'),
+      })
+    }
+  }
   saveRecord('books', {
     id: 'sharedbook00001',
     title: '공유 원본 책',

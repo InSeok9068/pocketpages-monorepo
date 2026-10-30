@@ -1,4 +1,5 @@
 <script server>
+  const { dateutil } = require('@pocketpages/utils')
   meta('title', '도서 관리')
   meta('description', '북로그 도서와 연결된 사용자를 관리합니다.')
 
@@ -13,16 +14,30 @@
     .trim()
     .slice(0, 200)
   const scope = request.url.query.scope === 'unused' ? 'unused' : 'all'
-  const sort = request.url.query.sort === 'size' ? 'size' : 'newest'
+  const sort = ['size', 'oldestRead'].indexOf(request.url.query.sort) >= 0 ? request.url.query.sort : 'newest'
+  const filterUserId = String(request.url.query.user || '')
+    .trim()
+    .slice(0, 100)
   const requestedPage = Math.max(1, Math.floor(Number(request.url.query.page) || 1))
   const pageSize = 30
   const userId = String(request.auth.get('id') || '')
 
   function buildPageHref(page) {
-    return '/admin/books?scope=' + scope + '&q=' + encodeURIComponent(queryText) + '&sort=' + sort + '&page=' + page
+    return (
+      '/admin/books?scope='
+      + scope
+      + '&q='
+      + encodeURIComponent(queryText)
+      + '&sort='
+      + sort
+      + '&user='
+      + encodeURIComponent(filterUserId)
+      + '&page='
+      + page
+    )
   }
 
-  dbg('page/admin/books:start', { userId, method: request.method, scope, queryText })
+  dbg('page/admin/books:start', { userId, method: request.method, scope, queryText, filterUserId })
 
   if (request.method === 'POST' && body().action === 'assign') {
     const form = body()
@@ -246,11 +261,24 @@
 
   const unusedCondition = 'NOT EXISTS (SELECT 1 FROM book_shelves WHERE book_shelves.book_id = books.id)'
   const conditions = []
-  const bindings = queryText ? { search: '%' + queryText + '%' } : {}
+  const bindings = { search: '%' + queryText + '%', filterUserId }
   if (scope === 'unused') conditions.push(unusedCondition)
   if (queryText) {
     conditions.push('(books.title LIKE {:search} OR books.author LIKE {:search})')
   }
+  if (filterUserId) {
+    conditions.push(
+      'EXISTS (SELECT 1 FROM book_shelves WHERE book_shelves.book_id = books.id AND book_shelves.user_id = {:filterUserId})'
+    )
+  }
+  const filterUsers = arrayOf(new DynamicModel({ userId: '', label: '' }))
+  $app
+    .db()
+    .newQuery(
+      "SELECT id AS userId, CASE WHEN name != '' THEN name || ' (' || email || ')' ELSE email END AS label FROM users "
+        + "ORDER BY coalesce(nullif(name, ''), email) COLLATE NOCASE, id"
+    )
+    .all(filterUsers)
   const whereSql = conditions.length ? ' WHERE ' + conditions.join(' AND ') : ''
   const summary = new DynamicModel({ total: 0, unused: 0 })
   $app
@@ -274,6 +302,7 @@
       bookId: '',
       title: '',
       author: '',
+      lastReadAt: '',
       userCount: 0,
       userNames: '',
       fileCount: 0,
@@ -285,6 +314,7 @@
     .db()
     .newQuery(
       'SELECT books.id AS bookId, books.title AS title, books.author AS author, '
+        + "coalesce((SELECT max(nullif(last_read_at, '')) FROM book_shelves WHERE book_id = books.id), '') AS lastReadAt, "
         + '(SELECT count(DISTINCT user_id) FROM book_shelves WHERE book_id = books.id) AS userCount, '
         + "coalesce((SELECT group_concat(CASE WHEN users.name != '' THEN users.name WHEN instr(users.email, '@') > 0 THEN substr(users.email, 1, instr(users.email, '@') - 1) ELSE users.email END, char(10)) FROM book_shelves JOIN users ON users.id = book_shelves.user_id WHERE book_shelves.book_id = books.id), '') AS userNames, "
         + '(SELECT count(*) FROM book_files WHERE book_id = books.id) AS fileCount, '
@@ -292,7 +322,9 @@
         + "(SELECT count(*) FROM book_audio_chunks JOIN book_files ON book_files.id = book_audio_chunks.file_id WHERE book_files.book_id = books.id AND book_audio_chunks.audio_file != '') AS audioCount "
         + 'FROM books'
         + whereSql
-        + ' ORDER BY books.created DESC, books.id ASC'
+        + (sort === 'oldestRead'
+          ? ' ORDER BY lastReadAt ASC, books.created ASC, books.id ASC'
+          : ' ORDER BY books.created DESC, books.id ASC')
         + (sort === 'size' ? '' : ' LIMIT {:limit} OFFSET {:offset}')
     )
     .bind(Object.assign({}, bindings, { limit: pageSize, offset: (currentPage - 1) * pageSize }))
@@ -427,6 +459,9 @@
       audioFiles: audioFilesByBook[String(row.bookId)] || [],
       bookId: String(row.bookId),
       title,
+      lastReadLabel: row.lastReadAt
+        ? dateutil.formatDate(dateutil.toDate(String(row.lastReadAt)), 'YYYY.MM.DD')
+        : '기록 없음',
       author: bookAuthorView.formatDisplayAuthor(String(row.author || '').trim()) || '저자 정보 없음',
       userCount,
       userNames: String(row.userNames || '')
@@ -527,7 +562,13 @@
       </a>
     </div>
     <% if (assignmentBook) { %>
-    <p class="m-0 text-sm text-stone-700">「<%= assignmentBook.title %>」을 배정할 사용자를 선택해 주세요.</p>
+    <p class="m-0 text-sm leading-7 text-stone-700">
+      <mark
+        class="rounded bg-amber-200/70 [box-decoration-break:clone] px-1 py-0.5 font-semibold break-words text-stone-950">
+        「<%= assignmentBook.title %>」
+      </mark>
+      을 배정할 사용자를 선택해 주세요.
+    </p>
     <% if (assignmentCandidates.length) { %>
     <form
       method="post"
@@ -632,12 +673,45 @@
           <%= sort === 'size' ? 'selected' : '' %>>
           용량 큰 순
         </option>
+        <option
+          value="oldestRead"
+          <%= sort === 'oldestRead' ? 'selected' : '' %>>
+          오래 안 읽은 순
+        </option>
       </select>
       <button
         type="submit"
         class="inline-flex h-8 shrink-0 items-center justify-center rounded-md border-0 bg-stone-800 px-3 text-xs font-semibold text-white hover:bg-stone-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500">
         검색
       </button>
+      <details
+        class="w-full"
+        <%= filterUserId ? 'open' : '' %>>
+        <summary class="w-fit cursor-pointer py-1 text-xs font-medium text-stone-600">
+          필터 더보기<%= filterUserId ? ' · 사용자 필터 적용 중' : '' %>
+        </summary>
+        <div class="mt-2 rounded-md border border-solid border-stone-200 bg-white/60 p-3">
+          <label
+            class="mb-1.5 block text-xs font-medium text-stone-600"
+            for="admin-book-user">
+            연결 사용자
+          </label>
+          <select
+            id="admin-book-user"
+            name="user"
+            class="box-border h-8 w-full rounded-md border border-solid border-stone-300 bg-white px-2 text-xs text-stone-700 focus-visible:outline-stone-500 sm:w-64">
+            <option value="">전체 사용자</option>
+            <% filterUsers.forEach(function (user) { %>
+            <option
+              value="<%= user.userId %>"
+              <%= filterUserId === String(user.userId) ? 'selected' : '' %>>
+              <%= user.label %>
+            </option>
+            <% }) %>
+          </select>
+          <p class="m-0 mt-2 text-xs text-stone-500">사용자를 선택한 뒤 검색하면 해당 도서함의 책만 표시합니다.</p>
+        </div>
+      </details>
     </form>
 
     <div
@@ -647,6 +721,9 @@
         · 검색 결과
         <strong class="font-semibold text-stone-800 tabular-nums"><%= matched.total %></strong>
         권
+        <% if (sort === 'oldestRead') { %>
+        <span class="ml-2">읽기·청취 기록 없는 책 우선 · 연결 사용자 전체의 마지막 독서 기준</span>
+        <% } %>
       </p>
     </div>
 
@@ -666,12 +743,12 @@
             </th>
             <th
               scope="col"
-              class="w-[16%] px-3 py-2 font-medium">
+              class="w-32 px-3 py-2 font-medium">
               연결 사용자
             </th>
             <th
               scope="col"
-              class="w-[19%] px-3 py-2 text-right font-medium">
+              class="w-44 px-3 py-2 text-left font-medium">
               총용량
               <span class="block text-[11px] font-normal">EPUB + 오디오</span>
             </th>
@@ -705,6 +782,9 @@
               <h2 class="m-0 text-[13px] leading-5 font-semibold break-words text-stone-950"><%= book.title %></h2>
               <p class="m-0 break-words text-stone-500"><%= book.author %></p>
               <p class="m-0 font-mono text-[11px] text-stone-400"><%= book.bookId %></p>
+              <% if (sort === 'oldestRead') { %>
+              <p class="m-0 text-[11px] text-stone-500">마지막 독서: <%= book.lastReadLabel %></p>
+              <% } %>
             </th>
             <td class="px-3 py-2.5">
               <span class="font-semibold tabular-nums"><%= book.userCount %>명</span>
@@ -725,7 +805,7 @@
               </a>
               <% } %>
             </td>
-            <td class="px-3 py-2.5 text-right whitespace-nowrap tabular-nums">
+            <td class="px-3 py-2.5 text-left whitespace-nowrap tabular-nums">
               <span class="font-semibold text-stone-950"><%= book.totalSizeLabel %></span>
               <p class="m-0 text-[11px] text-stone-500">EPUB <%= book.fileSizeLabel %> · <%= book.fileCount %>개</p>
               <p class="m-0 text-[11px] text-stone-500">오디오 <%= book.audioSizeLabel %> · <%= book.audioCount %>개</p>

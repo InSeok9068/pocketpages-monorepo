@@ -796,8 +796,43 @@ test('Administrators can search all books, see members and delete unused books',
   assert.equal((await (await request('/_test/admin-state')).json()).unusedBookCount, 0)
 })
 
+test('Oldest reading order puts unread books first and uses the latest reading across all connected users', async () => {
+  const query = '/admin/books?sort=oldestRead&user=reviewuser00004&q=' + encodeURIComponent('독서정렬검증')
+  const response = await request(query, 4)
+  assert.equal(response.status, 200)
+  const listing = load(await response.text())
+  assert.deepEqual(listing('tbody tr th h2').map((_i, element) => listing(element).text().trim()).get(), [
+    '독서정렬검증 0', '독서정렬검증 2', '독서정렬검증 1',
+  ])
+  assert.equal(listing('#admin-book-sort option[selected]').val(), 'oldestRead')
+  const rows = listing('tbody tr')
+  assert.match(rows.eq(0).text(), /마지막 독서: 기록 없음/)
+  assert.match(rows.eq(2).text(), /마지막 독서: 2026\.03\.01/)
+})
+
+test('Administrators filter books by connected user together with search, scope and sorting', async () => {
+  const query = '/admin/books?q=' + encodeURIComponent('관리 저자')
+  const initial = load(await (await request(query, 4)).text())
+  assert.equal(initial('#admin-book-user').closest('details').is('[open]'), false)
+  for (const sort of ['newest', 'size']) {
+    const response = await request(query + '&sort=' + sort + '&user=reviewuser00001', 4)
+    assert.equal(response.status, 200)
+    const listing = load(await response.text())
+    assert.equal(listing('tbody tr th h2').text().trim(), '관리 대상 책')
+    assert.equal(listing('#admin-book-user option[selected]').val(), 'reviewuser00001')
+    assert.equal(listing('#admin-book-user').closest('details').is('[open]'), true)
+    const action = new URL(listing('a').filter((_i, link) => listing(link).text().trim() === '책 배정').attr('href'), service.baseUrl)
+    assert.equal(action.searchParams.get('user'), 'reviewuser00001')
+  }
+  for (const suffix of ['&user=reviewuser00002', '&scope=unused&user=reviewuser00001', '&user=' + encodeURIComponent("' OR 1=1 --")]) {
+    const response = await request(query + suffix, 4)
+    assert.equal(response.status, 200)
+    assert.equal(load(await response.text())('tbody tr th h2').length, 0)
+  }
+})
+
 test('Administrators assign shared EPUBs only to users without the book', async () => {
-  const route = '/admin/books?scope=all&sort=size&q=' + encodeURIComponent('관리 저자')
+  const route = '/admin/books?scope=all&sort=size&user=reviewuser00001&q=' + encodeURIComponent('관리 저자')
   const selection = route + '&assignBookId=adminbook000001'
   const candidates = load(await (await request(selection, 4)).text())
   assert.equal(candidates('#assignment-user option[value="reviewuser00001"]').length, 0)
@@ -815,6 +850,7 @@ test('Administrators assign shared EPUBs only to users without the book', async 
     const location = new URL(assigned.headers.get('location'), service.baseUrl)
     assert.equal(location.searchParams.get('scope'), 'all')
     assert.equal(location.searchParams.get('sort'), 'size')
+    assert.equal(location.searchParams.get('user'), 'reviewuser00001')
     assert.equal(location.searchParams.get('q'), '관리 저자')
     assert.match(decodeURIComponent(assigned.headers.get('location')), /도서함에 책을 배정/)
     const state = await (await request('/_test/admin-state')).json()
