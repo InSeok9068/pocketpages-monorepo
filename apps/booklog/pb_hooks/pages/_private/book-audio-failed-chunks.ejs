@@ -19,7 +19,7 @@
     <div
       class="space-y-3 p-5"
       @click.stop>
-      <div class="flex items-start justify-between gap-3">
+      <div class="sticky top-0 z-10 flex items-start justify-between gap-3 bg-[#fbf7ef]">
         <div class="min-w-0">
           <h3
             id="failed-title-<%= fileId %>"
@@ -32,7 +32,7 @@
           type="button"
           @click="$refs.failedDialog.close()"
           aria-label="닫기"
-          class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-none bg-stone-200/60 p-0 text-stone-700">
+          class="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700">
           <span
             class="i-lucide-x h-4 w-4"
             aria-hidden="true"></span>

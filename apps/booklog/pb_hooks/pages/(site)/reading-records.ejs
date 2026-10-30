@@ -407,11 +407,11 @@
           x-ref="weekDialog"
           aria-labelledby="week-title-<%= item.key %>"
           @click="if ($event.target === $el) $el.close()"
-          class="fixed inset-0 m-auto max-h-[80dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-[1.5rem] border-none bg-[#fbf7ef] p-0 text-stone-950 shadow-xl">
+          class="fixed inset-0 m-auto max-h-[80dvh] w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-[1.5rem] border-none bg-[#fbf7ef] p-0 text-stone-950 shadow-xl">
           <div
-            class="space-y-4 p-5"
+            class="flex max-h-[80dvh] flex-col"
             @click.stop>
-            <div class="flex items-start justify-between gap-3">
+            <div class="flex shrink-0 items-start justify-between gap-3 px-5 pt-5 pb-4">
               <div>
                 <h3
                   id="week-title-<%= item.key %>"
@@ -424,24 +424,26 @@
                 type="button"
                 @click="$refs.weekDialog.close()"
                 aria-label="닫기"
-                class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-none bg-stone-200/60 p-0 text-stone-700">
+                class="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700">
                 <span
                   class="i-lucide-x h-4 w-4"
                   aria-hidden="true"></span>
               </button>
             </div>
-            <% if (item.books.length) { %>
-            <ul class="m-0 list-none space-y-2 p-0">
-              <% for (let bookIndex = 0; bookIndex < item.books.length; bookIndex += 1) { const book = item.books[bookIndex] %>
-              <li class="flex items-start justify-between gap-4 rounded-xl bg-white/80 px-3 py-3 text-sm">
-                <span class="min-w-0 font-medium break-words"><%= book.title %></span>
-                <span class="shrink-0 font-semibold"><%= book.minutesLabel %></span>
-              </li>
+            <div class="min-h-0 overflow-y-auto overscroll-contain px-5 pb-5">
+              <% if (item.books.length) { %>
+              <ul class="m-0 list-none space-y-2 p-0">
+                <% for (let bookIndex = 0; bookIndex < item.books.length; bookIndex += 1) { const book = item.books[bookIndex] %>
+                <li class="flex items-start justify-between gap-4 rounded-xl bg-white/80 px-3 py-3 text-sm">
+                  <span class="min-w-0 font-medium break-words"><%= book.title %></span>
+                  <span class="shrink-0 font-semibold"><%= book.minutesLabel %></span>
+                </li>
+                <% } %>
+              </ul>
+              <% } else { %>
+              <p class="py-6 text-center text-sm text-stone-500">이 주차에는 독서 기록이 없습니다.</p>
               <% } %>
-            </ul>
-            <% } else { %>
-            <p class="py-6 text-center text-sm text-stone-500">이 주차에는 독서 기록이 없습니다.</p>
-            <% } %>
+            </div>
           </div>
         </dialog>
       </div>
