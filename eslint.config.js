@@ -204,6 +204,7 @@ module.exports = [
       '**/.download/**',
       '**/.git/**',
       '**/.history/**',
+      '**/.worktrees/**',
       '**/coverage/**',
       '**/dist/**',
       '**/node_modules/**',
