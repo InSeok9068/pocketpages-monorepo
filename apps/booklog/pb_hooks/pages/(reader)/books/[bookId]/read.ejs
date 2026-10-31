@@ -484,7 +484,7 @@
     style="bottom: calc(env(safe-area-inset-bottom) + 1rem)">
     <button
       type="button"
-      x-bind:aria-label="cloudAudioActive ? 'AI 오디오북 일시 정지' : 'AI 오디오북 재생'"
+      x-bind:aria-label="cloudAudioActive ? 'AI 음성 일시 정지' : 'AI 음성 재생'"
       x-on:click="toggleCloudAudio()"
       x-bind:disabled="cloudAudioBusy"
       class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none bg-[#8e5521] p-0 text-white disabled:opacity-60">
@@ -511,12 +511,12 @@
     </button>
     <button
       type="button"
-      aria-label="AI 오디오북 조작 열기"
+      aria-label="AI 음성 조작 열기"
       x-on:click="openReadAloud()"
       class="flex min-w-0 flex-1 flex-col items-start border-none bg-transparent p-0 text-left text-inherit">
       <span
         class="block w-full truncate text-xs font-semibold"
-        x-text="!cloudAudioSession ? cloudAudioMessage : cloudAudioBusy && !(cloudAudioDuration > 0) ? '불러오는 중' : cloudAudioChapter || 'AI 오디오북'"></span>
+        x-text="!cloudAudioSession ? cloudAudioMessage : cloudAudioBusy && !(cloudAudioDuration > 0) ? '불러오는 중' : cloudAudioChapter || 'AI 음성'"></span>
       <span
         class="block text-[11px] tabular-nums opacity-70"
         x-text="!cloudAudioSession ? '재생이 멈췄습니다 · 눌러서 자세히 보기' : formatAudioTime(cloudAudioPosition) + ' / ' + formatAudioTime(cloudAudioDuration) + (cloudAudioChapterOrder ? ' · ' + cloudAudioChapterOrder + ' 챕터' : '')"></span>
@@ -690,7 +690,7 @@
           <span
             class="i-lucide-volume-2 h-5 w-5 text-stone-700"
             aria-hidden="true"></span>
-          읽어주기
+          책 듣기
         </button>
         <button
           type="button"
@@ -1396,7 +1396,7 @@
         class="booklog-scroll-sheet box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
         <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white">
           <div class="min-w-0 flex-1">
-            <h2 class="text-base font-semibold text-stone-950">읽어주기</h2>
+            <h2 class="text-base font-semibold text-stone-950">책 듣기</h2>
             <p
               x-show="currentChapterLabel"
               class="mt-1 truncate text-sm text-stone-500"
@@ -1448,7 +1448,7 @@
             <button
               type="button"
               x-on:click="closeReadAloud()"
-              aria-label="읽어주기 닫기"
+              aria-label="책 듣기 닫기"
               class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none">
               <span
                 class="i-lucide-x h-4 w-4"
@@ -1474,21 +1474,21 @@
 
         <div class="space-y-4">
           <label class="mb-4 block space-y-2">
-            <span class="text-sm font-medium text-stone-700">읽어주기 방식</span>
+            <span class="text-sm font-medium text-stone-700">음성 선택</span>
             <select
               x-model="readAloudEngine"
               x-on:change="stopReadAloud()"
               class="box-border block w-full rounded-[1.1rem] border-0 bg-[#fbf5ec] px-4 py-3 text-sm text-[#2f251c]">
               <% if (aiAudioAvailable) { %>
-              <option value="ai">AI 오디오북</option>
+              <option value="ai">AI 음성</option>
               <% } else { %>
               <option
                 value="ai"
                 disabled>
-                AI 오디오북 · 생성된 음성 없음
+                AI 음성 · 생성된 음성 없음
               </option>
               <% } %>
-              <option value="local">로컬 오디오북 · 기기 음성</option>
+              <option value="local">기기 음성</option>
             </select>
           </label>
           <% if (aiAudioAvailable) { %>
@@ -1576,7 +1576,7 @@
                   <p class="m-0 flex min-w-0 items-baseline gap-1.5 text-sm font-semibold text-stone-900">
                     <span
                       class="truncate"
-                      x-text="cloudAudioBusy && !(cloudAudioDuration > 0) ? '불러오는 중' : cloudAudioChapter || 'AI 오디오북'"></span>
+                      x-text="cloudAudioBusy && !(cloudAudioDuration > 0) ? '불러오는 중' : cloudAudioChapter || 'AI 음성'"></span>
                     <span
                       x-show="cloudAudioChapterOrder"
                       x-text="cloudAudioChapterOrder"
@@ -1709,7 +1709,7 @@
           <template x-if="readAloudEngine === 'local' && !readAloudSupported">
             <p
               class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-              이 브라우저는 읽어주기 기능을 지원하지 않습니다.
+              이 브라우저는 책 듣기 기능을 지원하지 않습니다.
             </p>
           </template>
 
