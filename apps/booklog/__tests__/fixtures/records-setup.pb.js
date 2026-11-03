@@ -21,17 +21,17 @@ onBootstrap(function (event) {
     $app.save(record)
     return record
   }
-  function session(userId, endedAt, seconds) {
+  function session(userId, endedAt, seconds, bookId) {
     save('reading_sessions', {
       user_id: userId,
-      book_id: 'recordbook00001',
+      book_id: bookId || 'recordbook00001',
       started_at: new Date(endedAt.getTime() - seconds * 1000).toISOString(),
       ended_at: endedAt.toISOString(),
       duration_seconds: seconds,
     })
   }
 
-  ;['recorduser00001', 'homeuser0000001', 'otherreader0001'].forEach(function (id) {
+  ;['recorduser00001', 'homeuser0000001', 'otherreader0001', 'calendaruser001'].forEach(function (id) {
     save('users', {
       id: id,
       email: id + '@example.com',
@@ -61,6 +61,32 @@ onBootstrap(function (event) {
   session('homeuser0000001', kstAt(today, 10), 300)
   session('homeuser0000001', kstAt(today, -10), 300)
   session('homeuser0000001', kstAt(addDaysText(today, -8), 600), 300)
+
+  save('books', {
+    id: 'calendarbook001',
+    title: '합산 대표 책',
+    book_image_url: 'https://example.com/calendar-main.jpg',
+  })
+  save('books', {
+    id: 'calendarbook002',
+    title: '단일 세션 책',
+    book_image_url: 'https://example.com/calendar-second.jpg',
+  })
+  save('books', {
+    id: 'calendarbook003',
+    title: '다른 사용자 책',
+    book_image_url: 'https://example.com/calendar-other.jpg',
+  })
+  session('calendaruser001', kstAt('2024-02-15', 600), 1200, 'calendarbook001')
+  session('calendaruser001', kstAt('2024-02-15', 660), 1500, 'calendarbook001')
+  session('calendaruser001', kstAt('2024-02-15', 720), 2400, 'calendarbook002')
+  session('otherreader0001', kstAt('2024-02-15', 780), 5400, 'calendarbook003')
+  session('calendaruser001', kstAt('2024-02-01', -10), 1800, 'calendarbook001')
+  session('calendaruser001', kstAt('2024-02-01', 10), 600, 'calendarbook001')
+  session('calendaruser001', kstAt('2024-02-29', -10), 300, 'calendarbook001')
+  session('calendaruser001', kstAt('2024-02-29', 10), 600, 'calendarbook001')
+  session('calendaruser001', kstAt('2024-03-01', -10), 300, 'calendarbook001')
+  session('calendaruser001', kstAt('2024-03-01', 10), 1200, 'calendarbook001')
 
   $app.store().set('test:records:anchors', { today: today, monday: monday })
 })

@@ -3,7 +3,7 @@
   const bookTitleService = resolve('book-title')
 
   meta('title', '북로그 독서 기록')
-  meta('description', '주차별 독서 시간을 확인하는 페이지')
+  meta('description', '주차별 독서 시간과 책 표지 달력을 확인하는 페이지')
 
   if (!request.auth) {
     dbg('page/reading-records:redirect', {
@@ -22,6 +22,30 @@
   const now = new Date()
   const weekItems = []
   const requestedWeekValue = String(request.url.query.week || '').trim()
+  const isCalendarView = String(request.url.query.view || '') === 'calendar'
+  const todayKey = dateutil.formatDate(now, dateutil.FORMATS.DATE)
+  const currentMonthKey = todayKey.slice(0, 7)
+  const requestedMonth = String(request.url.query.month || '').trim()
+  const validMonth = /^\d{4}-\d{2}$/.test(requestedMonth) && parseDateValue(requestedMonth + '-01')
+  const monthKey = validMonth && requestedMonth <= currentMonthKey ? requestedMonth : currentMonthKey
+  const monthStartKey = monthKey + '-01'
+  const nextMonthKey = dateutil.formatDate(dateutil.addMonths(monthStartKey, 1), 'YYYY-MM')
+  const monthEndKey = dateutil.formatDate(dateutil.addDays(nextMonthKey + '-01', -1), dateutil.FORMATS.DATE)
+  const previousMonthHref =
+    '/reading-records?view=calendar&month=' + dateutil.formatDate(dateutil.addMonths(monthStartKey, -1), 'YYYY-MM')
+  const nextMonthHref = '/reading-records?view=calendar&month=' + nextMonthKey
+  const calendarHref = '/reading-records?view=calendar&month=' + monthKey
+  const weeklyHref =
+    requestedWeekValue && parseDateValue(requestedWeekValue)
+      ? '/reading-records?week=' + encodeURIComponent(requestedWeekValue)
+      : '/reading-records'
+  const monthLabel = dateutil.formatDate(monthStartKey, 'YYYY년 M월')
+  const calendarDays = []
+  const calendarCells = []
+  const daysByKey = {}
+  const weekdayLabels = ['일', '월', '화', '수', '목', '금', '토']
+  let monthSeconds = 0
+  let readingDayCount = 0
 
   /**
    * 날짜를 한국시간 기준 해당 주 월요일로 맞춥니다.
@@ -116,16 +140,45 @@
   function formatTotalMinutesLabel(minutes) {
     const safeMinutes = Math.max(0, Math.round(minutes))
     const hours = Math.floor(safeMinutes / 60)
-
     if (hours >= 100) {
       return formatIntegerLabel(hours) + '시간'
     }
-
     return formatMinutesLabel(safeMinutes)
   }
 
   const currentWeekStart = getWeekStart(now)
   const currentWeekKey = dateutil.formatDate(currentWeekStart, dateutil.FORMATS.DATE)
+  const readingSummary = new DynamicModel({ totalSeconds: 0, currentWeekSeconds: 0 })
+  let finishedBookCount = 0
+
+  if (!isCalendarView) {
+    dbg('page/reading-records:find-summary', { userId: userId })
+    $app
+      .db()
+      .newQuery(
+        `SELECT COALESCE(SUM(duration_seconds), 0) AS totalSeconds,
+        COALESCE(SUM(CASE WHEN ended_at >= {:weekStart} AND ended_at < {:weekEnd}
+          THEN duration_seconds ELSE 0 END), 0) AS currentWeekSeconds
+      FROM reading_sessions
+      WHERE user_id = {:userId} AND ended_at != '' AND duration_seconds > 0`
+      )
+      .bind({
+        userId: userId,
+        weekStart: dateutil.dbStartOfDay(currentWeekKey),
+        weekEnd: dateutil.dbStartOfDay(dateutil.addDays(currentWeekKey, 7)),
+      })
+      .one(readingSummary)
+
+    try {
+      finishedBookCount = $app.countRecords('book_shelves', $dbx.hashExp({ user_id: userId, status: 'finished' }))
+    } catch (exception) {
+      finishedBookCount = 0
+    }
+  }
+  const totalMinutes = Math.round(Number(readingSummary.totalSeconds || 0) / 60)
+  const totalMinutesLabel = formatTotalMinutesLabel(totalMinutes)
+  const currentWeekMinutes = Math.round(Number(readingSummary.currentWeekSeconds || 0) / 60)
+
   const requestedDate = parseDateValue(requestedWeekValue)
   let selectedWeekStart = requestedDate ? getWeekStart(requestedDate) : new Date(currentWeekStart.getTime())
 
@@ -154,32 +207,27 @@
     dateutil.formatDate(periodStart, 'YYYY.MM.DD') + ' ~ ' + dateutil.formatDate(periodEnd, 'YYYY.MM.DD')
   const weeklySecondsByKey = {}
   const weeklyBooksByKey = {}
-  const readingSummary = new DynamicModel({ totalSeconds: 0, currentWeekSeconds: 0 })
-  const sessionRows = arrayOf(new DynamicModel({ endedAt: '', durationSeconds: 0, bookId: '', bookTitle: '' }))
-  let finishedBookCount = 0
 
-  dbg('page/reading-records:find-sessions', { userId: userId, periodLabel: periodLabel })
-  $app
-    .db()
-    .newQuery(
-      `SELECT COALESCE(SUM(duration_seconds), 0) AS totalSeconds,
-        COALESCE(SUM(CASE WHEN ended_at >= {:weekStart} AND ended_at < {:weekEnd}
-          THEN duration_seconds ELSE 0 END), 0) AS currentWeekSeconds
-      FROM reading_sessions
-      WHERE user_id = {:userId} AND ended_at != '' AND duration_seconds > 0`
-    )
-    .bind({
-      userId: userId,
-      weekStart: dateutil.dbStartOfDay(currentWeekKey),
-      weekEnd: dateutil.dbStartOfDay(dateutil.addDays(currentWeekKey, 7)),
-    })
-    .one(readingSummary)
+  const sessionRows = arrayOf(
+    new DynamicModel({ endedAt: '', durationSeconds: 0, bookId: '', bookTitle: '', coverUrl: '' })
+  )
+
+  const queryStartKey = isCalendarView ? monthStartKey : dateutil.formatDate(periodStart, dateutil.FORMATS.DATE)
+  const queryEndKey = isCalendarView ? monthEndKey : dateutil.formatDate(periodEnd, dateutil.FORMATS.DATE)
+
+  dbg('page/reading-records:find-sessions', {
+    userId: userId,
+    view: isCalendarView ? 'calendar' : 'weekly',
+    periodStart: queryStartKey,
+    periodEnd: queryEndKey,
+  })
 
   $app
     .db()
     .newQuery(
       `SELECT reading_sessions.ended_at AS endedAt, reading_sessions.duration_seconds AS durationSeconds,
-        reading_sessions.book_id AS bookId, COALESCE(books.title, '책 정보 없음') AS bookTitle
+        reading_sessions.book_id AS bookId, COALESCE(books.title, '책 정보 없음') AS bookTitle,
+                COALESCE(books.book_image_url, '') AS coverUrl
       FROM reading_sessions
       LEFT JOIN books ON books.id = reading_sessions.book_id
       WHERE reading_sessions.user_id = {:userId}
@@ -189,22 +237,10 @@
     )
     .bind({
       userId: userId,
-      periodStart: dateutil.dbStartOfDay(dateutil.formatDate(periodStart, dateutil.FORMATS.DATE)),
-      periodEnd: dateutil.dbEndOfDay(dateutil.formatDate(periodEnd, dateutil.FORMATS.DATE)),
+      periodStart: dateutil.dbStartOfDay(queryStartKey),
+      periodEnd: dateutil.dbEndOfDay(queryEndKey),
     })
     .all(sessionRows)
-
-  try {
-    finishedBookCount = $app.countRecords(
-      'book_shelves',
-      $dbx.hashExp({
-        user_id: userId,
-        status: 'finished',
-      })
-    )
-  } catch (exception) {
-    finishedBookCount = 0
-  }
 
   for (let weekIndex = 3; weekIndex >= 0; weekIndex -= 1) {
     const weekStart = new Date(selectedWeekStart.getTime())
@@ -228,6 +264,36 @@
     })
   }
 
+  if (isCalendarView) {
+    const leadingDays = Number(dateutil.formatDate(monthStartKey, 'd'))
+    for (let index = 0; index < leadingDays; index += 1) {
+      calendarCells.push(null)
+    }
+    const dayCount = Number(dateutil.formatDate(monthEndKey, 'D'))
+    for (let index = 0; index < dayCount; index += 1) {
+      const key = dateutil.formatDate(dateutil.addDays(monthStartKey, index), dateutil.FORMATS.DATE)
+      const day = {
+        key: key,
+        number: index + 1,
+        label: dateutil.formatDate(key, 'M월 D일'),
+        isToday: key === todayKey,
+        isFuture: key > todayKey,
+        seconds: 0,
+        minutesLabel: '0분',
+        booksById: {},
+        books: [],
+        cover: null,
+        accessibleLabel: '',
+      }
+      daysByKey[key] = day
+      calendarDays.push(day)
+      calendarCells.push(day)
+    }
+    while (calendarCells.length % 7) {
+      calendarCells.push(null)
+    }
+  }
+
   for (let index = 0; index < sessionRows.length; index += 1) {
     const row = sessionRows[index]
     const endedAtValue = String(row.endedAt || '').trim()
@@ -236,6 +302,23 @@
 
     if (!endedAt || isNaN(endedAt.getTime()) || isNaN(durationSeconds) || durationSeconds < 1) {
       continue
+    }
+
+    const dayKey = dateutil.formatDate(endedAt, dateutil.FORMATS.DATE)
+    const day = daysByKey[dayKey]
+    if (day) {
+      const bookId = String(row.bookId || '')
+      if (!day.booksById[bookId]) {
+        day.booksById[bookId] = {
+          title: bookTitleService.getMainTitle(String(row.bookTitle || '제목 없음')),
+          coverUrl: String(row.coverUrl || '').trim(),
+          seconds: 0,
+          minutesLabel: '',
+        }
+        day.books.push(day.booksById[bookId])
+      }
+      day.booksById[bookId].seconds += durationSeconds
+      day.seconds += durationSeconds
     }
 
     const weekKey = dateutil.formatDate(getWeekStart(endedAt), dateutil.FORMATS.DATE)
@@ -278,9 +361,30 @@
     })
   }
 
-  const totalMinutes = Math.round(Number(readingSummary.totalSeconds || 0) / 60)
-  const totalMinutesLabel = formatTotalMinutesLabel(totalMinutes)
-  const currentWeekMinutes = Math.round(Number(readingSummary.currentWeekSeconds || 0) / 60)
+  let selectedDayKey = monthKey === currentMonthKey ? todayKey : monthStartKey
+  for (let index = 0; index < calendarDays.length; index += 1) {
+    const day = calendarDays[index]
+    day.books.sort(function (left, right) {
+      return right.seconds - left.seconds
+    })
+    day.cover = day.books.length ? day.books[0] : null
+    day.minutesLabel = day.seconds > 0 && day.seconds < 60 ? '1분 미만' : formatMinutesLabel(day.seconds / 60)
+    day.accessibleLabel =
+      day.label
+      + (day.isToday ? ' 오늘' : '')
+      + ', '
+      + (day.books.length ? day.books.length + '권 · ' + day.minutesLabel : '독서 기록 없음')
+    for (let bookIndex = 0; bookIndex < day.books.length; bookIndex += 1) {
+      const book = day.books[bookIndex]
+      book.minutesLabel = book.seconds < 60 ? '1분 미만' : formatMinutesLabel(book.seconds / 60)
+    }
+    if (day.seconds > 0) {
+      readingDayCount += 1
+      monthSeconds += day.seconds
+      if (monthKey !== currentMonthKey) selectedDayKey = day.key
+    }
+  }
+  const monthMinutesLabel = monthSeconds > 0 && monthSeconds < 60 ? '1분 미만' : formatMinutesLabel(monthSeconds / 60)
 </script>
 
 <section class="space-y-6">
@@ -293,11 +397,20 @@
         aria-hidden="true"></span>
       메인으로
     </a>
-    <div>
+    <div class="flex items-center justify-between gap-3">
       <h1 class="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">독서 기록</h1>
+      <a
+        href="<%= isCalendarView ? weeklyHref : calendarHref %>"
+        class="inline-flex shrink-0 items-center gap-2 rounded-full bg-white/80 px-3 py-2 text-sm font-semibold text-stone-700 no-underline shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500">
+        <span
+          class="<%= isCalendarView ? 'i-lucide-list' : 'i-lucide-calendar-days' %> h-4 w-4"
+          aria-hidden="true"></span>
+        <%= isCalendarView ? '주차별 보기' : '달력 보기' %>
+      </a>
     </div>
   </div>
 
+  <% if (!isCalendarView) { %>
   <section
     class="grid grid-cols-3 overflow-hidden rounded-[1.35rem] bg-white/82 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)] sm:gap-3 sm:overflow-visible sm:bg-transparent sm:shadow-none">
     <div
@@ -450,4 +563,153 @@
       <% } %>
     </div>
   </section>
+  <% } else { %>
+  <section
+    x-data="{ selectedDay: '<%= selectedDayKey %>' }"
+    aria-label="독서 달력"
+    class="rounded-[1.6rem] border border-stone-200/80 bg-white/80 p-3 shadow-[0_18px_45px_rgba(73,54,31,0.08)] sm:rounded-[2rem] sm:p-5">
+    <div class="mb-5 flex items-center justify-between gap-3">
+      <a
+        href="<%= previousMonthHref %>"
+        aria-label="이전 달"
+        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f5efe4] text-stone-700 no-underline focus-visible:outline-2 focus-visible:outline-stone-500">
+        <span
+          class="i-lucide-chevron-left h-4 w-4"
+          aria-hidden="true"></span>
+      </a>
+      <div class="text-center">
+        <h2 class="text-lg font-semibold text-stone-950"><%= monthLabel %></h2>
+        <p class="mt-1 text-xs text-stone-500"><%= readingDayCount %>일 동안 읽었어요 · <%= monthMinutesLabel %></p>
+      </div>
+      <% if (monthKey === currentMonthKey) { %>
+      <span
+        aria-disabled="true"
+        aria-label="다음 달"
+        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-stone-100 text-stone-300">
+        <span
+          class="i-lucide-chevron-right h-4 w-4"
+          aria-hidden="true"></span>
+      </span>
+      <% } else { %>
+      <a
+        href="<%= nextMonthHref %>"
+        aria-label="다음 달"
+        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f5efe4] text-stone-700 no-underline focus-visible:outline-2 focus-visible:outline-stone-500">
+        <span
+          class="i-lucide-chevron-right h-4 w-4"
+          aria-hidden="true"></span>
+      </a>
+      <% } %>
+    </div>
+    <% if (monthKey !== currentMonthKey) { %>
+    <a
+      href="/reading-records?view=calendar"
+      class="mb-3 block text-center text-xs font-semibold text-stone-500 no-underline">
+      이번 달로 돌아가기
+    </a>
+    <% } %>
+    <div class="grid grid-cols-7 gap-1 text-center">
+      <% for (let index = 0; index < weekdayLabels.length; index += 1) { %>
+      <span class="py-2 text-xs font-medium text-stone-400"><%= weekdayLabels[index] %></span>
+      <% } %>
+      <% for (let index = 0; index < calendarCells.length; index += 1) { const day = calendarCells[index] %>
+      <% if (!day) { %>
+      <div aria-hidden="true"></div>
+      <% } else { %>
+      <button
+        type="button"
+        @click="selectedDay = '<%= day.key %>'"
+        :aria-pressed="selectedDay === '<%= day.key %>'"
+        aria-controls="reading-day-details"
+        aria-label="<%= day.accessibleLabel %>"
+        aria-current="<%= day.isToday ? 'date' : 'false' %>"
+        <%= day.isFuture ? 'disabled' : '' %>
+        :class="selectedDay === '<%= day.key %>' ? 'bg-[#eee3d1] ring-1 ring-inset ring-[#b89a72]' : 'bg-[#fbf7ef]'"
+        class="flex min-h-[6.5rem] min-w-0 flex-col items-center gap-1 rounded-xl border-none px-0.5 py-2 text-stone-700 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500 enabled:cursor-pointer disabled:opacity-35 sm:min-h-[8rem] sm:gap-2">
+        <span
+          class="<%= day.isToday ? 'bg-stone-800 text-white' : '' %> inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold">
+          <%= day.number %>
+        </span>
+        <% if (day.cover) { %>
+        <span
+          class="relative block h-12 w-8 shrink-0 overflow-hidden rounded-[0.2rem] bg-[#d8c3a5] shadow-[2px_3px_5px_rgba(74,50,28,0.2)] sm:h-15 sm:w-10">
+          <span
+            class="absolute inset-0 flex items-center justify-center p-1 text-[8px] leading-tight text-stone-700"
+            aria-hidden="true">
+            <%= day.cover.title %>
+          </span>
+          <% if (day.cover.coverUrl) { %>
+          <img
+            src="<%= day.cover.coverUrl %>"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            referrerpolicy="no-referrer"
+            @error="$el.hidden = true"
+            class="relative h-full w-full object-cover" />
+          <% } %>
+        </span>
+        <% if (day.books.length > 1) { %>
+        <span class="text-[10px] font-semibold text-stone-500">+<%= day.books.length - 1 %></span>
+        <% } %>
+        <% } %>
+      </button>
+      <% } %>
+      <% } %>
+    </div>
+    <p class="mt-3 text-center text-xs text-stone-400">날짜를 누르면 읽은 책을 볼 수 있어요 · 세션 종료일 기준</p>
+    <% if (!readingDayCount) { %>
+    <p class="mt-4 rounded-xl bg-[#fbf7ef] p-4 text-center text-sm text-stone-500">
+      이달에는 아직 독서 기록이 없습니다.
+    </p>
+    <% } %>
+    <div
+      id="reading-day-details"
+      class="mt-5 border-t border-stone-200/70 pt-5"
+      aria-live="polite"
+      aria-atomic="true">
+      <% for (let index = 0; index < calendarDays.length; index += 1) { const day = calendarDays[index] %>
+      <div
+        x-show="selectedDay === '<%= day.key %>'"
+        style="<%= day.key === selectedDayKey ? '' : 'display: none' %>">
+        <div class="mb-3 flex items-center justify-between gap-2">
+          <h3 class="text-base font-semibold text-stone-950"><%= day.label %><%= day.isToday ? ' · 오늘' : '' %></h3>
+          <span class="text-xs font-semibold text-stone-500"><%= day.books.length %>권 · <%= day.minutesLabel %></span>
+        </div>
+        <% if (day.books.length) { %>
+        <ul class="m-0 list-none space-y-2 p-0">
+          <% for (let bookIndex = 0; bookIndex < day.books.length; bookIndex += 1) { const book = day.books[bookIndex] %>
+          <li class="flex items-center gap-3 rounded-xl bg-[#fbf7ef] p-3">
+            <div class="relative h-15 w-10 shrink-0 overflow-hidden rounded-[0.25rem] bg-[#d8c3a5] shadow-sm">
+              <span
+                class="absolute inset-0 flex items-center justify-center p-1 text-center text-[9px] leading-tight text-stone-700"
+                aria-hidden="true">
+                표지 없음
+              </span>
+              <% if (book.coverUrl) { %>
+              <img
+                src="<%= book.coverUrl %>"
+                alt="<%= book.title %> 표지"
+                loading="lazy"
+                decoding="async"
+                referrerpolicy="no-referrer"
+                @error="$el.hidden = true"
+                class="relative h-full w-full object-cover" />
+              <% } %>
+            </div>
+            <p class="min-w-0 flex-1 text-sm font-medium break-words text-stone-900"><%= book.title %></p>
+            <span class="shrink-0 text-xs font-semibold text-stone-700 sm:text-sm"><%= book.minutesLabel %></span>
+          </li>
+          <% } %>
+        </ul>
+        <% } else { %>
+        <p class="rounded-xl bg-[#fbf7ef] px-3 py-6 text-center text-sm text-stone-500">
+          이날에는 독서 기록이 없습니다.
+        </p>
+        <% } %>
+      </div>
+      <% } %>
+    </div>
+  </section>
+  <% } %>
 </section>

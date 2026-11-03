@@ -59,7 +59,8 @@ before(async () => {
     'APP_ENV=production\nDATA4LIBRARY_APIKEY=test-key\nONESIGNAL_APPID=\nONESIGNAL_API_KEY=\n'
   )
   service = await startService({ serviceName: path.basename(fixtureDir), port, timeoutMs: 30000 })
-  for (const id of ['recorduser00001', 'homeuser0000001']) sessions[id] = await signIn(id + '@example.com')
+  for (const id of ['recorduser00001', 'homeuser0000001', 'calendaruser001'])
+    sessions[id] = await signIn(id + '@example.com')
   anchors = await (await fetch(service.baseUrl + '/_test/records-anchors')).json()
 })
 
@@ -111,17 +112,30 @@ function weekRows($) {
     }))
 }
 
-function summary($) {
-  return $('section.grid > div')
-    .toArray()
-    .map((card) => $(card).find('p').last().text().trim())
+function calendarDay($, key) {
+  assert.equal($('section.grid > div').length, 0, 'the calendar view does not render summary cards')
+  return $('button[aria-controls="reading-day-details"]').filter(
+    (_, button) => $(button).attr('@click') === "selectedDay = '" + key + "'"
+  )
+}
+
+function calendarDetails($, key) {
+  return $('#reading-day-details > div[x-show]').filter(
+    (_, panel) => $(panel).attr('x-show') === "selectedDay === '" + key + "'"
+  )
 }
 
 test('Reading records split weeks at Monday 00:00 Korean time and only count this reader’s timed sessions', async () => {
   const { monday } = anchors
   const $ = await page('/reading-records', 'recorduser00001')
 
-  assert.deepEqual(summary($), ['10분', '1시간 40분', '2권'], 'this week, all-time total and finished books')
+  assert.deepEqual(
+    $('section.grid > div')
+      .toArray()
+      .map((card) => $(card).find('p').last().text().trim()),
+    ['10분', '1시간 40분', '2권'],
+    'the weekly view keeps the summary cards'
+  )
   assert.deepEqual(
     weekRows($),
     [-21, -14, -7, 0].map((offset, index) => ({
@@ -152,7 +166,7 @@ test('Moving to the previous four weeks shows the session that fell just before 
       [previousStart, '40분'],
     ]
   )
-  assert.equal(summary($)[0], '10분', 'the summary always describes the current week')
+
   assert.equal($('a[aria-label="다음 4주"]').attr('href'), '/reading-records?week=' + monday)
   assert.equal($('a[href="/reading-records"]:contains("이번 주로 돌아가기")').length, 1)
 
@@ -160,6 +174,99 @@ test('Moving to the previous four weeks shows the session that fell just before 
   assert.equal(weekRows($).at(-1).key, monday)
   $ = await page('/reading-records?week=not-a-date', 'recorduser00001')
   assert.equal(weekRows($).at(-1).key, monday)
+})
+
+test('달력은 같은 책의 세션을 합산해 최장 독서 책의 표지를 표시하고 다른 사용자는 제외한다', async () => {
+  const $ = await page('/reading-records?view=calendar&month=2024-02', 'calendaruser001')
+  const day = calendarDay($, '2024-02-15')
+  const details = calendarDetails($, '2024-02-15')
+
+  assert.equal(day.length, 1)
+  assert.equal(day.attr('aria-label'), '2월 15일, 2권 · 1시간 25분')
+  assert.equal(day.find('img').attr('src'), 'https://example.com/calendar-main.jpg')
+  assert.match(day.text(), /\+1/)
+  assert.equal(details.length, 1)
+  assert.deepEqual(
+    details
+      .find('li')
+      .toArray()
+      .map((item) => [
+        $(item).find('p').text().trim(),
+        $(item).children('span').text().trim(),
+        $(item).find('img').attr('src'),
+      ]),
+    [
+      ['합산 대표 책', '45분', 'https://example.com/calendar-main.jpg'],
+      ['단일 세션 책', '40분', 'https://example.com/calendar-second.jpg'],
+    ]
+  )
+  assert.equal($('img[src="https://example.com/calendar-other.jpg"]').length, 0)
+  assert.doesNotMatch($('[aria-label="독서 달력"]').text(), /다른 사용자 책/)
+})
+
+test('달력은 KST 종료일로 월 경계와 윤일의 기록을 나눈다', async () => {
+  const $ = await page('/reading-records?view=calendar&month=2024-02', 'calendaruser001')
+
+  assert.equal($('button[aria-controls="reading-day-details"]').length, 29)
+  for (const [key, label] of [
+    ['2024-02-01', '2월 1일, 1권 · 10분'],
+    ['2024-02-28', '2월 28일, 1권 · 5분'],
+    ['2024-02-29', '2월 29일, 1권 · 15분'],
+  ]) {
+    assert.equal(calendarDay($, key).attr('aria-label'), label)
+    assert.equal(calendarDetails($, key).length, 1)
+    assert.equal(calendarDetails($, key).find('li').length, 1)
+  }
+  assert.equal(calendarDay($, '2024-01-31').length, 0)
+  assert.equal(calendarDay($, '2024-03-01').length, 0)
+  assert.match($('[aria-label="독서 달력"] h2 + p').text(), /4일 동안 읽었어요 · 1시간 55분/)
+  assert.equal($('a[aria-label="이전 달"]').attr('href'), '/reading-records?view=calendar&month=2024-01')
+  assert.equal($('a[aria-label="다음 달"]').attr('href'), '/reading-records?view=calendar&month=2024-03')
+})
+
+test('달력의 모든 날짜 버튼은 해당 날짜 상세와 연결되고 빈 날짜는 기록 없음을 표시한다', async () => {
+  const $ = await page('/reading-records?view=calendar&month=2024-02', 'calendaruser001')
+
+  assert.equal($('#reading-day-details > div[x-show]').length, 29)
+  for (let day = 1; day <= 29; day += 1) {
+    const key = '2024-02-' + String(day).padStart(2, '0')
+    assert.equal(calendarDay($, key).length, 1, key)
+    assert.equal(calendarDetails($, key).length, 1, key)
+    assert.equal(calendarDetails($, key).find('h3').text(), '2월 ' + day + '일')
+  }
+  const empty = calendarDay($, '2024-02-02')
+  assert.equal(empty.attr('aria-label'), '2월 2일, 독서 기록 없음')
+  assert.equal(empty.find('img').length, 0)
+  assert.equal(empty.is('[disabled]'), false)
+  const details = calendarDetails($, '2024-02-02')
+  assert.equal(details.find('li').length, 0)
+  assert.match(details.text(), /0권 · 0분/)
+  assert.match(details.text(), /이날에는 독서 기록이 없습니다\./)
+})
+
+test('잘못되거나 미래인 month는 이번 달로 정규화하고 오늘과 미래 날짜를 구분한다', async () => {
+  const { today } = anchors
+  const month = today.slice(0, 7)
+  const todayLabel = Number(today.slice(5, 7)) + '월 ' + Number(today.slice(8)) + '일'
+  const dayCount = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate()
+
+  for (const value of [month, 'not-a-month', '2024-13', '2024-2', '2999-01']) {
+    const $ = await page('/reading-records?view=calendar&month=' + value, 'homeuser0000001')
+    assert.equal(
+      $('[aria-label="독서 달력"] h2').text(),
+      Number(today.slice(0, 4)) + '년 ' + Number(today.slice(5, 7)) + '월',
+      value
+    )
+    const days = $('button[aria-controls="reading-day-details"]')
+    assert.equal(days.length, dayCount, value)
+    assert.equal(calendarDay($, today).attr('aria-label'), todayLabel + ' 오늘, 1권 · 5분', value)
+    assert.equal(calendarDay($, today).attr('aria-current'), 'date')
+    assert.equal(calendarDay($, today).is('[disabled]'), false)
+    assert.equal(calendarDetails($, today).attr('style'), '')
+    assert.equal(days.filter('[disabled]').length, dayCount - Number(today.slice(8)))
+    assert.equal($('[aria-label="다음 달"]').attr('aria-disabled'), 'true')
+    assert.equal($('a[aria-label="다음 달"]').length, 0)
+  }
 })
 
 test('The home week marks days by Korean date, so 00:10 counts for today and 23:50 for yesterday', async () => {
