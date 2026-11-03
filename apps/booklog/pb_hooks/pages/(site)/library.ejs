@@ -175,7 +175,10 @@
       "lower(coalesce(books.title, '')) ASC"
     )
   } else {
-    libraryQuery.orderBy('book_shelves.last_read_at DESC', 'book_shelves.updated DESC')
+    libraryQuery.orderBy(
+      "coalesce(nullif(book_shelves.last_read_at, ''), book_shelves.created) DESC",
+      'book_shelves.updated DESC'
+    )
   }
 
   libraryQuery

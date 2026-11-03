@@ -169,7 +169,11 @@ test('A device saving from an older position cannot overwrite a newer position s
 
   const forced = 'epubcfi(/6/2!/4/10/1:0)'
   assert.equal((await save({ locator: forced, baseLocator: first, force: 'true' })).status, 200)
-  assert.equal((await save({ locator: 'epubcfi(/6/2!/4/12/1:0)' })).status, 200, 'a tab without baseLocator still saves')
+  assert.equal(
+    (await save({ locator: 'epubcfi(/6/2!/4/12/1:0)' })).status,
+    200,
+    'a tab without baseLocator still saves'
+  )
 })
 
 test('Imported schema blocks self-approval and approval at signup while ordinary profile updates remain allowed', async () => {
@@ -261,9 +265,13 @@ test('Concurrent uploads of the same new EPUB leave one book, one stored file an
       '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
     ),
     'OPS/book.opf': strToU8(
-      '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>' + title + '</dc:title><dc:creator>동시 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+      '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>'
+        + title
+        + '</dc:title><dc:creator>동시 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
     ),
-    'OPS/body.xhtml': strToU8('<html><body><p>같은 파일을 동시에 여러 번 올려도 한 권만 남아야 합니다.</p></body></html>'),
+    'OPS/body.xhtml': strToU8(
+      '<html><body><p>같은 파일을 동시에 여러 번 올려도 한 권만 남아야 합니다.</p></body></html>'
+    ),
   })
   const responses = await Promise.all(
     [1, 2, 3].map(() => {
@@ -297,12 +305,18 @@ test('Different readers uploading the same new EPUB at once share one book and f
       '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
     ),
     'OPS/book.opf': strToU8(
-      '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>' + title + '</dc:title><dc:creator>공유 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+      '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>'
+        + title
+        + '</dc:title><dc:creator>공유 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
     ),
     // 분석에 시간이 걸려야 세 요청이 실제로 겹치므로, 본문을 실제 책 한 권 정도로 키웁니다.
     'OPS/body.xhtml': strToU8(
       '<html><body>'
-        + Array.from({ length: 400 }, (_, index) => '<p>' + index + '번째 문단은 여러 독자가 같은 파일을 동시에 올려도 하나로 남는지 확인합니다.</p>').join('')
+        + Array.from(
+          { length: 400 },
+          (_, index) =>
+            '<p>' + index + '번째 문단은 여러 독자가 같은 파일을 동시에 올려도 하나로 남는지 확인합니다.</p>'
+        ).join('')
         + '</body></html>'
     ),
   })
@@ -323,7 +337,11 @@ test('Different readers uploading the same new EPUB at once share one book and f
   for (const response of responses) assert.equal(response.status, 303, messages.join('\n'))
   for (const message of messages) {
     assert.doesNotMatch(message, /UNIQUE|constraint|validation_/i)
-    assert.match(message, /EPUB 파일과 도서 메타데이터를 저장했습니다\.|기존 책과 파일을 찾아 서재에 연결했습니다\./, message)
+    assert.match(
+      message,
+      /EPUB 파일과 도서 메타데이터를 저장했습니다\.|기존 책과 파일을 찾아 서재에 연결했습니다\./,
+      message
+    )
   }
 
   const state = await (await request('/_test/upload-state?title=' + encodeURIComponent(title))).json()
@@ -354,7 +372,9 @@ test('A book whose body is one very large chapter file uploads in seconds and ge
       '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
     ),
     'OPS/book.opf': strToU8(
-      '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>' + title + '</dc:title><dc:creator>큰 챕터 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+      '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>'
+        + title
+        + '</dc:title><dc:creator>큰 챕터 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
     ),
     'OPS/body.xhtml': strToU8('<html><body>' + paragraphs.join('') + '</body></html>'),
   })
@@ -390,23 +410,30 @@ test('Renamed legacy EPUBs reuse the same file, while equal-size different conte
   const { zipSync, strToU8 } = require('fflate')
   const title = 'legacy-hash-rename-case'
   function buildEpub(letter) {
-    return zipSync({
-      'mimetype': strToU8('application/epub+zip'),
-      'META-INF/container.xml': strToU8(
-        '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
-      ),
-      'OPS/book.opf': strToU8(
-        '<package version="3.0"><metadata><title>' + title
-          + '</title><creator>테스트 저자</creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
-      ),
-      'OPS/body.xhtml': strToU8('<html><body><p>본문 ' + letter + '</p></body></html>'),
-    }, { level: 0 })
+    return zipSync(
+      {
+        'mimetype': strToU8('application/epub+zip'),
+        'META-INF/container.xml': strToU8(
+          '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+        ),
+        'OPS/book.opf': strToU8(
+          '<package version="3.0"><metadata><title>'
+            + title
+            + '</title><creator>테스트 저자</creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+        ),
+        'OPS/body.xhtml': strToU8('<html><body><p>본문 ' + letter + '</p></body></html>'),
+      },
+      { level: 0 }
+    )
   }
   async function upload(bytes, name, user) {
     const form = new FormData()
     form.set('epubFile', new Blob([bytes], { type: 'application/epub+zip' }), name)
     const response = await fetch(service.baseUrl + '/xapi/epub/upload', {
-      method: 'POST', headers: sessions[user], redirect: 'manual', body: form,
+      method: 'POST',
+      headers: sessions[user],
+      redirect: 'manual',
+      body: form,
     })
     assert.equal(response.status, 303)
     return response
@@ -426,7 +453,9 @@ test('Renamed legacy EPUBs reuse the same file, while equal-size different conte
   assert.equal(reused.bookCount, 1)
   assert.deepEqual(reused.files, [file])
   assert.deepEqual(reused.shelves.map((shelf) => shelf.userId).sort(), [
-    'reviewuser00001', 'reviewuser00002', 'reviewuser00004',
+    'reviewuser00001',
+    'reviewuser00002',
+    'reviewuser00004',
   ])
   assert.ok(reused.shelves.every((shelf) => shelf.bookFileId === file.id))
   const differentBytes = buildEpub('B')
@@ -449,12 +478,16 @@ test('A failed shelf save rolls back the new book, file record and stored EPUB f
     'OPS/book.opf': strToU8(
       '<package version="3.0"><metadata></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
     ),
-    'OPS/body.xhtml': strToU8('<html><body><p>도서함 저장이 실패하면 책과 파일이 모두 되돌려져야 합니다.</p></body></html>'),
+    'OPS/body.xhtml': strToU8(
+      '<html><body><p>도서함 저장이 실패하면 책과 파일이 모두 되돌려져야 합니다.</p></body></html>'
+    ),
   })
   const { storageRoot } = await (await request('/_test/upload-state?title=' + encodeURIComponent(title))).json()
   const storageDir = path.join(storageRoot, 'pbc_1101001002')
   const countStoredFiles = () =>
-    existsSync(storageDir) ? readdirSync(storageDir, { recursive: true }).filter((name) => /\.epub$/i.test(name)).length : 0
+    existsSync(storageDir)
+      ? readdirSync(storageDir, { recursive: true }).filter((name) => /\.epub$/i.test(name)).length
+      : 0
   const storedBefore = countStoredFiles()
   assert.ok(storedBefore > 0, 'storage path points at existing book_files uploads')
   await fetch(service.baseUrl + '/_test/fail-shelf-save?on=true', { method: 'POST' })
@@ -510,7 +543,11 @@ async function uploadEpub(user, bytes, name) {
 }
 
 test('Uploading another file of an existing book keeps its stored metadata and only fills blank fields', async () => {
-  const sharedMessage = await uploadEpub(1, buildIsbnEpub('9791100000014', '다른 판본 파일입니다.'), 'other-edition.epub')
+  const sharedMessage = await uploadEpub(
+    1,
+    buildIsbnEpub('9791100000014', '다른 판본 파일입니다.'),
+    'other-edition.epub'
+  )
   assert.match(sharedMessage, /저장했습니다/)
   const shared = await (await request('/_test/book?id=sharedbook00001')).json()
   assert.deepEqual(shared.fields, {
@@ -536,17 +573,19 @@ test('A re-saved shared file stays attached to its book even when its ISBN now p
   const bytes = buildIsbnEpub('9791100000038', '파일이 다른 책으로 옮겨 붙으면 안 됩니다.')
   await uploadEpub(1, bytes, 'move-guard.epub')
   const original = await (await request('/_test/book?isbn13=9791100000038')).json()
-  const { otherId } = await (await fetch(service.baseUrl + '/_test/prepare-move?bookId=' + original.id, { method: 'POST' })).json()
+  const { otherId } = await (
+    await fetch(service.baseUrl + '/_test/prepare-move?bookId=' + original.id, { method: 'POST' })
+  ).json()
 
   const message = await uploadEpub(2, bytes, 'move-guard.epub')
   assert.doesNotMatch(message, /문제가 발생했습니다/)
   const kept = await (await request('/_test/book?id=' + original.id)).json()
   assert.equal(kept.fields.isbn13, '9791100000045')
   assert.equal(kept.fileCount, 1, 'shared file still belongs to the original book')
-  assert.deepEqual(
-    kept.shelves.map((shelf) => shelf.userId + ':' + shelf.fileBookId).sort(),
-    ['reviewuser00001:' + original.id, 'reviewuser00002:' + original.id]
-  )
+  assert.deepEqual(kept.shelves.map((shelf) => shelf.userId + ':' + shelf.fileBookId).sort(), [
+    'reviewuser00001:' + original.id,
+    'reviewuser00002:' + original.id,
+  ])
   const other = await (await request('/_test/book?id=' + otherId)).json()
   assert.equal(other.fields.title, '같은 ISBN의 다른 책')
   assert.equal(other.fileCount, 0)
@@ -635,7 +674,10 @@ test('Saved reading or listening time marks the book as recently read and never 
       endedAt: new Date(endedAtMs).toISOString(),
       durationSeconds: '600',
     })
-  assert.equal((await request('/_test/shelf-last-read?at=' + encodeURIComponent('2020-01-01 00:00:00.000Z'), 1, {})).status, 200)
+  assert.equal(
+    (await request('/_test/shelf-last-read?at=' + encodeURIComponent('2020-01-01 00:00:00.000Z'), 1, {})).status,
+    200
+  )
 
   const listenedAt = Date.now() - 2 * 3_600_000
   assert.equal((await save('listenedsession', listenedAt)).status, 200)
@@ -654,7 +696,9 @@ test('A failing book search does not block the upload; the EPUB metadata is save
   const { zipSync, strToU8 } = require('fflate')
   const epub = zipSync({
     'mimetype': strToU8('application/epub+zip'),
-    'META-INF/container.xml': strToU8('<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'),
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+    ),
     'OPS/book.opf': strToU8(
       '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>검색장애 책</dc:title><dc:creator>장애 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
     ),
@@ -671,7 +715,9 @@ test('Re-reading metadata matched to an ISBN another book already uses fills the
   const { zipSync, strToU8 } = require('fflate')
   const epub = zipSync({
     'mimetype': strToU8('application/epub+zip'),
-    'META-INF/container.xml': strToU8('<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'),
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+    ),
     'OPS/book.opf': strToU8(
       '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>재분석 충돌 책</dc:title><dc:creator>충돌 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
     ),
@@ -712,8 +758,12 @@ test('An EPUB whose text expands far beyond a real book is rejected before it is
   const { zipSync, strToU8 } = require('fflate')
   const bomb = zipSync({
     'mimetype': strToU8('application/epub+zip'),
-    'META-INF/container.xml': strToU8('<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'),
-    'OPS/book.opf': strToU8('<package version="3.0"><metadata></metadata><manifest></manifest><spine></spine></package>'),
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+    ),
+    'OPS/book.opf': strToU8(
+      '<package version="3.0"><metadata></metadata><manifest></manifest><spine></spine></package>'
+    ),
     'OPS/body.xhtml': new Uint8Array(17 * 1024 * 1024).fill(32),
   })
   assert.ok(bomb.length < 1024 * 1024, 'a small upload that expands to 17MB')
@@ -783,7 +833,10 @@ test('Administrators can search all books, see members and delete unused books',
     .map((_index, item) => load(item).text().trim())
     .get()
   assert.equal(members.length, 2, 'each connected member is on its own line')
-  assert.ok(members.some((member) => member === 'reader4'), 'an email is shown without its domain')
+  assert.ok(
+    members.some((member) => member === 'reader4'),
+    'an email is shown without its domain'
+  )
   assert.ok(members.every((member) => !member.includes(',') && !member.includes('@')))
   assert.match(cells.eq(1).text(), /2개/)
   assert.match(cells.eq(1).text(), /EPUB 8 B · 2개/)
@@ -801,9 +854,12 @@ test('Oldest reading order puts unread books first and uses the latest reading a
   const response = await request(query, 4)
   assert.equal(response.status, 200)
   const listing = load(await response.text())
-  assert.deepEqual(listing('tbody tr th h2').map((_i, element) => listing(element).text().trim()).get(), [
-    '독서정렬검증 0', '독서정렬검증 2', '독서정렬검증 1',
-  ])
+  assert.deepEqual(
+    listing('tbody tr th h2')
+      .map((_i, element) => listing(element).text().trim())
+      .get(),
+    ['독서정렬검증 0', '독서정렬검증 2', '독서정렬검증 1']
+  )
   assert.equal(listing('#admin-book-sort option[selected]').val(), 'oldestRead')
   const rows = listing('tbody tr')
   assert.match(rows.eq(0).text(), /마지막 독서: 기록 없음/)
@@ -821,10 +877,19 @@ test('Administrators filter books by connected user together with search, scope 
     assert.equal(listing('tbody tr th h2').text().trim(), '관리 대상 책')
     assert.equal(listing('#admin-book-user option[selected]').val(), 'reviewuser00001')
     assert.equal(listing('#admin-book-user').closest('details').is('[open]'), true)
-    const action = new URL(listing('a').filter((_i, link) => listing(link).text().trim() === '책 배정').attr('href'), service.baseUrl)
+    const action = new URL(
+      listing('a')
+        .filter((_i, link) => listing(link).text().trim() === '책 배정')
+        .attr('href'),
+      service.baseUrl
+    )
     assert.equal(action.searchParams.get('user'), 'reviewuser00001')
   }
-  for (const suffix of ['&user=reviewuser00002', '&scope=unused&user=reviewuser00001', '&user=' + encodeURIComponent("' OR 1=1 --")]) {
+  for (const suffix of [
+    '&user=reviewuser00002',
+    '&scope=unused&user=reviewuser00001',
+    '&user=' + encodeURIComponent("' OR 1=1 --"),
+  ]) {
     const response = await request(query + suffix, 4)
     assert.equal(response.status, 200)
     assert.equal(load(await response.text())('tbody tr th h2').length, 0)
@@ -845,6 +910,20 @@ test('Administrators assign shared EPUBs only to users without the book', async 
   }
   assert.deepEqual((await (await request('/_test/admin-state')).json()).counts, beforeState.counts)
   try {
+    const olderBookAssignment = await request(route, 4, {
+      action: 'assign',
+      bookId: 'reviewbook00001',
+      targetUserId: 'reviewuser00002',
+    })
+    assert.equal(olderBookAssignment.status, 303)
+    const olderReadAt = await request(
+      '/_test/shelf-last-read?userId=reviewuser00002&bookId=reviewbook00001&at='
+        + encodeURIComponent('2000-01-01T00:00:00.000Z'),
+      4,
+      {}
+    )
+    assert.equal(olderReadAt.status, 200)
+    const beforeAssignmentState = await (await request('/_test/admin-state')).json()
     const assigned = await request(route, 4, input)
     assert.equal(assigned.status, 303)
     const location = new URL(assigned.headers.get('location'), service.baseUrl)
@@ -854,8 +933,14 @@ test('Administrators assign shared EPUBs only to users without the book', async 
     assert.equal(location.searchParams.get('q'), '관리 저자')
     assert.match(decodeURIComponent(assigned.headers.get('location')), /도서함에 책을 배정/)
     const state = await (await request('/_test/admin-state')).json()
-    assert.equal(state.counts.book_shelves, beforeState.counts.book_shelves + 1)
+    assert.equal(state.counts.book_shelves, beforeAssignmentState.counts.book_shelves + 1)
     assert.equal(state.counts.book_files, beforeState.counts.book_files)
+    const library = load(await (await request('/library', 2)).text())
+    assert.equal(
+      new URL(library('a[data-book-detail]').first().attr('href'), service.baseUrl).pathname,
+      '/books/adminbook000001'
+    )
+
     const file = await request('/xapi/books/adminbook000001/read-file', 2)
     assert.equal(file.status, 200)
     assert.equal((await file.arrayBuffer()).byteLength, 4)
@@ -869,6 +954,7 @@ test('Administrators assign shared EPUBs only to users without the book', async 
     assert.deepEqual((await (await request('/_test/admin-state')).json()).counts, state.counts)
   } finally {
     await request('/xapi/books/remove-from-shelf', 2, { bookId: input.bookId })
+    await request('/xapi/books/remove-from-shelf', 2, { bookId: 'reviewbook00001' })
   }
   assert.deepEqual((await (await request('/_test/admin-state')).json()).counts, beforeState.counts)
 })
@@ -913,7 +999,9 @@ test('Storage ordering covers all pages, preserves filters and escapes expandabl
   assert.equal(redirectUrl.searchParams.get('page'), '2')
   try {
     assert.equal((await request('/_test/missing-audio?on=true', 4, { action: 'hide' })).status, 200)
-    const unavailable = load(await (await request('/admin/books?scope=all&sort=size&q=' + encodeURIComponent('관리 대상 책'), 4)).text())
+    const unavailable = load(
+      await (await request('/admin/books?scope=all&sort=size&q=' + encodeURIComponent('관리 대상 책'), 4)).text()
+    )
     const storage = unavailable('tbody tr').first().find('td').eq(1)
     assert.equal(storage.find('span').first().text(), '확인 불가')
     assert.match(storage.text(), /오디오 확인 불가/)

@@ -60,12 +60,19 @@ onBootstrap(function (event) {
       file_hash: $security.sha256('last-read-' + index),
     })
     saveRecord('book_shelves', {
-      user_id: 'reviewuser00004', book_id: bookId, book_file_id: file.get('id'), status: 'queued',
-      last_read_at: index === 0 ? '' : dateutil.toDbDateTime(index === 1 ? '2026-01-01T00:00:00Z' : '2026-02-01T00:00:00Z'),
+      user_id: 'reviewuser00004',
+      book_id: bookId,
+      book_file_id: file.get('id'),
+      status: 'queued',
+      last_read_at:
+        index === 0 ? '' : dateutil.toDbDateTime(index === 1 ? '2026-01-01T00:00:00Z' : '2026-02-01T00:00:00Z'),
     })
     if (index === 1) {
       saveRecord('book_shelves', {
-        user_id: 'reviewuser00001', book_id: bookId, book_file_id: file.get('id'), status: 'reading',
+        user_id: 'reviewuser00001',
+        book_id: bookId,
+        book_file_id: file.get('id'),
+        status: 'reading',
         last_read_at: dateutil.toDbDateTime('2026-03-01T00:00:00Z'),
       })
     }
@@ -170,8 +177,11 @@ routerAdd('POST', '/_test/missing-audio', function (event) {
   const chunk = $app.findFirstRecordByFilter('book_audio_chunks', "file_id = 'adminfile000001'")
   if (missing) $app.store().set('originalAudioFile', chunk.get('audio_file'))
   const audioFile = missing ? 'missing.mp3' : String($app.store().get('originalAudioFile'))
-  $app.db().newQuery('UPDATE book_audio_chunks SET audio_file = {:audioFile} WHERE id = {:id}')
-    .bind({ audioFile, id: chunk.id }).execute()
+  $app
+    .db()
+    .newQuery('UPDATE book_audio_chunks SET audio_file = {:audioFile} WHERE id = {:id}')
+    .bind({ audioFile, id: chunk.id })
+    .execute()
   return event.json(200, { ok: true })
 })
 
@@ -239,11 +249,12 @@ routerAdd('GET', '/_test/access-state', function (event) {
 })
 
 routerAdd('POST', '/_test/shelf-last-read', function (event) {
+  const query = event.request.url.query()
   const shelf = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
-    userId: 'reviewuser00001',
-    bookId: 'reviewbook00001',
+    userId: String(query.get('userId') || 'reviewuser00001'),
+    bookId: String(query.get('bookId') || 'reviewbook00001'),
   })
-  shelf.set('last_read_at', String(event.request.url.query().get('at')))
+  shelf.set('last_read_at', String(query.get('at')))
   $app.save(shelf)
   return event.json(200, { ok: true })
 })
@@ -298,12 +309,16 @@ routerAdd('GET', '/_test/upload-state', function (event) {
   const files = []
   const shelves = []
   books.forEach(function (book) {
-    $app.findRecordsByFilter('book_files', 'book_id = {:bookId}', '', 0, 0, { bookId: book.id }).forEach(function (file) {
-      files.push({ id: file.id, path: file.baseFilesPath() + '/' + file.get('stored_file') })
-    })
-    $app.findRecordsByFilter('book_shelves', 'book_id = {:bookId}', '', 0, 0, { bookId: book.id }).forEach(function (shelf) {
-      shelves.push({ userId: shelf.get('user_id'), bookFileId: shelf.get('book_file_id') })
-    })
+    $app
+      .findRecordsByFilter('book_files', 'book_id = {:bookId}', '', 0, 0, { bookId: book.id })
+      .forEach(function (file) {
+        files.push({ id: file.id, path: file.baseFilesPath() + '/' + file.get('stored_file') })
+      })
+    $app
+      .findRecordsByFilter('book_shelves', 'book_id = {:bookId}', '', 0, 0, { bookId: book.id })
+      .forEach(function (shelf) {
+        shelves.push({ userId: shelf.get('user_id'), bookFileId: shelf.get('book_file_id') })
+      })
   })
   return event.json(200, { bookCount: books.length, files, shelves, storageRoot: $app.dataDir() + '/storage' })
 })
