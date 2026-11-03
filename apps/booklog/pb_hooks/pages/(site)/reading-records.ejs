@@ -37,13 +37,13 @@
   const calendarHref = '/reading-records?view=calendar&month=' + monthKey
   const weeklyHref =
     requestedWeekValue && parseDateValue(requestedWeekValue)
-      ? '/reading-records?week=' + encodeURIComponent(requestedWeekValue)
-      : '/reading-records'
+      ? '/reading-records?view=weekly&week=' + encodeURIComponent(requestedWeekValue)
+      : '/reading-records?view=weekly'
   const monthLabel = dateutil.formatDate(monthStartKey, 'YYYY년 M월')
   const calendarDays = []
   const calendarCells = []
   const daysByKey = {}
-  const weekdayLabels = ['일', '월', '화', '수', '목', '금', '토']
+  const weekdayLabels = ['월', '화', '수', '목', '금', '토', '일']
   let monthSeconds = 0
   let readingDayCount = 0
 
@@ -265,7 +265,7 @@
   }
 
   if (isCalendarView) {
-    const leadingDays = Number(dateutil.formatDate(monthStartKey, 'd'))
+    const leadingDays = (Number(dateutil.formatDate(monthStartKey, 'd')) + 6) % 7
     for (let index = 0; index < leadingDays; index += 1) {
       calendarCells.push(null)
     }
@@ -387,6 +387,27 @@
   const monthMinutesLabel = monthSeconds > 0 && monthSeconds < 60 ? '1분 미만' : formatMinutesLabel(monthSeconds / 60)
 </script>
 
+<script>
+  ;(function () {
+    const storageKey = 'booklog.readingRecords.view'
+    const url = new URL(window.location.href)
+    const view = url.searchParams.get('view')
+
+    try {
+      if (view === 'calendar' || view === 'weekly') {
+        window.localStorage.setItem(storageKey, view)
+      } else if (url.searchParams.has('week')) {
+        window.localStorage.setItem(storageKey, 'weekly')
+      } else if (window.localStorage.getItem(storageKey) === 'calendar') {
+        url.searchParams.set('view', 'calendar')
+        window.location.replace(url.pathname + url.search + url.hash)
+      }
+    } catch (error) {
+      // 저장소 사용이 제한된 브라우저에서는 기본 보기와 링크 이동을 유지합니다.
+    }
+  })()
+</script>
+
 <section class="space-y-6">
   <div class="space-y-3">
     <a
@@ -489,7 +510,7 @@
         </div>
         <% if (!isCurrentPeriod) { %>
         <a
-          href="/reading-records"
+          href="/reading-records?view=weekly"
           class="self-center text-xs font-semibold text-stone-500 no-underline sm:self-auto">
           이번 주로 돌아가기
         </a>
@@ -568,7 +589,7 @@
     x-data="{ selectedDay: '<%= selectedDayKey %>' }"
     aria-label="독서 달력"
     class="rounded-[1.6rem] border border-stone-200/80 bg-white/80 p-3 shadow-[0_18px_45px_rgba(73,54,31,0.08)] sm:rounded-[2rem] sm:p-5">
-    <div class="mb-5 flex items-center justify-between gap-3">
+    <div class="mb-3 flex items-center justify-between gap-3">
       <a
         href="<%= previousMonthHref %>"
         aria-label="이전 달"

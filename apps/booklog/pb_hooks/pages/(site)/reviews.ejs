@@ -1,6 +1,6 @@
 <script server>
   meta('title', '북로그 감상평')
-  meta('description', '북로그 감상평 리스트')
+  meta('description', '북로그 감상평 목록')
 
   const { dateutil } = require('@pocketpages/utils')
   const bookTitleService = resolve('book-title')
@@ -52,7 +52,7 @@
   }
 
   /**
-   * 감상평 리스트 이동 링크를 만듭니다.
+   * 감상평 목록 이동 링크를 만듭니다.
    *
    * @param {{ q?: string, limit?: number }} options 링크 옵션
    * @returns {string} 이동 링크
@@ -140,7 +140,7 @@
         aria-hidden="true"></span>
       메인으로
     </a>
-    <h1 class="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">감상평 리스트</h1>
+    <h1 class="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">감상평 목록</h1>
   </div>
 
   <% if (flashMessage) { %>

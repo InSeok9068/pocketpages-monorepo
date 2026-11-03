@@ -43,7 +43,7 @@
     requestedStatus === 'queued' || requestedStatus === 'reading' || requestedStatus === 'finished'
       ? requestedStatus
       : 'all'
-  const sortMode = requestedSort === 'title' ? 'title' : 'recent'
+  const sortMode = ['added', 'title', 'author'].indexOf(requestedSort) !== -1 ? requestedSort : 'recent'
   const libraryBooks = []
   const normalizedQuery = queryText.toLowerCase()
 
@@ -153,12 +153,23 @@
   if (sortMode === 'title') {
     libraryQuery.orderBy(
       "lower(coalesce(nullif(books.title_sort, ''), books.title, '')) ASC",
-      "lower(coalesce(books.title, '')) ASC"
+      "lower(coalesce(books.title, '')) ASC",
+      'book_shelves.id ASC'
     )
+  } else if (sortMode === 'author') {
+    libraryQuery.orderBy(
+      "CASE WHEN trim(coalesce(books.author, '')) = '' THEN 1 ELSE 0 END ASC",
+      "lower(trim(coalesce(books.author, ''))) ASC",
+      "lower(coalesce(nullif(books.title_sort, ''), books.title, '')) ASC",
+      'book_shelves.id ASC'
+    )
+  } else if (sortMode === 'added') {
+    libraryQuery.orderBy('book_shelves.created DESC', 'book_shelves.id ASC')
   } else {
     libraryQuery.orderBy(
       "coalesce(nullif(book_shelves.last_read_at, ''), book_shelves.created) DESC",
-      'book_shelves.updated DESC'
+      'book_shelves.updated DESC',
+      'book_shelves.id ASC'
     )
   }
 

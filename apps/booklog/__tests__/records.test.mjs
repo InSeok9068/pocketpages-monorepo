@@ -14,6 +14,7 @@ import {
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { load } from 'cheerio'
+import { chromium } from '@playwright/test'
 import { startService } from '@pocketpages/test-support/service-harness'
 
 const serviceDir = fileURLToPath(new URL('../', import.meta.url))
@@ -125,6 +126,49 @@ function calendarDetails($, key) {
   )
 }
 
+test('마지막 독서 기록 보기를 복원하고 명시한 보기와 주차 링크를 우선한다', async () => {
+  const browser = await chromium.launch({ channel: 'chrome', headless: true })
+  try {
+    const context = await browser.newContext()
+    await context.route('https://**/*', (route) => route.abort())
+    const entry = sessions.recorduser00001.Cookie
+    const separator = entry.indexOf('=')
+    await context.addCookies([
+      { name: entry.slice(0, separator), value: entry.slice(separator + 1), url: service.baseUrl },
+    ])
+    const browserPage = await context.newPage()
+    browserPage.setDefaultTimeout(10000)
+    const storageKey = 'booklog.readingRecords.view'
+    await browserPage.goto(service.baseUrl + '/reading-records')
+    await browserPage.getByRole('link', { name: '달력 보기', exact: true }).click()
+    await browserPage.waitForURL('**/reading-records?view=calendar&month=*')
+    assert.equal(await browserPage.evaluate((key) => globalThis.localStorage.getItem(key), storageKey), 'calendar')
+    await browserPage.goto(service.baseUrl + '/reading-records')
+    await browserPage.waitForURL('**/reading-records?view=calendar')
+    await browserPage.getByRole('link', { name: '주차별 보기', exact: true }).click()
+    await browserPage.waitForURL('**/reading-records?view=weekly')
+    assert.equal(await browserPage.evaluate((key) => globalThis.localStorage.getItem(key), storageKey), 'weekly')
+    await browserPage.goto(service.baseUrl + '/reading-records')
+    await browserPage.getByRole('heading', { name: '주차별 독서 시간' }).waitFor()
+    await browserPage.evaluate((key) => globalThis.localStorage.setItem(key, 'calendar'), storageKey)
+    await browserPage.goto(service.baseUrl + '/reading-records?week=' + anchors.monday)
+    await browserPage.getByRole('heading', { name: '주차별 독서 시간' }).waitFor()
+    assert.equal(await browserPage.evaluate((key) => globalThis.localStorage.getItem(key), storageKey), 'weekly')
+    await context.addInitScript(() => {
+      Object.defineProperty(globalThis, 'localStorage', {
+        get() {
+          throw new Error('storage blocked')
+        },
+      })
+    })
+    await browserPage.goto(service.baseUrl + '/reading-records')
+    await browserPage.getByRole('link', { name: '달력 보기', exact: true }).click()
+    await browserPage.getByRole('region', { name: '독서 달력' }).waitFor()
+  } finally {
+    await browser.close()
+  }
+})
+
 test('Reading records split weeks at Monday 00:00 Korean time and only count this reader’s timed sessions', async () => {
   const { monday } = anchors
   const $ = await page('/reading-records', 'recorduser00001')
@@ -168,7 +212,7 @@ test('Moving to the previous four weeks shows the session that fell just before 
   )
 
   assert.equal($('a[aria-label="다음 4주"]').attr('href'), '/reading-records?week=' + monday)
-  assert.equal($('a[href="/reading-records"]:contains("이번 주로 돌아가기")').length, 1)
+  assert.equal($('a[href="/reading-records?view=weekly"]:contains("이번 주로 돌아가기")').length, 1)
 
   $ = await page('/reading-records?week=2999-01-07', 'recorduser00001')
   assert.equal(weekRows($).at(-1).key, monday)
@@ -242,6 +286,27 @@ test('달력의 모든 날짜 버튼은 해당 날짜 상세와 연결되고 빈
   assert.equal(details.find('li').length, 0)
   assert.match(details.text(), /0권 · 0분/)
   assert.match(details.text(), /이날에는 독서 기록이 없습니다\./)
+})
+
+test('독서 달력은 월요일부터 일요일까지 배치하고 월초 빈칸을 맞춘다', async () => {
+  for (const [month, leading] of [
+    ['2024-01', 0],
+    ['2024-02', 3],
+    ['2024-09', 6],
+  ]) {
+    const $ = await page('/reading-records?view=calendar&month=' + month, 'calendaruser001')
+    const grid = $('[aria-label="독서 달력"] .grid-cols-7')
+    assert.deepEqual(
+      grid
+        .children('span')
+        .toArray()
+        .map((label) => $(label).text().trim()),
+      ['월', '화', '수', '목', '금', '토', '일']
+    )
+    const cells = grid.children('div, button')
+    assert.equal(cells.index(calendarDay($, month + '-01')), leading)
+    assert.equal(cells.length % 7, 0)
+  }
 })
 
 test('잘못되거나 미래인 month는 이번 달로 정규화하고 오늘과 미래 날짜를 구분한다', async () => {

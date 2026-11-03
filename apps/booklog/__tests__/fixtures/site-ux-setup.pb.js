@@ -3,6 +3,7 @@ onBootstrap(function (event) {
   event.next()
   $app.importCollectionsByMarshaledJSON($os.readFile(__hooks + '/test-schema.json'), false)
 
+  const { dateutil } = require('@pocketpages/utils')
   const user = new Record($app.findCollectionByNameOrId('users'))
   user.set('id', 'user00000000001')
   user.set('email', 'reader@example.com')
@@ -16,6 +17,7 @@ onBootstrap(function (event) {
     const book = new Record($app.findCollectionByNameOrId('books'))
     book.set('id', 'book' + suffix)
     book.set('title', '테스트 책 ' + index)
+    book.set('author', index === 55 ? '' : '저자 ' + ('00' + (56 - index)).slice(-2))
     $app.save(book)
 
     const shelf = new Record($app.findCollectionByNameOrId('book_shelves'))
@@ -23,6 +25,11 @@ onBootstrap(function (event) {
     shelf.set('book_id', book.id)
     shelf.set('status', 'reading')
     $app.save(shelf)
+    $app
+      .db()
+      .newQuery('UPDATE book_shelves SET created = {:created} WHERE id = {:id}')
+      .bind({ created: dateutil.toDbDateTime(dateutil.addDays('2026-01-01', index)), id: shelf.id })
+      .execute()
 
     const review = new Record($app.findCollectionByNameOrId('book_reviews'))
     review.set('user_id', user.id)

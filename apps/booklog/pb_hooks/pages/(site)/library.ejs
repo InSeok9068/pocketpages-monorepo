@@ -30,7 +30,7 @@
     requestedStatus === 'queued' || requestedStatus === 'reading' || requestedStatus === 'finished'
       ? requestedStatus
       : 'all'
-  const sortMode = requestedSort === 'title' ? 'title' : 'recent'
+  const sortMode = ['added', 'title', 'author'].indexOf(requestedSort) !== -1 ? requestedSort : 'recent'
   const visibleLimit =
     isNaN(requestedLimit) || requestedLimit < 1
       ? 50
@@ -172,12 +172,23 @@
   if (sortMode === 'title') {
     libraryQuery.orderBy(
       "lower(coalesce(nullif(books.title_sort, ''), books.title, '')) ASC",
-      "lower(coalesce(books.title, '')) ASC"
+      "lower(coalesce(books.title, '')) ASC",
+      'book_shelves.id ASC'
     )
+  } else if (sortMode === 'author') {
+    libraryQuery.orderBy(
+      "CASE WHEN trim(coalesce(books.author, '')) = '' THEN 1 ELSE 0 END ASC",
+      "lower(trim(coalesce(books.author, ''))) ASC",
+      "lower(coalesce(nullif(books.title_sort, ''), books.title, '')) ASC",
+      'book_shelves.id ASC'
+    )
+  } else if (sortMode === 'added') {
+    libraryQuery.orderBy('book_shelves.created DESC', 'book_shelves.id ASC')
   } else {
     libraryQuery.orderBy(
       "coalesce(nullif(book_shelves.last_read_at, ''), book_shelves.created) DESC",
-      'book_shelves.updated DESC'
+      'book_shelves.updated DESC',
+      'book_shelves.id ASC'
     )
   }
 
@@ -267,64 +278,118 @@
         </div>
 
         <div
-          class="-mx-1 [scrollbar-width:none] overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          <div class="flex w-max min-w-full items-center gap-2">
-            <a
-              href="<%= buildLibraryHref({ status: 'all', limit: 50 }) %>"
-              aria-pressed="<%= statusFilter === 'all' ? 'true' : 'false' %>"
-              class="<%= statusFilter === 'all' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
-              전체
-            </a>
-            <a
-              href="<%= buildLibraryHref({ status: 'queued', limit: 50 }) %>"
-              aria-pressed="<%= statusFilter === 'queued' ? 'true' : 'false' %>"
-              class="<%= statusFilter === 'queued' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
-              읽을 예정
-            </a>
-            <a
-              href="<%= buildLibraryHref({ status: 'reading', limit: 50 }) %>"
-              aria-pressed="<%= statusFilter === 'reading' ? 'true' : 'false' %>"
-              class="<%= statusFilter === 'reading' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
-              읽는 중
-            </a>
-            <a
-              href="<%= buildLibraryHref({ status: 'finished', limit: 50 }) %>"
-              aria-pressed="<%= statusFilter === 'finished' ? 'true' : 'false' %>"
-              class="<%= statusFilter === 'finished' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
-              완독
-            </a>
-            <label class="relative ml-auto shrink-0">
-              <span class="sr-only">도서함 정렬</span>
-              <select
-                name="sort"
-                x-on:change="$el.form.requestSubmit()"
-                class="h-10 appearance-none rounded-full border-0 bg-white/88 pr-9 pl-4 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none">
-                <option
-                  value="recent"
-                  <% if (sortMode === 'recent') { %>selected<% } %>>
-                  최근 읽은 순
-                </option>
-                <option
-                  value="title"
-                  <% if (sortMode === 'title') { %>selected<% } %>>
-                  제목순
-                </option>
-              </select>
-              <span
-                class="i-lucide-chevron-down pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-stone-400"
-                aria-hidden="true"></span>
-            </label>
-            <% if (queryText) { %>
-            <a
-              href="<%= buildLibraryHref({ q: '', limit: 50 }) %>"
-              aria-label="검색어 지우기"
-              class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/88 text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
-              <span
-                class="i-lucide-x h-4 w-4"
-                aria-hidden="true"></span>
-            </a>
-            <% } %>
+          x-data="{
+            canScrollRight: false,
+            hasOverflow: false,
+            observer: null,
+            update() {
+              const list = this.$refs.filters
+              this.hasOverflow = this.$refs.items.scrollWidth > this.$refs.filterRow.clientWidth - 8
+              this.canScrollRight = list.scrollWidth - list.clientWidth - list.scrollLeft > 1
+            },
+            init() {
+              this.$nextTick(() => {
+                this.update()
+                this.observer = new ResizeObserver(() => this.update())
+                this.observer.observe(this.$refs.filterRow)
+                this.observer.observe(this.$refs.filters)
+                this.observer.observe(this.$refs.items)
+              })
+            },
+            destroy() {
+              if (this.observer) this.observer.disconnect()
+            }
+          }"
+          x-ref="filterRow"
+          :class="hasOverflow ? 'pr-8' : ''"
+          class="relative -mx-1">
+          <div
+            id="library-filters"
+            x-ref="filters"
+            @scroll.passive="update()"
+            class="[scrollbar-width:none] overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div
+              x-ref="items"
+              class="flex w-max min-w-full items-center gap-2">
+              <a
+                href="<%= buildLibraryHref({ status: 'all', limit: 50 }) %>"
+                aria-pressed="<%= statusFilter === 'all' ? 'true' : 'false' %>"
+                class="<%= statusFilter === 'all' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
+                전체
+              </a>
+              <a
+                href="<%= buildLibraryHref({ status: 'queued', limit: 50 }) %>"
+                aria-pressed="<%= statusFilter === 'queued' ? 'true' : 'false' %>"
+                class="<%= statusFilter === 'queued' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
+                읽을 예정
+              </a>
+              <a
+                href="<%= buildLibraryHref({ status: 'reading', limit: 50 }) %>"
+                aria-pressed="<%= statusFilter === 'reading' ? 'true' : 'false' %>"
+                class="<%= statusFilter === 'reading' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
+                읽는 중
+              </a>
+              <a
+                href="<%= buildLibraryHref({ status: 'finished', limit: 50 }) %>"
+                aria-pressed="<%= statusFilter === 'finished' ? 'true' : 'false' %>"
+                class="<%= statusFilter === 'finished' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
+                완독
+              </a>
+              <label class="relative ml-auto shrink-0">
+                <span class="sr-only">도서함 정렬</span>
+                <select
+                  name="sort"
+                  x-on:change="$el.form.requestSubmit()"
+                  class="h-10 appearance-none rounded-full border-0 bg-white/88 pr-9 pl-4 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none">
+                  <option
+                    value="recent"
+                    <% if (sortMode === 'recent') { %>selected<% } %>>
+                    최근 읽은 순
+                  </option>
+                  <option
+                    value="added"
+                    <% if (sortMode === 'added') { %>selected<% } %>>
+                    최근 추가한 순
+                  </option>
+                  <option
+                    value="title"
+                    <% if (sortMode === 'title') { %>selected<% } %>>
+                    제목순
+                  </option>
+                  <option
+                    value="author"
+                    <% if (sortMode === 'author') { %>selected<% } %>>
+                    저자순
+                  </option>
+                </select>
+                <span
+                  class="i-lucide-chevron-down pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-stone-400"
+                  aria-hidden="true"></span>
+              </label>
+              <% if (queryText) { %>
+              <a
+                href="<%= buildLibraryHref({ q: '', limit: 50 }) %>"
+                aria-label="검색어 지우기"
+                class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/88 text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
+                <span
+                  class="i-lucide-x h-4 w-4"
+                  aria-hidden="true"></span>
+              </a>
+              <% } %>
+            </div>
           </div>
+          <button
+            type="button"
+            x-show="canScrollRight"
+            style="display: none"
+            @click="$refs.filters.scrollBy({ left: Math.max(120, $refs.filters.clientWidth / 2), behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })"
+            aria-label="오른쪽 필터 더 보기"
+            aria-controls="library-filters"
+            class="absolute top-0 right-0 inline-flex h-10 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-stone-500 hover:text-stone-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500">
+            <span
+              class="i-lucide-chevron-right h-4 w-4"
+              aria-hidden="true"></span>
+          </button>
         </div>
       </form>
     </div>

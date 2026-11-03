@@ -259,6 +259,80 @@ test('Browser restores drafts, clears them after successful saves, updates expan
   await context.close()
 })
 
+test('도서함의 추가일·저자 정렬은 더 보기와 전체 목록에서 같은 순서와 링크 조건을 유지한다', async () => {
+  for (const sort of ['added', 'author']) {
+    const route = '/library?q=테스트&status=reading&sort=' + sort
+    const first = await html(route)
+    const more = await html('/xapi/library-more?offset=50&q=테스트&status=reading&sort=' + sort)
+    const full = await html(route + '&limit=100')
+    const bookIds = ($) =>
+      $('a[data-book-detail]')
+        .toArray()
+        .map((link) => new URL($(link).attr('href'), service.baseUrl).pathname)
+    const expected = Array.from({ length: sort === 'added' ? 55 : 54 }, (_, index) =>
+      sort === 'added' ? 55 - index : 54 - index
+    )
+    if (sort === 'author') expected.push(55)
+    assert.deepEqual(
+      bookIds(full),
+      expected.map((number) => '/books/book' + String(number).padStart(11, '0'))
+    )
+    assert.deepEqual([...bookIds(first), ...bookIds(more)], bookIds(full))
+    assert.equal(first('select[name="sort"]').val(), sort)
+    assert.deepEqual(
+      first('select[name="sort"] option')
+        .toArray()
+        .map((option) => first(option).text().trim()),
+      ['최근 읽은 순', '최근 추가한 순', '제목순', '저자순']
+    )
+    assert.match(first('#library-more-control a').attr('hx-get'), new RegExp('sort=' + sort))
+    const detailUrl = new URL(more('a[data-book-detail]').first().attr('href'), service.baseUrl)
+    assert.equal(decodeURI(detailUrl.searchParams.get('from')), route + '&limit=100')
+  }
+  const fallback = await html('/library?sort=unknown')
+  assert.equal(fallback('select[name="sort"]').val(), 'recent')
+})
+
+test('도서함 필터 화살표는 스크롤 영역 밖에 표시되고 끝까지 이동하거나 화면이 넓어지면 숨겨진다', async () => {
+  const filterBrowser = await chromium.launch({ channel: 'chrome', headless: true })
+  try {
+    const context = await filterBrowser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' })
+    await context.route('https://**/*', (route) => route.abort())
+    await context.addCookies(
+      cookie.split('; ').map((entry) => {
+        const separator = entry.indexOf('=')
+        return { name: entry.slice(0, separator), value: entry.slice(separator + 1), url: service.baseUrl }
+      })
+    )
+    const page = await context.newPage()
+    page.setDefaultTimeout(10000)
+    await page.goto(service.baseUrl + '/library')
+    const arrow = page.getByRole('button', { name: '오른쪽 필터 더 보기' })
+    await arrow.waitFor({ state: 'visible' })
+    const listBox = await page.locator('#library-filters').boundingBox()
+    const arrowBox = await arrow.boundingBox()
+    assert.ok(arrowBox.x >= listBox.x + listBox.width, 'the arrow does not cover the filters')
+    await arrow.click()
+    await page.waitForFunction(() => document.querySelector('#library-filters').scrollLeft > 0)
+    await page.locator('#library-filters').evaluate((list) => {
+      list.scrollLeft = list.scrollWidth
+    })
+    await arrow.waitFor({ state: 'hidden' })
+    await page.locator('#library-filters').evaluate((list) => {
+      list.scrollLeft = 0
+    })
+    await arrow.waitFor({ state: 'visible' })
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await arrow.waitFor({ state: 'hidden' })
+    assert.equal(
+      await page.locator('[x-ref="filterRow"]').evaluate((row) => globalThis.getComputedStyle(row).paddingRight),
+      '0px'
+    )
+  } finally {
+    await filterBrowser.close()
+  }
+})
+
 test('Home counts every shelf book and points to the library when the chosen status is beyond the first 50', async () => {
   const $ = await html('/')
   const data = $('[x-data*="loadedShelfStatusCounts"]').attr('x-data')

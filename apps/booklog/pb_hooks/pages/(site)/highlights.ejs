@@ -1,6 +1,6 @@
 <script server>
   meta('title', '북로그 문구')
-  meta('description', '북로그 인상 깊은 문구 리스트')
+  meta('description', '북로그 인상 깊은 문구 목록')
 
   const { dateutil } = require('@pocketpages/utils')
   const bookTitleService = resolve('book-title')
@@ -63,7 +63,7 @@
   }
 
   /**
-   * 문구 리스트 이동 링크를 만듭니다.
+   * 문구 목록 이동 링크를 만듭니다.
    *
    * @param {{ q?: string, limit?: number }} options 링크 옵션
    * @returns {string} 이동 링크
@@ -162,7 +162,7 @@
         aria-hidden="true"></span>
       <%= bookId ? '책으로' : '메인으로' %>
     </a>
-    <h1 class="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">인상 깊은 문구 리스트</h1>
+    <h1 class="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">인상 깊은 문구 목록</h1>
     <% if (bookId) { %>
     <div class="flex flex-wrap items-center gap-2 text-sm text-stone-600">
       <span class="font-semibold text-stone-800"><%= bookTitle %></span>
