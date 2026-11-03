@@ -3,11 +3,9 @@
   "lsp": {
     "tailwindcss-language-server": {
       "settings": {
-        "tailwindCSS": {
-          "lint": {
-            "cssConflict": "ignore",
-            "suggestCanonicalClasses": "ignore",
-          },
+        "lint": {
+          "cssConflict": "ignore",
+          "suggestCanonicalClasses": "ignore",
         },
       },
     },
