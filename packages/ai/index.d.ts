@@ -1,5 +1,5 @@
 declare namespace pocketpagesAi {
-  type AiProvider = 'gemini' | 'openai' | 'deepseek'
+  type AiProvider = 'gemini' | 'openai' | 'deepseek' | 'vercel-ai-gateway'
   type AiRateLimitCause = '' | 'rate-limit' | 'quota-or-billing-limit'
   type JsonObject = Record<string, any>
 
@@ -23,6 +23,9 @@ declare namespace pocketpagesAi {
 
     /** DeepSeek API 키입니다. 생략하면 `DEEPSEEK_API_KEY`를 사용합니다. */
     deepseekApiKey?: string
+
+    /** Vercel AI Gateway API 키입니다. 생략하면 `VERCEL_AI_GATEWAY_API_KEY`를 사용합니다. */
+    vercelAiGatewayApiKey?: string
   }
 
   /** provider별 요청에서 공통으로 사용할 수 있는 옵션입니다. */
@@ -646,6 +649,54 @@ declare namespace pocketpagesAi {
     user_id?: string
   }
 
+  /** Vercel AI Gateway의 OpenAI 호환 메시지입니다. */
+  interface VercelAiGatewayMessage {
+    role: 'system' | 'developer' | 'user' | 'assistant' | 'tool'
+    /** 텍스트 또는 이미지·파일 등을 포함하는 content part 목록입니다. */
+    content?: string | JsonObject[] | null
+    name?: string
+    tool_call_id?: string
+    tool_calls?: JsonObject[]
+    /** 캐시 설정 등 모델별 확장 필드입니다. */
+    [key: string]: any
+  }
+
+  /** Vercel AI Gateway Chat Completions 요청입니다. 옵션 지원 여부는 모델에 따라 다릅니다. */
+  interface VercelAiGatewayRequest extends AiRequestBase {
+    /** Gateway 모델 ID입니다. `공급자/모델` 형식을 사용합니다. */
+    model: string
+    /** 기본값은 `https://ai-gateway.vercel.sh/v1`이며 변경 시 `/v1`까지 포함합니다. */
+    baseUrl?: string
+    /** 생략하면 `input` 또는 `prompt`로 사용자 메시지를 만듭니다. */
+    messages?: VercelAiGatewayMessage[]
+    /** 간단 호출의 시스템 지시입니다. `messages`나 `payload`가 있으면 사용하지 않습니다. */
+    instructions?: string
+    /** 기본 모델 실패 시 순서대로 시도할 Gateway 모델 ID 목록입니다. */
+    models?: string[]
+    /** 라우팅 순서, 폴백, BYOK, 캐시 등 Gateway 및 모델별 설정입니다. */
+    providerOptions?: JsonObject
+    temperature?: number
+    top_p?: number
+    max_tokens?: number
+    max_completion_tokens?: number
+    /** 구조화된 출력은 `json_schema`와 `json_schema: { name, schema }`를 지정합니다. */
+    response_format?:
+      | { type: 'text' | 'json_object' }
+      | {
+          type: 'json_schema'
+          json_schema: { name: string; schema: JsonObject; description?: string; strict?: boolean }
+        }
+    reasoning_effort?: string
+    stop?: string | string[]
+    tools?: JsonObject[]
+    tool_choice?: 'none' | 'auto' | 'required' | JsonObject
+    parallel_tool_calls?: boolean
+    frequency_penalty?: number
+    presence_penalty?: number
+    seed?: number
+    user?: string
+  }
+
   /** AI provider 호출 결과입니다. 실패 시에도 예외 대신 이 객체로 반환합니다. */
   interface AiResult {
     /**
@@ -720,6 +771,9 @@ declare namespace pocketpagesAi {
 
     /** DeepSeek Chat Completions API를 호출합니다. */
     deepseek(request: DeepSeekRequest): AiResult
+
+    /** Vercel AI Gateway의 OpenAI 호환 Chat Completions API를 호출합니다. 스트리밍은 지원하지 않습니다. */
+    vercelAiGateway(request: VercelAiGatewayRequest): AiResult
   }
 }
 

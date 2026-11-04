@@ -6,11 +6,33 @@ const DEFAULT_GEMINI_API_VERSION = 'v1beta'
 const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com'
 const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com'
 const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
+const DEFAULT_VERCEL_AI_GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
 const DEFAULT_TIMEOUT_SECONDS = 60
 const DEFAULT_MAX_ATTEMPTS = 1
 const GEMINI_API_KEY_ENV_NAMES = ['GEMINI_API_KEY', 'GEMINI_APIKEY', 'GEMINI_AI_KEY']
 const OPENAI_API_KEY_ENV_NAMES = ['OPENAI_API_KEY']
 const DEEPSEEK_API_KEY_ENV_NAMES = ['DEEPSEEK_API_KEY']
+const VERCEL_AI_GATEWAY_API_KEY_ENV_NAMES = ['VERCEL_AI_GATEWAY_API_KEY']
+const VERCEL_AI_GATEWAY_PAYLOAD_FIELDS = [
+  'model',
+  'messages',
+  'models',
+  'providerOptions',
+  'temperature',
+  'top_p',
+  'max_tokens',
+  'max_completion_tokens',
+  'response_format',
+  'reasoning_effort',
+  'stop',
+  'tools',
+  'tool_choice',
+  'parallel_tool_calls',
+  'frequency_penalty',
+  'presence_penalty',
+  'seed',
+  'user',
+]
 const GEMINI_PAYLOAD_FIELDS = [
   'contents',
   'tools',
@@ -602,11 +624,11 @@ function extractOpenAiText(responseJson) {
 }
 
 /**
- * DeepSeek Chat Completions 응답에서 텍스트를 추출합니다.
- * @param {Record<string, any>} responseJson DeepSeek 응답 JSON입니다.
+ * OpenAI 호환 Chat Completions 응답에서 텍스트를 추출합니다.
+ * @param {Record<string, any>} responseJson 응답 JSON입니다.
  * @returns {string} 추출한 텍스트입니다.
  */
-function extractDeepSeekText(responseJson) {
+function extractChatCompletionText(responseJson) {
   const choices = responseJson && Array.isArray(responseJson.choices) ? responseJson.choices : []
   const choice = choices[0] || {}
   const message = choice.message || {}
@@ -634,7 +656,7 @@ function buildResult(args) {
   if (statusCode === 429 && args.provider === 'gemini') {
     rateLimitCause = 'rate-limit'
   }
-  if (statusCode === 429 && args.provider === 'openai') {
+  if (statusCode === 429 && (args.provider === 'openai' || args.provider === 'vercel-ai-gateway')) {
     rateLimitCause = inferOpenAi429Cause(responseJson)
   }
   if (statusCode === 429 && args.provider === 'deepseek') {
@@ -821,6 +843,9 @@ function resolveApiKey(provider, request, runtime) {
   if (provider === 'gemini') return firstText([runtime.apiKeys.gemini, readFirstEnv(GEMINI_API_KEY_ENV_NAMES)])
   if (provider === 'openai') return firstText([runtime.apiKeys.openai, readFirstEnv(OPENAI_API_KEY_ENV_NAMES)])
   if (provider === 'deepseek') return firstText([runtime.apiKeys.deepseek, readFirstEnv(DEEPSEEK_API_KEY_ENV_NAMES)])
+  if (provider === 'vercel-ai-gateway') {
+    return firstText([runtime.apiKeys.vercelAiGateway, readFirstEnv(VERCEL_AI_GATEWAY_API_KEY_ENV_NAMES)])
+  }
   return ''
 }
 
@@ -864,6 +889,7 @@ function createRuntime(options) {
       gemini: cleanText(options.geminiApiKey),
       openai: cleanText(options.openaiApiKey),
       deepseek: cleanText(options.deepseekApiKey),
+      vercelAiGateway: cleanText(options.vercelAiGatewayApiKey),
     },
   }
 
@@ -1033,13 +1059,70 @@ function requestDeepSeek(input, runtime) {
       maxAttempts,
       parseJson: request.json === true,
       isRetryableResponse: isRetryableDeepSeekResponse,
-      extractText: extractDeepSeekText,
+      extractText: extractChatCompletionText,
       httpOptions: {
         url: `${baseUrl}/chat/completions`,
         method: 'POST',
         timeout,
         body: JSON.stringify(payload),
         headers,
+      },
+    },
+    runtime
+  )
+}
+
+/**
+ * Vercel AI Gateway Chat Completions payload를 만듭니다.
+ * @param {Record<string, any>} request 요청 옵션입니다.
+ * @returns {Record<string, any>} Gateway payload입니다.
+ */
+function buildVercelAiGatewayPayload(request) {
+  const payload = {}
+  if (isObjectRecord(request.payload)) {
+    Object.assign(payload, request.payload)
+  } else {
+    copyDefinedFields(payload, request, VERCEL_AI_GATEWAY_PAYLOAD_FIELDS)
+    if (payload.messages === undefined) {
+      const input = request.input !== undefined ? request.input : request.prompt
+      payload.messages = []
+      if (request.instructions) payload.messages.push({ role: 'system', content: String(request.instructions) })
+      payload.messages.push({ role: 'user', content: String(input == null ? '' : input) })
+    }
+  }
+  delete payload.stream
+  delete payload.stream_options
+  if (request.json === true && !payload.response_format) payload.response_format = { type: 'json_object' }
+  return payload
+}
+
+/**
+ * Vercel AI Gateway Chat Completions 요청을 실행합니다.
+ * @param {Record<string, any>} input 요청 옵션입니다.
+ * @param {Record<string, any>} runtime 런타임 의존성입니다.
+ * @returns {Record<string, any>} 호출 결과입니다.
+ */
+function requestVercelAiGateway(input, runtime) {
+  const request = input || {}
+  const apiKey = requireText(resolveApiKey('vercel-ai-gateway', request, runtime), 'Vercel AI Gateway apiKey')
+  const baseUrl = String(request.baseUrl || DEFAULT_VERCEL_AI_GATEWAY_BASE_URL).replace(/\/+$/, '')
+  const payload = buildVercelAiGatewayPayload(request)
+  if (!payload.model) payload.model = requireText(request.model, 'Vercel AI Gateway model')
+
+  return sendWithRetry(
+    {
+      provider: 'vercel-ai-gateway',
+      model: cleanText(payload.model),
+      maxAttempts: normalizeAttempts(request.maxAttempts, runtime.defaultMaxAttempts),
+      parseJson: request.json === true,
+      isRetryableResponse: isRetryableOpenAiResponse,
+      extractText: extractChatCompletionText,
+      httpOptions: {
+        url: `${baseUrl}/chat/completions`,
+        method: 'POST',
+        timeout: normalizePositiveNumber(request.timeoutSeconds, runtime.defaultTimeoutSeconds),
+        headers: { 'authorization': `Bearer ${apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
       },
     },
     runtime
@@ -1066,6 +1149,9 @@ function createAiClient(options) {
     },
     deepseek(request) {
       return requestDeepSeek(request, runtime)
+    },
+    vercelAiGateway(request) {
+      return requestVercelAiGateway(request, runtime)
     },
   }
 }
