@@ -1130,6 +1130,84 @@ function requestVercelAiGateway(input, runtime) {
 }
 
 /**
+ * Vercel AI Gateway 판단 요청을 실행합니다.
+ * @param {Record<string, any>} input 요청 옵션입니다.
+ * @param {Record<string, any>} runtime 런타임 의존성입니다.
+ * @returns {Record<string, any>} 판단 결과입니다.
+ */
+function requestVercelAiGatewayDecision(input, runtime) {
+  const request = input || {}
+  const apiKey = requireText(resolveApiKey('vercel-ai-gateway', request, runtime), 'Vercel AI Gateway apiKey')
+  const model = requireText(request.model, 'Vercel AI Gateway decision model')
+  if (request.state === undefined) throw new Error('Vercel AI Gateway decision state is required')
+  if (!isObjectRecord(request.questions) || Object.keys(request.questions).length === 0) {
+    throw new Error('Vercel AI Gateway decision questions are required')
+  }
+  const payload = { model, state: request.state, questions: request.questions }
+  if (request.providerOptions !== undefined) payload.providerOptions = request.providerOptions
+  const baseUrl = String(request.baseUrl || DEFAULT_VERCEL_AI_GATEWAY_BASE_URL).replace(/\/+$/, '')
+  const result = sendWithRetry(
+    {
+      provider: 'vercel-ai-gateway',
+      model,
+      maxAttempts: normalizeAttempts(request.maxAttempts, runtime.defaultMaxAttempts),
+      parseJson: false,
+      isRetryableResponse: isRetryableOpenAiResponse,
+      extractText: function () {
+        return ''
+      },
+      httpOptions: {
+        url: `${baseUrl}/evaluate`,
+        method: 'POST',
+        timeout: normalizePositiveNumber(request.timeoutSeconds, runtime.defaultTimeoutSeconds),
+        headers: { 'authorization': `Bearer ${apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+    },
+    runtime
+  )
+  result.answers = null
+  if (!result.ok) return result
+
+  const answers = result.responseJson.answers
+  const validAnswers =
+    isObjectRecord(answers)
+    && Object.keys(request.questions).every(function (key) {
+      const answer = answers[key]
+      const question = request.questions[key]
+      if (!isObjectRecord(question) || !isObjectRecord(answer) || answer.type !== question.type) return false
+      if (answer.type === 'boolean') {
+        return Number.isFinite(answer.probability) && answer.probability >= 0 && answer.probability <= 1
+      }
+      if (answer.type === 'choice') {
+        return (
+          typeof answer.choice === 'string'
+          && isObjectRecord(question.criteria)
+          && Object.prototype.hasOwnProperty.call(question.criteria, answer.choice)
+          && isObjectRecord(answer.probabilities)
+        )
+      }
+      if (answer.type === 'score') {
+        return (
+          Array.isArray(question.criteria)
+          && Number.isFinite(answer.score)
+          && answer.score >= 0
+          && answer.score <= question.criteria.length - 1
+          && isObjectRecord(answer.probabilities)
+        )
+      }
+      return false
+    })
+  if (!validAnswers) {
+    result.ok = false
+    result.errorMessage = result.errorMessage || 'Vercel AI Gateway decision response has missing or invalid answers'
+    return result
+  }
+  result.answers = answers
+  return result
+}
+
+/**
  * PocketPages/PocketBase JSVM용 AI 클라이언트를 만듭니다.
  * @param {Record<string, any>} [options] 클라이언트 옵션입니다.
  * @returns {Record<string, any>} AI 클라이언트입니다.
@@ -1152,6 +1230,9 @@ function createAiClient(options) {
     },
     vercelAiGateway(request) {
       return requestVercelAiGateway(request, runtime)
+    },
+    vercelAiGatewayDecision(request) {
+      return requestVercelAiGatewayDecision(request, runtime)
     },
   }
 }

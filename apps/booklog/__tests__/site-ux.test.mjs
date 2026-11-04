@@ -57,9 +57,21 @@ before(async () => {
     path.join(fixtureDir, 'pb_hooks/pages/_private/data4library-service.js'),
     readFileSync(new URL('./fixtures/data4library-stub.js', import.meta.url), 'utf8')
   )
+  copyFileSync(
+    new URL('./fixtures/book-recommendation-ai-stub.js', import.meta.url),
+    path.join(fixtureDir, 'pb_hooks/book-recommendation-ai-stub.js')
+  )
+  const recommendRoute = path.join(fixtureDir, 'pb_hooks/pages/xapi/books/recommend.ejs')
+  writeFileSync(
+    recommendRoute,
+    readFileSync(recommendRoute, 'utf8').replace(
+      "require('@pocketpages/ai')",
+      "require(__hooks + '/book-recommendation-ai-stub.js')"
+    )
+  )
   writeFileSync(
     path.join(fixtureDir, '.env'),
-    'APP_ENV=production\nDATA4LIBRARY_APIKEY=test-key\nONESIGNAL_APPID=\nONESIGNAL_API_KEY=\n'
+    'APP_ENV=production\nDATA4LIBRARY_APIKEY=test-key\nVERCEL_AI_GATEWAY_API_KEY=test-key\nONESIGNAL_APPID=\nONESIGNAL_API_KEY=\n'
   )
   service = await startService({ serviceName: path.basename(fixtureDir), port: 18095, timeoutMs: 30000 })
   const response = await fetch(service.baseUrl + '/xapi/auth/sign-in', {
@@ -257,6 +269,71 @@ test('Browser restores drafts, clears them after successful saves, updates expan
   assert.equal(await page.locator('[x-bind\\:style]').count(), 0)
   assert.deepEqual(errors, [])
   await context.close()
+})
+
+test('Home recommendation dialog submits on mobile, renders safe explanations, and restores focus on close', async () => {
+  const recommendationBrowser = await chromium.launch({ channel: 'chrome', headless: true })
+  try {
+    const context = await recommendationBrowser.newContext({ viewport: { width: 360, height: 800 } })
+    await context.route('https://**/*', (route) => route.abort())
+    await context.addCookies(
+      cookie.split('; ').map((entry) => {
+        const separator = entry.indexOf('=')
+        return { name: entry.slice(0, separator), value: entry.slice(separator + 1), url: service.baseUrl }
+      })
+    )
+    const page = await context.newPage()
+    const errors = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.goto(service.baseUrl + '/')
+    const trigger = page.getByRole('button', { name: 'AI 책 추천 열기' })
+    await trigger.click()
+    const dialog = page.getByRole('dialog', { name: '어떤 책을 읽을까요?' })
+    await dialog.waitFor({ state: 'visible' })
+    await dialog.locator('textarea[name=preference]').fill('짧고 몰입감 있는 소설')
+    assert.equal(await dialog.locator('select[name=source]').count(), 0)
+    await dialog.getByRole('button', { name: '책 골라보기', exact: true }).click()
+    await page.locator('[data-recommended-book]').first().waitFor()
+    assert.equal(await page.locator('[data-recommended-book]').count(), 3)
+    assert.ok((await dialog.textContent()).includes('<script>window.injected = true</script>'))
+    assert.equal(await page.evaluate(() => window.injected), undefined)
+    assert.equal(await dialog.locator('#book-recommendation-results script').count(), 0)
+    assert.ok(
+      (await dialog.getByRole('link', { name: '도서 정보 찾기' }).first().getAttribute('href')).startsWith(
+        'https://data4library.kr/'
+      )
+    )
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false)
+    await dialog.getByRole('button', { name: '책 골라보기', exact: true }).click()
+    await dialog.getByText('조금 전에 책을 고르고 있어요. 잠시 후 다시 시도해 주세요.').waitFor()
+    await page.keyboard.press('Escape')
+    await dialog.waitFor({ state: 'hidden' })
+    assert.equal(await trigger.evaluate((element) => element === document.activeElement), true)
+    assert.deepEqual(errors, [])
+    await context.close()
+  } finally {
+    await recommendationBrowser.close()
+  }
+})
+
+test('Recommendation endpoint rejects unauthenticated requests, wrong methods and invalid preference lengths', async () => {
+  const unauthenticated = await fetch(service.baseUrl + '/xapi/books/recommend', {
+    method: 'POST',
+    headers: { 'HX-Request': 'true' },
+    body: new URLSearchParams({ preference: 'test' }),
+  })
+  assert.equal(unauthenticated.status, 401)
+  const wrongMethod = await fetch(service.baseUrl + '/xapi/books/recommend', { headers: { Cookie: cookie } })
+  assert.equal(wrongMethod.status, 405)
+  for (const preference of ['', '가'.repeat(501)]) {
+    const response = await fetch(service.baseUrl + '/xapi/books/recommend', {
+      method: 'POST',
+      headers: { Cookie: cookie },
+      body: new URLSearchParams({ preference }),
+    })
+    assert.equal(response.status, 200)
+    assert.ok((await response.text()).includes('500자 이내'))
+  }
 })
 
 test('도서함의 추가일·저자 정렬은 더 보기와 전체 목록에서 같은 순서와 링크 조건을 유지한다', async () => {

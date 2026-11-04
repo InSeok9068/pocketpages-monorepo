@@ -2,6 +2,36 @@ declare namespace types {
   /** `$app`과 트랜잭션 `txApp`을 모두 받는 DB 앱입니다. */
   type BooklogApp = PocketBase | core.App
 
+  interface BookRecommendationCandidate {
+    id: string
+    bookId: string
+    isbn13: string
+    title: string
+    author: string
+    description: string
+    className: string
+    publicationYear?: string
+    publisher?: string
+    pageCount: number
+    coverUrl: string
+    href: string
+    source: 'shelf' | 'discovery'
+  }
+
+  interface BookRecommendationShelfData {
+    books: BookRecommendationCandidate[]
+    excludedKeys: string[]
+  }
+
+  interface BookRecommendation extends BookRecommendationCandidate {
+    reason: string
+  }
+
+  interface BookRecommendationSuggestion {
+    title: string
+    author: string
+  }
+
   interface BookAudioSettings {
     provider: string
     model: string

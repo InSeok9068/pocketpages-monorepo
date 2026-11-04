@@ -697,6 +697,40 @@ declare namespace pocketpagesAi {
     user?: string
   }
 
+  /** 판단 질문입니다. Choice는 이름별 설명, Score는 낮은 점수부터 정렬한 기준을 사용합니다. */
+  type VercelAiGatewayDecisionQuestion =
+    | { type: 'boolean'; instructions: string; criteria?: { true: string; false: string } }
+    | { type: 'choice'; instructions: string; criteria: Record<string, string> }
+    | { type: 'score'; instructions: string; criteria: string[] }
+
+  /** Vercel AI Gateway Decision API 요청입니다. */
+  interface VercelAiGatewayDecisionRequest {
+    model: string
+    /** 모든 질문이 공유하는 판단 자료입니다. */
+    state: string | JsonObject | unknown[]
+    questions: Record<string, VercelAiGatewayDecisionQuestion>
+    /** 라우팅, 조건부 폴백 등 Gateway 설정입니다. */
+    providerOptions?: JsonObject
+    /** 생략하면 기존 Gateway 클라이언트 키와 환경 변수를 사용합니다. */
+    apiKey?: string
+    /** 기본값은 `https://ai-gateway.vercel.sh/v1`입니다. */
+    baseUrl?: string
+    timeoutSeconds?: number
+    maxAttempts?: number
+  }
+
+  /** 판단 답변입니다. 확률은 모델이 보고한 값이며 추천 만족도와는 다릅니다. */
+  type VercelAiGatewayDecisionAnswer =
+    | { type: 'boolean'; probability: number }
+    | { type: 'choice'; choice: string; probabilities: Record<string, number>; confidence?: number }
+    | { type: 'score'; score: number; probabilities: Record<string, number>; confidence?: number }
+
+  /** 판단 결과입니다. 원본 usage와 providerMetadata는 responseJson에 보존합니다. */
+  interface VercelAiGatewayDecisionResult extends AiResult {
+    /** 실패하거나 답변이 누락되면 null입니다. text는 빈 문자열, json은 null입니다. */
+    answers: Record<string, VercelAiGatewayDecisionAnswer> | null
+  }
+
   /** AI provider 호출 결과입니다. 실패 시에도 예외 대신 이 객체로 반환합니다. */
   interface AiResult {
     /**
@@ -774,6 +808,9 @@ declare namespace pocketpagesAi {
 
     /** Vercel AI Gateway의 OpenAI 호환 Chat Completions API를 호출합니다. 스트리밍은 지원하지 않습니다. */
     vercelAiGateway(request: VercelAiGatewayRequest): AiResult
+
+    /** Vercel AI Gateway Decision API로 선택·점수·확률을 요청합니다. */
+    vercelAiGatewayDecision(request: VercelAiGatewayDecisionRequest): VercelAiGatewayDecisionResult
   }
 }
 

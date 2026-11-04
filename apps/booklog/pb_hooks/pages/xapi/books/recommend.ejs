@@ -1,0 +1,181 @@
+<script server>
+  const { storeCache } = require('@pocketpages/utils')
+  const form = request.method === 'POST' ? body() : {}
+  const preference = String(form.preference || '').trim()
+  const userId = request.auth ? String(request.auth.get('id')) : ''
+  const textModel = String(env('BOOKLOG_RECOMMENDATION_TEXT_MODEL') || 'alibaba/qwen3.5-plus').trim()
+  let recommendations = []
+  let message = ''
+  let notice = ''
+  let explanationAvailable = true
+  dbg('xapi/books/recommend:start', { userId, preferenceLength: preference.length, textModel })
+
+  if (request.method !== 'POST') {
+    response.html(405, '잘못된 요청입니다.')
+    return
+  }
+  if (!request.auth || request.auth.get('booklog_enabled') !== true) {
+    response.html(request.auth ? 403 : 401, '로그인과 사용 승인이 필요합니다.')
+    return
+  }
+  if (!preference || preference.length > 500) {
+    message = '읽고 싶은 책의 조건을 500자 이내로 적어 주세요.'
+  } else if (
+    !String(env('VERCEL_AI_GATEWAY_API_KEY') || '').trim()
+    || !String(env('DATA4LIBRARY_APIKEY') || '').trim()
+  ) {
+    message = '지금은 책 추천을 준비 중이에요. 잠시 후 다시 찾아 주세요.'
+    warn('xapi/books/recommend:not-configured', { userId })
+  } else if (storeCache.get('booklog:recommendation-requests', userId) !== undefined) {
+    message = '조금 전에 책을 고르고 있어요. 잠시 후 다시 시도해 주세요.'
+  } else {
+    storeCache.set('booklog:recommendation-requests', userId, true, { ttlMs: 120000, maxEntries: 1000 })
+    try {
+      const data = resolve('book-recommendation-data')
+      const recommendationService = resolve('book-recommendation-service')
+      const data4library = resolve('data4library-service')
+      const dataConfig = { apiKey: String(env('DATA4LIBRARY_APIKEY')), timeout: 4 }
+      const ai = require('@pocketpages/ai').createAiClient({
+        vercelAiGatewayApiKey: env('VERCEL_AI_GATEWAY_API_KEY'),
+        timeoutSeconds: 30,
+        maxAttempts: 1,
+      })
+      const suggestions = recommendationService.suggestBooks(ai, textModel, preference)
+      dbg('xapi/books/recommend:suggestions', { userId, count: suggestions.length })
+      const shelfData = data.loadShelfData($app, userId)
+      const verifiedBooks = []
+      const lookupDeadline = Date.now() + 35000
+      let lookupInterrupted = false
+      for (let index = 0; index < suggestions.length; index += 1) {
+        const suggestion = suggestions[index]
+        const cacheKey = JSON.stringify([suggestion.title, suggestion.author])
+        let book = storeCache.get('booklog:recommendation-discovery', cacheKey)
+        if (book === undefined) {
+          if (Date.now() >= lookupDeadline) {
+            lookupInterrupted = true
+            break
+          }
+          try {
+            book = data.findSuggestedBook(data4library, dataConfig, suggestion)
+          } catch (exception) {
+            lookupInterrupted = true
+            warn('xapi/books/recommend:search-unavailable', { userId, error: String(exception) })
+            break
+          }
+          if (book && (!book.description || !book.coverUrl)) {
+            try {
+              const detail = data4library.getBookDetail(dataConfig, { isbn13: book.isbn13, loaninfoYN: 'N' }).book
+              if (detail && String(detail.isbn13 || '').replace(/[\s-]/g, '') === book.isbn13) {
+                book.description = data.cleanDescription(detail.description)
+                book.className = String(detail.class_nm || detail.class_no || book.className)
+                if (!book.coverUrl && /^https?:\/\//.test(String(detail.bookImageURL || ''))) {
+                  book.coverUrl = String(detail.bookImageURL)
+                }
+              }
+            } catch (exception) {
+              warn('xapi/books/recommend:detail-unavailable', { isbn13: book.isbn13, error: String(exception) })
+            }
+          }
+          storeCache.set('booklog:recommendation-discovery', cacheKey, book, {
+            ttlMs: book ? 24 * 60 * 60 * 1000 : 10 * 60 * 1000,
+            maxEntries: 300,
+          })
+        }
+        if (book) verifiedBooks.push(book)
+      }
+      const candidates = data.buildCandidates(shelfData, verifiedBooks)
+      dbg('xapi/books/recommend:verified', {
+        userId,
+        suggestedCount: suggestions.length,
+        verifiedCount: verifiedBooks.length,
+        eligibleCount: candidates.length,
+        lookupInterrupted,
+      })
+      if (!candidates.length) {
+        message = lookupInterrupted
+          ? '도서 정보를 확인하는 데 시간이 걸리고 있어요. 잠시 후 다시 시도해 주세요.'
+          : '출간 정보를 확인할 수 있는 새 추천책을 찾지 못했어요. 조건을 조금 바꿔 다시 골라 보세요.'
+      } else {
+        const result = recommendationService.recommendBooks(ai, textModel, preference, candidates)
+        recommendations = result.books
+        explanationAvailable = result.explanationAvailable
+        if (lookupInterrupted) notice = '일부 도서 정보를 확인하지 못해 확인된 책 중에서 골랐어요.'
+        if (!recommendations.length)
+          message = '지금 조건에 잘 맞는 책을 찾지 못했어요. 조건을 조금 넓혀 다시 골라 보세요.'
+        info('xapi/books/recommend:completed', {
+          userId,
+          count: recommendations.length,
+          textModel,
+          explanationAvailable,
+        })
+      }
+    } catch (exception) {
+      message = '책을 고르지 못했어요. 잠시 후 다시 시도해 주세요.'
+      error('xapi/books/recommend:failed', { userId, error: String(exception) })
+    } finally {
+      storeCache.set('booklog:recommendation-requests', userId, true, { ttlMs: 10000, maxEntries: 1000 })
+    }
+  }
+</script>
+
+<% if (message) { %>
+<p
+  role="status"
+  class="m-0 rounded-2xl bg-[#f7f2e8] px-4 py-5 text-sm leading-6 text-stone-600">
+  <%= message %>
+</p>
+<% } else { %>
+<div class="flex flex-col gap-4">
+  <p class="m-0 text-sm font-semibold text-stone-800">
+    지금 읽어볼 만한 책 <%= recommendations.length %>권을 골랐어요.
+  </p>
+  <% if (notice) { %>
+  <p class="m-0 text-xs leading-5 text-stone-500"><%= notice %></p>
+  <% } %>
+  <% if (!explanationAvailable) { %>
+  <p class="m-0 text-xs leading-5 text-stone-500">
+    최종 추천 설명을 작성하지 못해 출간 정보가 확인된 후보와 책 소개를 보여 드려요.
+  </p>
+  <% } %>
+  <% for (let index = 0; index < recommendations.length; index += 1) { const book = recommendations[index] %>
+  <article
+    data-recommended-book
+    class="flex gap-4 rounded-2xl bg-[#fbf7ef] p-4">
+    <div class="h-24 w-16 shrink-0 overflow-hidden rounded-md bg-[#d8c3a5]">
+      <% if (book.coverUrl) { %>
+      <img
+        src="<%= book.coverUrl %>"
+        alt=""
+        loading="lazy"
+        referrerpolicy="no-referrer"
+        class="h-full w-full object-cover" />
+      <% } %>
+    </div>
+    <div class="min-w-0 flex-1">
+      <div class="flex items-start gap-1">
+        <h3 class="m-0 min-w-0 flex-1 text-base leading-6 font-semibold break-words text-stone-950">
+          <%= book.title %>
+        </h3>
+        <%- include('copy-title-button.ejs', { title: book.title }) %>
+      </div>
+      <p class="mt-1 text-xs text-stone-500"><%= book.author %></p>
+      <p class="mt-2 text-xs text-stone-500">
+        <%= book.source === 'shelf' ? '내 도서함' : '새로 발견한 책' %><% if (book.pageCount) { %> · 약
+        <%= book.pageCount %>쪽<% } %>
+      </p>
+      <p class="mt-3 text-sm leading-6 break-words text-stone-700"><%= book.reason %></p>
+      <% if (book.href) { %>
+      <a
+        href="<%= book.href %>"
+        <% if (book.source === 'discovery') { %>target="_blank"
+        rel="noopener noreferrer"
+        <% } %>
+        class="mt-2 inline-flex text-sm font-semibold text-stone-800 underline underline-offset-4">
+        <%= book.source === 'shelf' ? '내 책 보기' : '도서 정보 찾기' %>
+      </a>
+      <% } %>
+    </div>
+  </article>
+  <% } %>
+</div>
+<% } %>

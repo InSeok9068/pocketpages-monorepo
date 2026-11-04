@@ -15,7 +15,21 @@ function book(ranking, bookname, authors, isbn13) {
 }
 
 module.exports = {
-  searchBooks: function () {
+  searchBooks: function (_config, input) {
+    if (input && /^발견한 책 [1-3]$/.test(input.title)) {
+      const index = Number(input.title.slice(-1))
+      return {
+        docs: [
+          {
+            bookname: input.title,
+            authors: '추천 저자 ' + index,
+            isbn13: ['9788965707608', '9788972754190', '9791193047002'][index - 1],
+            description: '새로 발견한 책의 출간 소개',
+            bookDtlUrl: 'https://data4library.kr/bookV?seq=' + index,
+          },
+        ],
+      }
+    }
     return { numFound: 0, docs: [], raw: {} }
   },
   getBookDetail: function () {
