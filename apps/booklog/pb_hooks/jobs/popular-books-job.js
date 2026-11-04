@@ -1,6 +1,6 @@
 /**
- * 인기 도서 목록을 새로 받아 오늘 캐시를 채웁니다.
- * @returns {Record<string, boolean>} 목록별 새로 받기 성공 여부
+ * 인기 도서 목록의 만료되거나 없는 캐시를 채웁니다.
+ * @returns {Record<string, boolean>} 목록별 유효한 캐시 확보 여부
  */
 function run() {
   const popularBooksData = require(__hooks + '/pages/_private/popular-books-data.js')

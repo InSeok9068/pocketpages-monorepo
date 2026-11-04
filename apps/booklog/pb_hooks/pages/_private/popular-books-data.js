@@ -4,6 +4,7 @@ const bookAuthorView = require(__hooks + '/pages/_private/book-author-view.js')
 
 const CACHE_NAMESPACE = 'booklog:popular-books'
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000
+const LIST_CACHE_TTL_MS = 7 * CACHE_TTL_MS
 const LAST_GOOD_TTL_MS = 14 * 24 * 60 * 60 * 1000
 const FAILURE_WAIT_MS = 10 * 60 * 1000
 const CACHE_MAX_ENTRIES = 24
@@ -88,7 +89,7 @@ function buildListRequest(tab, now) {
 }
 
 function getListCacheKey(tab, now) {
-  return 'list:' + tab + ':' + getBaseDate(now)
+  return 'list:' + tab + ':' + formatDateOnly(now).slice(0, 7)
 }
 
 function getHotTrendCacheKey(now) {
@@ -103,8 +104,8 @@ function writeCache(key, value, ttlMs) {
   storeCache.set(CACHE_NAMESPACE, key, value, { ttlMs: ttlMs, maxEntries: CACHE_MAX_ENTRIES })
 }
 
-function storeFreshList(name, dayKey, value) {
-  writeCache(dayKey, value, CACHE_TTL_MS)
+function storeFreshList(name, cacheKey, value, ttlMs) {
+  writeCache(cacheKey, value, ttlMs)
   writeCache('last:' + name, value, LAST_GOOD_TTL_MS)
   storeCache.remove(CACHE_NAMESPACE, 'failed:' + name)
 }
@@ -114,8 +115,8 @@ function markListFailed(name, exception) {
 }
 
 // 실패하면 10분 동안은 다시 부르지 않고, 마지막으로 받은 목록(전날 것이라도)을 대신 보여 줍니다.
-function loadWithFallback(name, dayKey, load) {
-  const cached = readCache(dayKey)
+function loadWithFallback(name, cacheKey, ttlMs, load) {
+  const cached = readCache(cacheKey)
   let failure = null
 
   if (cached !== undefined) return cached
@@ -123,7 +124,7 @@ function loadWithFallback(name, dayKey, load) {
   if (readCache('failed:' + name) === undefined) {
     try {
       const value = load()
-      storeFreshList(name, dayKey, value)
+      storeFreshList(name, cacheKey, value, ttlMs)
       return value
     } catch (exception) {
       failure = exception
@@ -156,7 +157,7 @@ function fetchHotTrend(deps, now) {
 }
 
 /**
- * 바로 보여 줄 수 있는 탭 목록을 읽습니다. 오늘 목록이 없고 최근 받기가 실패했으면 마지막 목록을 줍니다.
+ * 7일 이내 같은 달에 받은 탭 목록을 읽습니다. 최근 받기가 실패했으면 마지막 목록을 줍니다.
  * @param {'month' | 'steady'} tab 탭 이름
  * @param {Date} now 기준 시각
  * @returns {types.PopularBook[] | undefined} 보여 줄 목록
@@ -176,7 +177,7 @@ function readCachedPopularList(tab, now) {
  * @returns {types.PopularBook[]} 인기 도서 목록
  */
 function loadPopularList(deps, tab, now) {
-  return loadWithFallback('list:' + tab, getListCacheKey(tab, now), function () {
+  return loadWithFallback('list:' + tab, getListCacheKey(tab, now), LIST_CACHE_TTL_MS, function () {
     return fetchPopularList(deps, tab, now)
   })
 }
@@ -188,22 +189,23 @@ function loadPopularList(deps, tab, now) {
  * @returns {types.PopularBook[]} 급상승 도서 목록
  */
 function loadHotTrend(deps, now) {
-  return loadWithFallback('hot', getHotTrendCacheKey(now), function () {
+  return loadWithFallback('hot', getHotTrendCacheKey(now), CACHE_TTL_MS, function () {
     return fetchHotTrend(deps, now)
   })
 }
 
 /**
- * 모든 탭과 급상승 목록을 새로 받아 오늘 캐시를 덮어씁니다.
+ * 모든 탭과 급상승 목록 중 만료되거나 없는 캐시만 채웁니다.
  * @param {types.PopularBooksDeps} deps API 서비스와 호출 설정
  * @param {Date} now 기준 시각
- * @returns {Record<string, boolean>} 목록별 새로 받기 성공 여부
+ * @returns {Record<string, boolean>} 목록별 유효한 캐시 확보 여부
  */
 function refreshAll(deps, now) {
   const targets = Object.keys(POPULAR_TABS).map(function (tab) {
     return {
       name: 'list:' + tab,
-      dayKey: getListCacheKey(tab, now),
+      cacheKey: getListCacheKey(tab, now),
+      ttlMs: LIST_CACHE_TTL_MS,
       load: function () {
         return fetchPopularList(deps, tab, now)
       },
@@ -213,14 +215,24 @@ function refreshAll(deps, now) {
 
   targets.push({
     name: 'hot',
-    dayKey: getHotTrendCacheKey(now),
+    cacheKey: getHotTrendCacheKey(now),
+    ttlMs: CACHE_TTL_MS,
     load: function () {
       return fetchHotTrend(deps, now)
     },
   })
   targets.forEach(function (target) {
+    if (readCache(target.cacheKey) !== undefined) {
+      result[target.name] = true
+      return
+    }
+    if (readCache('failed:' + target.name) !== undefined) {
+      result[target.name] = false
+      return
+    }
+
     try {
-      storeFreshList(target.name, target.dayKey, target.load())
+      storeFreshList(target.name, target.cacheKey, target.load(), target.ttlMs)
       result[target.name] = true
     } catch (exception) {
       markListFailed(target.name, exception)

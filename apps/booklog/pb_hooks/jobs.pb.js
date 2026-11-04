@@ -112,22 +112,20 @@ if (String(process.env.APP_ENV || '').trim() === 'production') {
     }
   })
 
-  // 인기 도서 새벽 미리 받기(한국 시간 05:10)는 일부러 꺼 둡니다.
-  // 인기 도서는 자주 열리지 않아, 아무도 안 보는 날에도 매일 API를 부르는 대신 그날 첫 방문자가 한 번 기다리는 쪽을 감수합니다.
-  // 첫 조회 대기가 불편해지면 아래 주석을 풀면 됩니다. 실행 코드는 jobs/popular-books-job.js에 있습니다.
-  // cronAdd('booklog-popular-books', '10 20 * * *', function () {
-  //   try {
-  //     const popularBooksJob = require(__hooks + '/jobs/popular-books-job.js')
-  //
-  //     popularBooksJob.run()
-  //   } catch (exception) {
-  //     $app
-  //       .logger()
-  //       .error(
-  //         'jobs/popular-books:failed',
-  //         'error',
-  //         String(exception && exception.message ? exception.message : exception)
-  //       )
-  //   }
-  // })
+  // 한국 시간 05:10에 만료된 캐시만 채웁니다. 두 탭은 7일 또는 월 변경, 급상승은 하루 기준입니다.
+  cronAdd('booklog-popular-books', '10 20 * * *', function () {
+    try {
+      const popularBooksJob = require(__hooks + '/jobs/popular-books-job.js')
+
+      popularBooksJob.run()
+    } catch (exception) {
+      $app
+        .logger()
+        .error(
+          'jobs/popular-books:failed',
+          'error',
+          String(exception && exception.message ? exception.message : exception)
+        )
+    }
+  })
 }

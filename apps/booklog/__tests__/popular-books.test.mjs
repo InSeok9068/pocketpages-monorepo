@@ -114,7 +114,7 @@ test('Editions of the same book count once, and names are tidied for display', (
   assert.equal(books[2].coverUrl, '')
 })
 
-test('A loaded list is reused for the day without calling the API again, and a failed load is not cached', () => {
+test('A loaded list is reused across days without calling the API again, and a failed load is not cached', () => {
   const data = loadModule()
   const { deps, calls } = createDeps({ popular: () => ({ numFound: 1, docs: [doc(1, '책', '저자')] }) })
 
@@ -126,7 +126,7 @@ test('A loaded list is reused for the day without calling the API again, and a f
   assert.equal(data.readCachedPopularList('steady', now), undefined)
 
   data.loadPopularList(deps, 'month', new Date('2026-10-23T03:00:00Z'))
-  assert.equal(calls.popular.length, 2)
+  assert.equal(calls.popular.length, 1)
 
   const failing = createDeps({
     popular: () => {
@@ -135,6 +135,62 @@ test('A loaded list is reused for the day without calling the API again, and a f
   })
   assert.throws(() => data.loadPopularList(failing.deps, 'steady', now))
   assert.equal(data.readCachedPopularList('steady', now), undefined)
+})
+
+test('Both tabs expire exactly seven days after loading without extending TTL on reads', () => {
+  const data = loadModule()
+  const clock = withClock(now.getTime())
+  const { deps, calls } = createDeps()
+  try {
+    for (const tab of ['month', 'steady']) data.loadPopularList(deps, tab, now)
+    clock.advance(7 * 24 * 60 * 60 * 1000 - 1)
+    for (const tab of ['month', 'steady']) {
+      assert.notEqual(data.readCachedPopularList(tab, new Date(Date.now())), undefined)
+      data.loadPopularList(deps, tab, new Date(Date.now()))
+    }
+    assert.equal(calls.popular.length, 2)
+    clock.advance(1)
+    for (const tab of ['month', 'steady']) {
+      assert.equal(data.readCachedPopularList(tab, new Date(Date.now())), undefined)
+      data.loadPopularList(deps, tab, new Date(Date.now()))
+    }
+    assert.equal(calls.popular.length, 4)
+  } finally {
+    clock.restore()
+  }
+})
+
+test('Both tabs reload at the Korean month boundary even before seven days pass', () => {
+  const data = loadModule()
+  const clock = withClock(Date.parse('2026-12-31T14:59:59Z'))
+  const { deps, calls } = createDeps()
+  try {
+    for (const tab of ['month', 'steady']) data.loadPopularList(deps, tab, new Date(Date.now()))
+    clock.advance(1000)
+    for (const tab of ['month', 'steady']) {
+      assert.equal(data.readCachedPopularList(tab, new Date(Date.now())), undefined)
+      data.loadPopularList(deps, tab, new Date(Date.now()))
+    }
+    assert.equal(calls.popular.length, 4)
+  } finally {
+    clock.restore()
+  }
+})
+
+test('Rising books reuse the same day and reload on the next Korean day', () => {
+  const data = loadModule()
+  const clock = withClock(Date.parse('2026-10-22T14:59:59Z'))
+  const { deps, calls } = createDeps()
+  try {
+    data.loadHotTrend(deps, new Date(Date.now()))
+    data.loadHotTrend(deps, new Date(Date.now()))
+    assert.equal(calls.hot.length, 1)
+    clock.advance(1000)
+    data.loadHotTrend(deps, new Date(Date.now()))
+    assert.equal(calls.hot.length, 2)
+  } finally {
+    clock.restore()
+  }
 })
 
 test('Rising books skip children books and repeats across days, newest day first, up to five', () => {
@@ -200,8 +256,8 @@ test('When the API fails, the last good list is shown and the API is left alone 
   try {
     data.loadPopularList(deps, 'month', now)
     failing = true
-    clock.advance(24 * 60 * 60 * 1000)
-    const nextDay = new Date('2026-10-23T03:00:00Z')
+    clock.advance(7 * 24 * 60 * 60 * 1000)
+    const nextDay = new Date('2026-10-29T03:00:00Z')
 
     assert.equal(data.readCachedPopularList('month', nextDay), undefined)
     assert.deepEqual(
@@ -238,7 +294,7 @@ test('Without any earlier list, a failure is reported quickly instead of waiting
   assert.equal(calls.popular.length, 1)
 })
 
-test('The early-morning refresh replaces today’s lists and reports which ones failed', () => {
+test('The scheduled refresh reuses valid caches and only reloads expired lists', () => {
   const data = loadModule()
   let version = 1
   const { deps, calls } = createDeps({
@@ -249,12 +305,30 @@ test('The early-morning refresh replaces today’s lists and reports which ones 
     hot: () => [{ date: '2026-10-21', docs: [doc(9, '급상승 ' + version, '저자')] }],
   })
 
-  assert.deepEqual({ ...data.refreshAll(deps, now) }, { 'list:month': true, 'list:steady': true, 'hot': true })
-  version = 2
-  assert.deepEqual({ ...data.refreshAll(deps, now) }, { 'list:month': true, 'list:steady': false, 'hot': true })
+  const clock = withClock(now.getTime())
+  try {
+    assert.deepEqual({ ...data.refreshAll(deps, now) }, { 'list:month': true, 'list:steady': true, 'hot': true })
+    version = 2
+    data.refreshAll(deps, now)
+    assert.equal(calls.popular.length, 2)
+    assert.equal(calls.hot.length, 1)
 
-  assert.equal(data.loadPopularList(deps, 'month', now)[0].title, '판 2')
-  assert.equal(data.loadHotTrend(deps, now)[0].title, '급상승 2')
-  assert.equal(data.loadPopularList(deps, 'steady', now)[0].title, '판 1 스테디')
-  assert.equal(calls.popular.length, 4)
+    clock.advance(24 * 60 * 60 * 1000)
+    data.refreshAll(deps, new Date(Date.now()))
+    assert.equal(calls.popular.length, 2)
+    assert.equal(calls.hot.length, 2)
+
+    clock.advance(6 * 24 * 60 * 60 * 1000)
+    const expiredAt = new Date(Date.now())
+    assert.deepEqual({ ...data.refreshAll(deps, expiredAt) }, { 'list:month': true, 'list:steady': false, 'hot': true })
+    assert.equal(data.loadPopularList(deps, 'month', expiredAt)[0].title, '판 2')
+    assert.equal(data.loadHotTrend(deps, expiredAt)[0].title, '급상승 2')
+    assert.equal(data.loadPopularList(deps, 'steady', expiredAt)[0].title, '판 1 스테디')
+    assert.equal(calls.popular.length, 4)
+    data.refreshAll(deps, expiredAt)
+    assert.equal(calls.popular.length, 4, 'a failed refresh waits ten minutes before retrying')
+    assert.equal(calls.hot.length, 3)
+  } finally {
+    clock.restore()
+  }
 })
