@@ -1,6 +1,7 @@
 <script server>
   const { storeCache } = require('@pocketpages/utils')
   const form = request.method === 'POST' ? body() : {}
+  const fromPath = resolve('book-navigation').getBackHref(String(form.from || '/'))
   const preference = String(form.preference || '').trim()
   const userId = request.auth ? String(request.auth.get('id')) : ''
   const textModel = String(env('BOOKLOG_RECOMMENDATION_TEXT_MODEL') || 'alibaba/qwen3.5-plus').trim()
@@ -98,6 +99,9 @@
       } else {
         const result = recommendationService.recommendBooks(ai, textModel, preference, candidates)
         recommendations = result.books
+        recommendations.forEach(function (book) {
+          if (book.bookId) book.href = '/books/' + book.bookId + '?from=' + encodeURIComponent(fromPath)
+        })
         explanationAvailable = result.explanationAvailable
         if (lookupInterrupted) notice = '일부 도서 정보를 확인하지 못해 확인된 책 중에서 골랐어요.'
         if (!recommendations.length)

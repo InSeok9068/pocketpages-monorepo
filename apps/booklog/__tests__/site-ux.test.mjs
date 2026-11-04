@@ -271,7 +271,7 @@ test('Browser restores drafts, clears them after successful saves, updates expan
   await context.close()
 })
 
-test('Home recommendation dialog submits on mobile, renders safe explanations, and restores focus on close', async () => {
+test('Only popular exposes recommendations and its mobile dialog submits safely and restores focus', async () => {
   const recommendationBrowser = await chromium.launch({ channel: 'chrome', headless: true })
   try {
     const context = await recommendationBrowser.newContext({ viewport: { width: 360, height: 800 } })
@@ -286,10 +286,16 @@ test('Home recommendation dialog submits on mobile, renders safe explanations, a
     const errors = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.goto(service.baseUrl + '/')
+    assert.equal(await page.getByRole('button', { name: 'AI 책 추천 열기' }).count(), 0)
+    assert.equal(await page.locator('#book-recommendation-dialog').count(), 0)
+    await page.goto(service.baseUrl + '/popular?tab=steady')
     const trigger = page.getByRole('button', { name: 'AI 책 추천 열기' })
     await trigger.click()
     const dialog = page.getByRole('dialog', { name: '어떤 책을 읽을까요?' })
     await dialog.waitFor({ state: 'visible' })
+    assert.equal(await dialog.locator('form').getAttribute('hx-post'), '/xapi/books/recommend')
+    assert.equal(await dialog.locator('input[name=from]').inputValue(), '/popular?tab=steady')
+    assert.equal(await page.locator('#book-recommendation-dialog').count(), 1)
     await dialog.locator('textarea[name=preference]').fill('짧고 몰입감 있는 소설')
     assert.equal(await dialog.locator('select[name=source]').count(), 0)
     await dialog.getByRole('button', { name: '책 골라보기', exact: true }).click()
@@ -313,6 +319,51 @@ test('Home recommendation dialog submits on mobile, renders safe explanations, a
     await context.close()
   } finally {
     await recommendationBrowser.close()
+  }
+})
+
+test('Popular header and first card align with the library at mobile and desktop sizes', async () => {
+  const headerBrowser = await chromium.launch({ channel: 'chrome', headless: true })
+  try {
+    const context = await headerBrowser.newContext()
+    await context.route('https://**/*', (route) => route.abort())
+    await context.addCookies(
+      cookie.split('; ').map((entry) => {
+        const separator = entry.indexOf('=')
+        return { name: entry.slice(0, separator), value: entry.slice(separator + 1), url: service.baseUrl }
+      })
+    )
+    const page = await context.newPage()
+    for (const viewport of [
+      { width: 375, height: 667 },
+      { width: 1280, height: 900 },
+    ]) {
+      await page.setViewportSize(viewport)
+      const layouts = []
+      for (const route of ['/library', '/popular']) {
+        await page.goto(service.baseUrl + route)
+        layouts.push({
+          title: await page.getByRole('heading', { level: 1 }).boundingBox(),
+          back: await page.getByRole('link', { name: '메인으로', exact: true }).boundingBox(),
+          card: await page.locator('main > section > section').first().boundingBox(),
+        })
+      }
+      for (const [element, properties] of [
+        ['title', ['x', 'y', 'height']],
+        ['back', ['x', 'y', 'width', 'height']],
+        ['card', ['x', 'y', 'width']],
+      ]) {
+        for (const property of properties) {
+          assert.ok(
+            Math.abs(layouts[0][element][property] - layouts[1][element][property]) < 1,
+            viewport.width + 'px: ' + element + '.' + property + ': ' + JSON.stringify(layouts)
+          )
+        }
+      }
+    }
+    await context.close()
+  } finally {
+    await headerBrowser.close()
   }
 })
 
