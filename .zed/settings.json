@@ -10,4 +10,8 @@
       },
     },
   },
+  "languages": {
+    "TypeScript": { "enable_language_server": false },
+    "JavaScript": { "enable_language_server": false },
+  },
 }
