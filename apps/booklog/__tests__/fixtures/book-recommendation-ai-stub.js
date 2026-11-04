@@ -6,9 +6,9 @@ module.exports = {
         throw new Error('Recommendations must not call a decision model')
       },
       vercelAiGateway: function (request) {
-        if (request.model !== 'alibaba/qwen3.5-plus') throw new Error('Unexpected text model')
         const input = JSON.parse(request.input)
         if (!input.verifiedBooks) {
+          if (request.model !== 'openai/gpt-5-mini') throw new Error('Unexpected suggestion model')
           return {
             ok: true,
             json: {
@@ -18,6 +18,7 @@ module.exports = {
             },
           }
         }
+        if (request.model !== 'alibaba/qwen3.5-flash') throw new Error('Unexpected explanation model')
         return {
           ok: true,
           json: {

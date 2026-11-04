@@ -17,7 +17,8 @@ function load(name) {
 }
 const data = load('book-recommendation-data')
 const service = load('book-recommendation-service')
-const model = 'alibaba/qwen3.5-plus'
+const suggestionModel = 'openai/gpt-5-mini'
+const model = 'alibaba/qwen3.5-flash'
 const record = (fields) => ({ get: (key) => fields[key] })
 function candidate(id, extra = {}) {
   return {
@@ -36,12 +37,12 @@ function candidate(id, extra = {}) {
   }
 }
 
-test('Qwen proposes title and author only, discarding invented ISBNs, duplicates, invalid and excess entries', () => {
+test('GPT-5 mini proposes titles through Gateway, discarding invented ISBNs, duplicates and invalid entries', () => {
   const ai = {
     vercelAiGatewayDecision: () => assert.fail('No decision call'),
     vercelAiGateway(request) {
-      assert.equal(request.model, model)
-      assert.equal(request.reasoning_effort, 'none')
+      assert.equal(request.model, suggestionModel)
+      assert.equal(request.reasoning_effort, 'minimal')
       assert.deepEqual(JSON.parse(request.input), { readerPreference: '추리소설' })
       return {
         ok: true,
@@ -58,11 +59,11 @@ test('Qwen proposes title and author only, discarding invented ISBNs, duplicates
       }
     },
   }
-  const suggestions = service.suggestBooks(ai, model, '추리소설')
+  const suggestions = service.suggestBooks(ai, suggestionModel, '추리소설')
   assert.equal(suggestions.length, 8)
   assert.deepEqual({ ...suggestions[0] }, { title: '악의', author: '히가시노 게이고' })
   assert.throws(
-    () => service.suggestBooks({ vercelAiGateway: () => ({ ok: false }) }, model, 'test'),
+    () => service.suggestBooks({ vercelAiGateway: () => ({ ok: false }) }, suggestionModel, 'test'),
     /suggestions failed/
   )
 })

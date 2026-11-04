@@ -4,12 +4,13 @@
   const fromPath = resolve('book-navigation').getBackHref(String(form.from || '/'))
   const preference = String(form.preference || '').trim()
   const userId = request.auth ? String(request.auth.get('id')) : ''
-  const textModel = String(env('BOOKLOG_RECOMMENDATION_TEXT_MODEL') || 'alibaba/qwen3.5-plus').trim()
+  const suggestionModel = String(env('BOOKLOG_RECOMMENDATION_SUGGESTION_MODEL') || 'openai/gpt-5-mini').trim()
+  const textModel = String(env('BOOKLOG_RECOMMENDATION_TEXT_MODEL') || 'alibaba/qwen3.5-flash').trim()
   let recommendations = []
   let message = ''
   let notice = ''
   let explanationAvailable = true
-  dbg('xapi/books/recommend:start', { userId, preferenceLength: preference.length, textModel })
+  dbg('xapi/books/recommend:start', { userId, preferenceLength: preference.length, suggestionModel, textModel })
 
   if (request.method !== 'POST') {
     response.html(405, '잘못된 요청입니다.')
@@ -41,7 +42,7 @@
         timeoutSeconds: 30,
         maxAttempts: 1,
       })
-      const suggestions = recommendationService.suggestBooks(ai, textModel, preference)
+      const suggestions = recommendationService.suggestBooks(ai, suggestionModel, preference)
       dbg('xapi/books/recommend:suggestions', { userId, count: suggestions.length })
       const shelfData = data.loadShelfData($app, userId)
       const verifiedBooks = []
@@ -109,6 +110,7 @@
         info('xapi/books/recommend:completed', {
           userId,
           count: recommendations.length,
+          suggestionModel,
           textModel,
           explanationAvailable,
         })
