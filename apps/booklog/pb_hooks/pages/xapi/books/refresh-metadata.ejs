@@ -40,7 +40,7 @@
 
   function findOtherBookIdByIsbn13(isbn13, bookId) {
     try {
-      const record = $app.findFirstRecordByFilter('books', 'isbn13 = {:isbn13} && id != {:bookId}', {
+      const record = $app.findFirstRecordByFilter('books', 'isbn13 != "" && isbn13 = {:isbn13} && id != {:bookId}', {
         isbn13: isbn13,
         bookId: bookId,
       })

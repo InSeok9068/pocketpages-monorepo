@@ -271,22 +271,28 @@ function syncJobProgress(app, job, planned) {
 }
 
 function countChunks(app, fileId, configHash) {
-  const scope = $dbx.hashExp({ file_id: fileId, config_hash: configHash })
+  const counts = new DynamicModel({ total: 0, ready: 0, failed: 0, blocked: 0 })
+  app
+    .db()
+    .newQuery(
+      "SELECT count(CASE WHEN status != 'split' THEN 1 END) AS total,"
+        + " count(CASE WHEN status = 'ready' THEN 1 END) AS ready,"
+        + " count(CASE WHEN status = 'failed' AND attempt_count >= {:maxAttempts} THEN 1 END) AS failed,"
+        + " count(CASE WHEN status = 'failed' AND error_message LIKE {:blocked} THEN 1 END) AS blocked"
+        + ' FROM book_audio_chunks WHERE file_id = {:fileId} AND config_hash = {:configHash}'
+    )
+    .bind({
+      fileId,
+      configHash,
+      maxAttempts: generation.MAX_ATTEMPTS,
+      blocked: generation.BLOCKED_EXHAUSTED_MESSAGE + '%',
+    })
+    .one(counts)
   return {
-    total: app.countRecords('book_audio_chunks', scope, $dbx.not($dbx.hashExp({ status: 'split' }))),
-    ready: app.countRecords('book_audio_chunks', scope, $dbx.hashExp({ status: 'ready' })),
-    failed: app.countRecords(
-      'book_audio_chunks',
-      scope,
-      $dbx.hashExp({ status: 'failed' }),
-      $dbx.exp('attempt_count >= {:maxAttempts}', { maxAttempts: generation.MAX_ATTEMPTS })
-    ),
-    blocked: app.countRecords(
-      'book_audio_chunks',
-      scope,
-      $dbx.hashExp({ status: 'failed' }),
-      $dbx.like('error_message', generation.BLOCKED_EXHAUSTED_MESSAGE).match(false, true)
-    ),
+    total: Number(counts.total) || 0,
+    ready: Number(counts.ready) || 0,
+    failed: Number(counts.failed) || 0,
+    blocked: Number(counts.blocked) || 0,
   }
 }
 

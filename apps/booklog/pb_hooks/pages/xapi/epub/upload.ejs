@@ -156,7 +156,7 @@
     }
 
     if (!record && bookInput.isbn13) {
-      record = findFirstRecordOrNull(app, 'books', 'isbn13 = {:isbn13}', {
+      record = findFirstRecordOrNull(app, 'books', 'isbn13 != "" && isbn13 = {:isbn13}', {
         isbn13: bookInput.isbn13,
       })
     }
@@ -166,7 +166,7 @@
       const recordIsbn13 = String(record.get('isbn13') || '')
 
       if (recordIsbn13 !== bookInput.isbn13) {
-        const matchedIsbnRecord = findFirstRecordOrNull(app, 'books', 'isbn13 = {:isbn13}', {
+        const matchedIsbnRecord = findFirstRecordOrNull(app, 'books', 'isbn13 != "" && isbn13 = {:isbn13}', {
           isbn13: bookInput.isbn13,
         })
 
@@ -720,7 +720,7 @@
       detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
 
     const existingIsbnBookRecord = resolvedIsbn13
-      ? findFirstRecordOrNull($app, 'books', 'isbn13 = {:isbn13}', {
+      ? findFirstRecordOrNull($app, 'books', 'isbn13 != "" && isbn13 = {:isbn13}', {
           isbn13: resolvedIsbn13,
         })
       : null
@@ -840,7 +840,7 @@
       }
 
       const isbnBookRecord = resolvedIsbn13
-        ? findFirstRecordOrNull(txApp, 'books', 'isbn13 = {:isbn13}', { isbn13: resolvedIsbn13 })
+        ? findFirstRecordOrNull(txApp, 'books', 'isbn13 != "" && isbn13 = {:isbn13}', { isbn13: resolvedIsbn13 })
         : null
 
       saveConflict = findShelfConflict(

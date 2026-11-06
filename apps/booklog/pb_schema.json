@@ -935,7 +935,8 @@
     ],
     "indexes": [
       "CREATE UNIQUE INDEX idx_book_audio_progress_user_file_config_section ON book_audio_progress (user_id, file_id, config_hash, section_index)",
-      "CREATE INDEX idx_book_audio_progress_user_file_config_listened ON book_audio_progress (user_id, file_id, config_hash, last_listened_at)"
+      "CREATE INDEX idx_book_audio_progress_user_file_config_listened ON book_audio_progress (user_id, file_id, config_hash, last_listened_at)",
+      "CREATE INDEX idx_book_audio_progress_file_config_user_section ON book_audio_progress (file_id, config_hash, user_id, section_index)"
     ],
     "system": false
   },
@@ -1917,7 +1918,8 @@
       }
     ],
     "indexes": [
-      "CREATE INDEX idx_book_highlights_user_book_highlighted ON book_highlights (user_id, book_id, highlighted_at)"
+      "CREATE INDEX idx_book_highlights_user_book_highlighted ON book_highlights (user_id, book_id, highlighted_at)",
+      "CREATE INDEX idx_book_highlights_user_time ON book_highlights (user_id, highlighted_at DESC, updated DESC)"
     ],
     "system": false
   },
@@ -2063,7 +2065,8 @@
     ],
     "indexes": [
       "CREATE INDEX idx_book_reviews_user_book_reviewed ON book_reviews (user_id, book_id, reviewed_at)",
-      "CREATE UNIQUE INDEX idx_book_reviews_user_book ON book_reviews (user_id, book_id)"
+      "CREATE UNIQUE INDEX idx_book_reviews_user_book ON book_reviews (user_id, book_id)",
+      "CREATE INDEX idx_book_reviews_user_time ON book_reviews (user_id, reviewed_at DESC, updated DESC)"
     ],
     "system": false
   },
@@ -2286,7 +2289,8 @@
     ],
     "indexes": [
       "CREATE UNIQUE INDEX idx_book_shelves_user_book ON book_shelves (user_id, book_id)",
-      "CREATE INDEX idx_book_shelves_user_status_last_read ON book_shelves (user_id, status, last_read_at)"
+      "CREATE INDEX idx_book_shelves_user_status_last_read ON book_shelves (user_id, status, last_read_at)",
+      "CREATE INDEX idx_book_shelves_book_user ON book_shelves (book_id, user_id)"
     ],
     "system": false
   },
@@ -2771,7 +2775,8 @@
     "indexes": [
       "CREATE INDEX idx_push_send_logs_user_notification_sent ON push_send_logs (user_id, notification_key, sent_at)",
       "CREATE INDEX idx_push_send_logs_book_notification_sent ON push_send_logs (book_id, notification_key, sent_at)",
-      "CREATE UNIQUE INDEX idx_push_send_logs_dedupe_key ON push_send_logs (dedupe_key) WHERE dedupe_key != ''"
+      "CREATE UNIQUE INDEX idx_push_send_logs_dedupe_key ON push_send_logs (dedupe_key) WHERE dedupe_key != ''",
+      "CREATE INDEX idx_push_send_logs_sent_at ON push_send_logs (sent_at)"
     ],
     "system": false
   },

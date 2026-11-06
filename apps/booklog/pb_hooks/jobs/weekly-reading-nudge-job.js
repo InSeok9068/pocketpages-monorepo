@@ -89,9 +89,13 @@ function hasSentThisWeek(userId, weekKey) {
   }
 
   try {
-    return !!$app.findFirstRecordByFilter('push_send_logs', 'dedupe_key = {:dedupeKey} && send_status = "sent"', {
-      dedupeKey: dedupeKey,
-    })
+    return !!$app.findFirstRecordByFilter(
+      'push_send_logs',
+      'dedupe_key != "" && dedupe_key = {:dedupeKey} && send_status = "sent"',
+      {
+        dedupeKey: dedupeKey,
+      }
+    )
   } catch (_exception) {
     return false
   }

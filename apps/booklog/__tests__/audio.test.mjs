@@ -5,6 +5,10 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import vm from 'node:vm'
 
+function emptyChunkCountsDb() {
+  return { newQuery: () => ({ bind: () => ({ one() {} }) }) }
+}
+
 const serviceRoot = fileURLToPath(new URL('../', import.meta.url))
 const require = createRequire(new URL('../package.json', import.meta.url))
 const aiSource = readFileSync(new URL('../../../packages/ai/index.js', import.meta.url), 'utf8')
@@ -97,7 +101,14 @@ test('Whole-book extraction keeps spine order and preserves each chapter text ex
   assert.equal(chunks.join(' ').replace(/\s+/g, ' '), paragraph)
 })
 
-function runRoute({ authenticated = true, method = 'GET', owned = true, ready = true, split = false, query = {} } = {}) {
+function runRoute({
+  authenticated = true,
+  method = 'GET',
+  owned = true,
+  ready = true,
+  split = false,
+  query = {},
+} = {}) {
   let result
   const queries = []
   const lookups = []
@@ -227,7 +238,9 @@ const policyBlock = {
 }
 
 function longNarration(sentences) {
-  return Array.from({ length: sentences }, (_, index) => '문장 ' + index + '번은 차분하게 이어지는 본문입니다.').join(' ')
+  return Array.from({ length: sentences }, (_, index) => '문장 ' + index + '번은 차분하게 이어지는 본문입니다.').join(
+    ' '
+  )
 }
 
 test('A chunk is halved at the sentence boundary nearest the middle and short text is not split', () => {
@@ -336,6 +349,9 @@ test('Restarting a job retries ordinary failures but not parts that policy block
     __hooks: '',
     $security: { sha256: (text) => text },
     $dbx: { hashExp: () => ({}), not: () => ({}), exp: () => ({}), like: () => ({ match: () => ({}) }) },
+    DynamicModel: function (fields) {
+      Object.assign(this, fields)
+    },
     Date,
   }
   const load = (file) => {
@@ -368,7 +384,7 @@ test('Restarting a job retries ordinary failures but not parts that policy block
     findRecordById: () => job,
     findRecordsByFilter: () => [blocked, ordinary],
     findCollectionByNameOrId: () => ({}),
-    countRecords: () => 0,
+    db: emptyChunkCountsDb,
     save() {},
     delete() {},
   }
@@ -394,6 +410,9 @@ test('Regenerating a repeatedly blocked part splits it down to 80 chars, while o
     __hooks: '',
     $security: { sha256: (text) => text },
     $dbx: { hashExp: () => ({}), not: () => ({}), exp: () => ({}), like: () => ({ match: () => ({}) }) },
+    DynamicModel: function (fields) {
+      Object.assign(this, fields)
+    },
     Record: function () {
       const part = record({})
       created.push(part)
@@ -422,7 +441,12 @@ test('Regenerating a repeatedly blocked part splits it down to 80 chars, while o
       ...fields,
     })
   const chunks = {
-    blocked: chunk('blocked', { status: 'failed', attempt_count: 5, error_message: exhausted, input_text: longNarration(4) }),
+    blocked: chunk('blocked', {
+      status: 'failed',
+      attempt_count: 5,
+      error_message: exhausted,
+      input_text: longNarration(4),
+    }),
     tiny: chunk('tiny', { status: 'failed', attempt_count: 5, error_message: exhausted, input_text: longNarration(3) }),
     ready: chunk('ready', { status: 'ready', audio_file: 'a.mp3', input_text: longNarration(4) }),
   }
@@ -433,7 +457,7 @@ test('Regenerating a repeatedly blocked part splits it down to 80 chars, while o
     findRecordById: (collection, id) => chunks[id],
     findCollectionByNameOrId: () => ({}),
     runInTransaction: (fn) => fn(app),
-    countRecords: () => 0,
+    db: emptyChunkCountsDb,
     save() {},
     delete() {},
   }
@@ -441,7 +465,12 @@ test('Regenerating a repeatedly blocked part splits it down to 80 chars, while o
   assert.equal(chunks.blocked.fields.status, 'split')
   assert.equal(chunks.blocked.fields.regenerate_requested, false)
   assert.deepEqual(
-    created.map((part) => [part.fields.split_path, part.fields.status, part.fields.section_index, part.fields.chunk_index]),
+    created.map((part) => [
+      part.fields.split_path,
+      part.fields.status,
+      part.fields.section_index,
+      part.fields.chunk_index,
+    ]),
     [
       ['10', 'queued', 2, 5],
       ['11', 'queued', 2, 5],
@@ -596,7 +625,15 @@ test('Chunk views number the chapter among chapters with narration and link its 
     readFileSync(new URL('../pb_hooks/pages/_private/book-audio-data.js', import.meta.url), 'utf8'),
     context
   )
-  const fields = { id: 'c', config_hash: 'h', section_index: 7, file_id: 'f', status: 'ready', input_text: '본문', duration_seconds: 3 }
+  const fields = {
+    id: 'c',
+    config_hash: 'h',
+    section_index: 7,
+    file_id: 'f',
+    status: 'ready',
+    input_text: '본문',
+    duration_seconds: 3,
+  }
   const chunk = { get: (name) => fields[name] }
   const view = context.module.exports.chunkView(chunk, [chunk], 'book', 1, [1, 5, 7, 9], [3])
   assert.deepEqual(
@@ -616,7 +653,14 @@ function createPlayerHarness(fetchAudio, options = {}) {
   const diagnosticButton = { disabled: false }
   const diagnosticToggle = { textContent: '기록 시작', setAttribute() {} }
   const diagnosticStatus = { hidden: true, textContent: '' }
-  const diagnosticField = { hidden: true, value: '', focus() {}, select() { this.selected = true } }
+  const diagnosticField = {
+    hidden: true,
+    value: '',
+    focus() {},
+    select() {
+      this.selected = true
+    },
+  }
   const cachedAudio = new Map()
   const requests = []
   const server = options.server || { progress: null, downloads: 0, chunkCount: 1, failSaves: false }
@@ -688,17 +732,26 @@ function createPlayerHarness(fetchAudio, options = {}) {
       getElementById: (id) => {
         if (id === 'reader-cloud-audio') return audio
         if (!options.diagnostics) return null
-        return {
-          'reader-audio-diagnostics-copy': diagnosticButton,
-          'reader-audio-diagnostics-toggle': diagnosticToggle,
-          'reader-audio-diagnostics-status': diagnosticStatus,
-          'reader-audio-diagnostics-text': diagnosticField,
-        }[id] || null
+        return (
+          {
+            'reader-audio-diagnostics-copy': diagnosticButton,
+            'reader-audio-diagnostics-toggle': diagnosticToggle,
+            'reader-audio-diagnostics-status': diagnosticStatus,
+            'reader-audio-diagnostics-text': diagnosticField,
+          }[id] || null
+        )
       },
     },
-    navigator: { mediaSession: options.mediaSession, clipboard: options.clipboard, onLine: true, userAgent: 'Test Android' },
+    navigator: {
+      mediaSession: options.mediaSession,
+      clipboard: options.clipboard,
+      onLine: true,
+      userAgent: 'Test Android',
+    },
     localStorage: {
-      get length() { return values.size },
+      get length() {
+        return values.size
+      },
       key: (index) => [...values.keys()][index] ?? null,
       getItem: (key) => values.get(key) || null,
       setItem: (key, value) => {
@@ -792,9 +845,16 @@ function createPlayerHarness(fetchAudio, options = {}) {
   )
   if (options.diagnostics && options.recording !== false) context.window.booklogAudio.toggleDiagnostics()
   return {
-    logic: context.window.booklogAudio, state, audio, values, requests, server,
+    logic: context.window.booklogAudio,
+    state,
+    audio,
+    values,
+    requests,
+    server,
     document: context.document,
-    diagnosticButton, diagnosticStatus, diagnosticField,
+    diagnosticButton,
+    diagnosticStatus,
+    diagnosticField,
     emit: (target, event, details = {}) => (listeners[target][event] || []).forEach((callback) => callback(details)),
   }
 }
@@ -831,8 +891,20 @@ test('Admin audio diagnostics retain transitions, hidden playback and lifecycle 
   const hidden = report.events.find((entry) => entry.event === 'visibilitychange' && entry.visibility === 'hidden')
   assert.equal(hidden.seconds, 42)
   assert.equal(hidden.audioId, 'chunk-0-0')
-  for (const event of ['chunk-request', 'audio-downloaded', 'play', 'waiting', 'freeze', 'resume', 'ended', 'part-transition']) {
-    assert.ok(report.events.some((entry) => entry.event === event), event)
+  for (const event of [
+    'chunk-request',
+    'audio-downloaded',
+    'play',
+    'waiting',
+    'freeze',
+    'resume',
+    'ended',
+    'part-transition',
+  ]) {
+    assert.ok(
+      report.events.some((entry) => entry.event === event),
+      event
+    )
   }
   assert.ok(report.events.some((entry) => entry.event === 'play' && entry.chunk === 1))
   assert.equal(report.userAgent, 'Test Android')
@@ -849,7 +921,11 @@ test('Diagnostic clipboard supports direct copying and a selectable fallback on 
   let copied = ''
   const player = createPlayerHarness(() => audioResponse(), {
     diagnostics: true,
-    clipboard: { writeText: async (text) => { copied = text } },
+    clipboard: {
+      writeText: async (text) => {
+        copied = text
+      },
+    },
   })
   player.logic.copyDiagnostics(player.diagnosticButton)
   await flushPlayback()
@@ -857,7 +933,14 @@ test('Diagnostic clipboard supports direct copying and a selectable fallback on 
   assert.equal(player.diagnosticButton.disabled, false)
   assert.equal(player.diagnosticField.hidden, true)
   assert.match(player.diagnosticStatus.textContent, /복사했습니다/)
-  for (const clipboard of [undefined, { writeText: async () => { throw new Error('NotAllowedError') } }]) {
+  for (const clipboard of [
+    undefined,
+    {
+      writeText: async () => {
+        throw new Error('NotAllowedError')
+      },
+    },
+  ]) {
     const blocked = createPlayerHarness(() => audioResponse(), { diagnostics: true, clipboard })
     blocked.logic.copyDiagnostics(blocked.diagnosticButton)
     await flushPlayback()
@@ -889,7 +972,9 @@ test('Diagnostics do not affect playback when storage fails and stay off without
 
 test('Diagnostic history expires, is limited across books, and recording stays off until requested', async () => {
   const storage = new Map()
-  function saved(at) { return JSON.stringify([{ at: new Date(at).toISOString(), event: 'play' }]) }
+  function saved(at) {
+    return JSON.stringify([{ at: new Date(at).toISOString(), event: 'play' }])
+  }
   for (let index = 0; index < 4; index += 1) {
     storage.set('booklog-audio-diagnostics:user:book' + index, saved(Date.now() - index * 1000))
   }
@@ -1005,7 +1090,9 @@ function audioSectionsForFiles(files) {
     'META-INF/container.xml': strToU8('<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>'),
     'book.opf': strToU8(
       '<package><manifest>'
-        + names.map((name, index) => '<item id="i' + index + '" href="' + name + '" media-type="application/xhtml+xml"/>').join('')
+        + names
+          .map((name, index) => '<item id="i' + index + '" href="' + name + '" media-type="application/xhtml+xml"/>')
+          .join('')
         + '</manifest><spine>'
         + names.map((_name, index) => '<itemref idref="i' + index + '"/>').join('')
         + '</spine></package>'
@@ -1073,7 +1160,9 @@ test('Cover links, tables of contents, notes, references, and English rights pag
     'chapter.xhtml':
       '<html><body><p>차례대로 줄을 섰다. 주석을 달 필요는 없었다.</p>'
       + [1, 2, 3, 4, 5, 6]
-        .map((n) => '<p>문장 ' + n + '에는 주석 번호<a href="endnotes.xhtml#note' + n + '">' + n + '</a>가 붙어 있다.</p>')
+        .map(
+          (n) => '<p>문장 ' + n + '에는 주석 번호<a href="endnotes.xhtml#note' + n + '">' + n + '</a>가 붙어 있다.</p>'
+        )
         .join('')
       + '</body></html>',
     'thanks.xhtml': '<html><body><p>감사의 글</p><p>도와준 모든 분께 감사드립니다.</p></body></html>',
@@ -1096,10 +1185,13 @@ test('Long text without spaces is cut at the chunk limit instead of failing the 
 })
 
 test('A page that ends with endnotes keeps the narrative before the first note without the notes heading', () => {
-  const summary = '요약 문단입니다. 이 논문은 불확실한 상황에서 판단을 내릴 때 개입하는 세 가지 어림짐작을 다룹니다. '.repeat(3)
+  const summary =
+    '요약 문단입니다. 이 논문은 불확실한 상황에서 판단을 내릴 때 개입하는 세 가지 어림짐작을 다룹니다. '.repeat(3)
   const [section] = audioSectionsForFiles({
     'appendix.xhtml':
-      '<html><body><p>' + summary + '</p><p>/ 주 /</p>'
+      '<html><body><p>'
+      + summary
+      + '</p><p>/ 주 /</p>'
       + [1, 2, 3, 4, 5, 6]
         .map((n) => '<p><a href="paper.xhtml#ref' + n + '">' + n + '.</a> 참고 논문 ' + n + '</p>')
         .join('')
@@ -1187,7 +1279,10 @@ test('Narration joins letter-spaced Latin titles and drops decorative bullets on
       + '<p>글ㆍ그림 김수현, 정신적ㆍ신체적 건강, A·B 테스트, 가격은 □ 안에 적기</p></body></html>',
   })
   const text = section.chunks.join(' ').replace(/\s+/g, ' ')
-  assert.equal(text, 'Prologue Thanks to 내게 친절할 것 가볍게 살 것 글ㆍ그림 김수현, 정신적ㆍ신체적 건강, AB 테스트, 가격은 □ 안에 적기')
+  assert.equal(
+    text,
+    'Prologue Thanks to 내게 친절할 것 가볍게 살 것 글ㆍ그림 김수현, 정신적ㆍ신체적 건강, AB 테스트, 가격은 □ 안에 적기'
+  )
 })
 
 test('Narration omits navigation and hidden text without introducing list or quotation markers', () => {
@@ -1365,7 +1460,13 @@ test('Starting from the reading position plays the chunk that contains the visib
     chunkCount: 1,
     failSaves: false,
   }
-  const { logic, state, requests, audio, server: result } = createPlayerHarness(() => chapterResponse(4, -1), {
+  const {
+    logic,
+    state,
+    requests,
+    audio,
+    server: result,
+  } = createPlayerHarness(() => chapterResponse(4, -1), {
     server,
     positionChunk: 2,
     positionSeconds: 25,
@@ -1528,7 +1629,11 @@ test('Before playback the resume button shows where listening continues', async 
   await flushPlayback()
   assert.match(fresh.state.cloudAudioResumeLabel, /처음 듣는 책/)
   const saved = createPlayerHarness(() => chapterResponse(3, -1), {
-    server: { progress: { sectionIndex: 0, chunkIndex: 1, seconds: 15, chapterSeconds: 75 }, downloads: 0, chunkCount: 3 },
+    server: {
+      progress: { sectionIndex: 0, chunkIndex: 1, seconds: 15, chapterSeconds: 75 },
+      downloads: 0,
+      chunkCount: 3,
+    },
   })
   saved.logic.preview(saved.state)
   await flushPlayback()
@@ -1558,7 +1663,10 @@ test('Starting on a page without narration plays the next chapter and shows its 
   assert.deepEqual(sections.slice(0, 2), [2, 5])
   assert.equal(state.cloudAudioActive, true)
   assert.equal(state.cloudAudioChapterOrder, '3 / 16')
-  assert.ok(server.saves.some((save) => save.startsWith('5:0:false:true')), 'the moved chapter starts over')
+  assert.ok(
+    server.saves.some((save) => save.startsWith('5:0:false:true')),
+    'the moved chapter starts over'
+  )
   logic.stop()
   assert.equal(state.cloudAudioChapterOrder, '')
 })
@@ -1639,7 +1747,9 @@ test('Seeking forward in device voice moves past a sentence longer than the seek
           chunkCount: 1,
           nextSectionIndex: -1,
           timeline: [40],
-          parts: [{ audioUrl: '', fallbackText: '첫째 문장입니다.\n둘째 문장입니다.', pending: true, durationSeconds: 40 }],
+          parts: [
+            { audioUrl: '', fallbackText: '첫째 문장입니다.\n둘째 문장입니다.', pending: true, durationSeconds: 40 },
+          ],
         })
       ),
     { speech }
@@ -1672,7 +1782,11 @@ test('Starting from the reading position in device voice begins at the visible s
   )
   logic.start(state, 0, true, '이어지는 문장입니다. 다음 문단')
   await flushPlayback()
-  assert.equal(speech.spoken[0].text, '이어지는 문장입니다.', 'the sentence is found in the text instead of the estimated time')
+  assert.equal(
+    speech.spoken[0].text,
+    '이어지는 문장입니다.',
+    'the sentence is found in the text instead of the estimated time'
+  )
   logic.stop()
 })
 
@@ -1712,15 +1826,16 @@ test('The AI voice listening position counts letters without spaces so blank lin
   const first = '가'.repeat(50) + '.'
   const second = '나'.repeat(50) + '.'
   const text = first + '\n'.repeat(60) + second
-  const { logic, state, audio } = createPlayerHarness(() =>
-    new Response(
-      JSON.stringify({
-        ok: true,
-        chunkCount: 1,
-        nextSectionIndex: -1,
-        parts: [{ audioUrl: '/xapi/books/audio-file?chunkId=p', fallbackText: '', text, durationSeconds: 100 }],
-      })
-    )
+  const { logic, state, audio } = createPlayerHarness(
+    () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          chunkCount: 1,
+          nextSectionIndex: -1,
+          parts: [{ audioUrl: '/xapi/books/audio-file?chunkId=p', fallbackText: '', text, durationSeconds: 100 }],
+        })
+      )
   )
   logic.start(state, 0)
   await flushPlayback()
@@ -1814,35 +1929,44 @@ test('The chapter-end sleep timer stops after the chapter and resumes with the n
 
 test('A body file over the size limit fails planning instead of silently dropping a chapter', () => {
   assert.throws(
-    () => audioSectionsForFiles({ 'huge.xhtml': '<html><body><p>' + '가'.repeat(6 * 1024 * 1024) + '</p></body></html>' }),
+    () =>
+      audioSectionsForFiles({ 'huge.xhtml': '<html><body><p>' + '가'.repeat(6 * 1024 * 1024) + '</p></body></html>' }),
     (error) => /16MB를 넘어/.test(error.userMessage)
   )
 })
 
 test('The listening position is the start of the sentence being read in the current part', async () => {
   const text = '첫 문장입니다. 둘째 문장은 여기서 시작합니다. 셋째 문장입니다.'
-  const { logic, state, audio } = createPlayerHarness(() =>
-    new Response(
-      JSON.stringify({
-        ok: true,
-        chunkCount: 1,
-        nextSectionIndex: -1,
-        parts: [{ audioUrl: '/xapi/books/audio-file?chunkId=p', fallbackText: '', text, durationSeconds: 60 }],
-      })
-    )
+  const { logic, state, audio } = createPlayerHarness(
+    () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          chunkCount: 1,
+          nextSectionIndex: -1,
+          parts: [{ audioUrl: '/xapi/books/audio-file?chunkId=p', fallbackText: '', text, durationSeconds: 60 }],
+        })
+      )
   )
   assert.equal(logic.currentAnchor(), null)
   logic.start(state, 4)
   await flushPlayback()
   assert.deepEqual(JSON.parse(JSON.stringify(logic.currentAnchor())), { sectionIndex: 4, text })
   audio.currentTime = 30
-  assert.deepEqual(JSON.parse(JSON.stringify(logic.currentAnchor())), { sectionIndex: 4, text: '둘째 문장은 여기서 시작합니다. 셋째 문장입니다.' })
+  assert.deepEqual(JSON.parse(JSON.stringify(logic.currentAnchor())), {
+    sectionIndex: 4,
+    text: '둘째 문장은 여기서 시작합니다. 셋째 문장입니다.',
+  })
   logic.stop()
 })
 
 test('Resuming does not report the first sentence of the part before the saved position is applied', async () => {
   const text = '첫 문장입니다. 둘째 문장은 여기서 시작합니다. 셋째 문장입니다.'
-  const server = { progress: { sectionIndex: 0, chunkIndex: 0, seconds: 30, isCompleted: false }, downloads: 0, chunkCount: 1 }
+  const server = {
+    progress: { sectionIndex: 0, chunkIndex: 0, seconds: 30, isCompleted: false },
+    downloads: 0,
+    chunkCount: 1,
+  }
   const { logic, state, audio } = createPlayerHarness(
     () =>
       new Response(
@@ -1871,10 +1995,7 @@ test('Resuming does not report the first sentence of the part before the saved p
 
 test('Playback times are shown as minutes or hours', () => {
   const { logic } = createPlayerHarness(() => chapterResponse(1, -1))
-  assert.deepEqual(
-    [0, 65.9, 3600, 3725].map(logic.formatTime),
-    ['0:00', '1:05', '1:00:00', '1:02:05']
-  )
+  assert.deepEqual([0, 65.9, 3600, 3725].map(logic.formatTime), ['0:00', '1:05', '1:00:00', '1:02:05'])
 })
 
 test('Reading-position matching ignores whitespace and tolerates anchors that cross chunk boundaries', () => {
@@ -1888,14 +2009,19 @@ test('Reading-position matching ignores whitespace and tolerates anchors that cr
     readFileSync(new URL('../pb_hooks/pages/_private/book-audio-data.js', import.meta.url), 'utf8'),
     context
   )
-  const chunks = ['첫 구간의 문장입니다.', '둘째 구간은\n\n여기서 시작하는 긴 문단입니다.', '셋째 구간 문단입니다.'].map(
-    (text, index) => ({ get: (name) => (name === 'input_text' ? text : index) })
-  )
+  const chunks = [
+    '첫 구간의 문장입니다.',
+    '둘째 구간은\n\n여기서 시작하는 긴 문단입니다.',
+    '셋째 구간 문단입니다.',
+  ].map((text, index) => ({ get: (name) => (name === 'input_text' ? text : index) }))
   const app = { findRecordsByFilter: () => chunks }
   const find = (anchor) =>
     JSON.parse(JSON.stringify(context.module.exports.findChunkPositionByText(app, 'file', 'hash', 0, anchor)))
   assert.deepEqual(find('여기서  시작하는 긴'), { chunkIndex: 1, ratio: 5 / 19 })
-  assert.deepEqual(find('둘째 구간은 여기서 시작하는 긴 문단입니다. 셋째 구간 문단입니다.'), { chunkIndex: 1, ratio: 0 })
+  assert.deepEqual(find('둘째 구간은 여기서 시작하는 긴 문단입니다. 셋째 구간 문단입니다.'), {
+    chunkIndex: 1,
+    ratio: 0,
+  })
   assert.equal(find('어디에도 없는 문장입니다만 충분히 깁니다').chunkIndex, -1)
   assert.equal(find('   ').chunkIndex, -1)
 })
@@ -1940,7 +2066,10 @@ test('A chunk that failed every retry is read with the device voice and playback
   assert.equal(speech.spoken[0].lang, 'ko-KR')
   assert.equal(speech.spoken[0].voice, '한국어')
   assert.deepEqual(requests, [0, 1, 2])
-  assert.ok(server.saves.some((save) => save.startsWith('0:1:false')), 'the fallback chunk position is saved')
+  assert.ok(
+    server.saves.some((save) => save.startsWith('0:1:false')),
+    'the fallback chunk position is saved'
+  )
   assert.equal(state.cloudAudioActive, true)
   assert.match(state.cloudAudioDetail, /3 \/ 3 구간/)
   assert.equal(state.cloudAudioMessage, '', 'normal AI playback shows no notice')
@@ -2002,7 +2131,13 @@ test('A saved position the server rejects as invalid is dropped and never blocks
           key: 'stale',
           sectionIndex: 0,
           revision: '1',
-          fields: { configHash: 'settings', chunkId: 'chunk-0-0', seconds: '60', isCompleted: 'true', restart: 'false' },
+          fields: {
+            configHash: 'settings',
+            chunkId: 'chunk-0-0',
+            seconds: '60',
+            isCompleted: 'true',
+            restart: 'false',
+          },
         },
       }),
     ],
