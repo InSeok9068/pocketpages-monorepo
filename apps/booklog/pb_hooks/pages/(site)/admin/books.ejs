@@ -14,7 +14,7 @@
     .trim()
     .slice(0, 200)
   const scope = request.url.query.scope === 'unused' ? 'unused' : 'all'
-  const sort = ['size', 'oldestRead'].indexOf(request.url.query.sort) >= 0 ? request.url.query.sort : 'newest'
+  const sort = ['newest', 'size', 'oldestRead'].indexOf(request.url.query.sort) >= 0 ? request.url.query.sort : 'size'
   const filterUserId = String(request.url.query.user || '')
     .trim()
     .slice(0, 100)
@@ -664,14 +664,14 @@
         name="sort"
         class="box-border h-8 rounded-md border border-solid border-stone-300 bg-white px-2 text-xs text-stone-700 focus-visible:outline-stone-500">
         <option
-          value="newest"
-          <%= sort === 'newest' ? 'selected' : '' %>>
-          최신순
-        </option>
-        <option
           value="size"
           <%= sort === 'size' ? 'selected' : '' %>>
           용량 큰 순
+        </option>
+        <option
+          value="newest"
+          <%= sort === 'newest' ? 'selected' : '' %>>
+          최신순
         </option>
         <option
           value="oldestRead"

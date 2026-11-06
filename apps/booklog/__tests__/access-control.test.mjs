@@ -813,6 +813,7 @@ test('Administrators can search all books, see members and delete unused books',
   assert.match(defaultListing, /미사용 관리 책/)
   assert.match(defaultListing, /관리 대상 책/, 'the default scope lists every book')
   assert.equal(load(defaultListing)('select[name=scope] option[selected]').val(), 'all')
+  assert.equal(load(defaultListing)('#admin-book-sort option[selected]').val(), 'size')
   const unused = await request('/admin/books?scope=unused', 4)
   assert.equal(unused.status, 200)
   const unusedHtml = await unused.text()
@@ -961,7 +962,7 @@ test('Administrators assign shared EPUBs only to users without the book', async 
 
 test('Storage ordering covers all pages, preserves filters and escapes expandable audio errors', async () => {
   assert.equal((await request('/_test/storage-fixtures', 4, { action: 'create' })).status, 200)
-  const query = '/admin/books?scope=all&q=' + encodeURIComponent('용량검증') + '&sort=size'
+  const query = '/admin/books?scope=all&q=' + encodeURIComponent('용량검증')
   const response = await request(query, 4)
   assert.equal(response.status, 200)
   const html = await response.text()
@@ -989,7 +990,7 @@ test('Storage ordering covers all pages, preserves filters and escapes expandabl
   const pageTwo = load(await (await request(next, 4)).text())
   assert.ok(pageTwo('tbody tr').length > 0)
   assert.doesNotMatch(pageTwo('tbody').text(), /관리 대상 책/)
-  const newest = load(await (await request(query.replace('sort=size', 'sort=newest'), 4)).text())
+  const newest = load(await (await request(query + '&sort=newest', 4)).text())
   assert.doesNotMatch(newest('tbody').text(), /관리 대상 책/)
   const rejected = await request(query + '&page=2', 4, { action: 'delete', bookId: 'adminbook000001', userCount: '-1' })
   assert.equal(rejected.status, 303)
