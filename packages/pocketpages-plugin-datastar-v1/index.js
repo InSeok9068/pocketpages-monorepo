@@ -422,9 +422,14 @@ function buildNavigationScript(options) {
     'if(path===location.pathname+location.search+location.hash)return',
     'var navigation=window.' + navigationStateKey,
     'if(navigation.controller)navigation.controller.abort()',
+    'clearTimeout(navigation.scrollTimer)',
+    'history.replaceState(Object.assign({},history.state,{scrollY:window.scrollY}),"")',
     'navigation.controller=new AbortController()',
-    'history.pushState({datastar:{url:path}},"",path)',
-    '@get(path,{headers:' + headersJson + ',requestCancellation:navigation.controller})',
+    'var controller=navigation.controller',
+    'history.pushState({datastar:{url:path},scrollY:0},"",path)',
+    '@get(path,{headers:'
+      + headersJson
+      + ',requestCancellation:controller}).then(function(){if(navigation.controller===controller&&!controller.signal.aborted)window.scrollTo({top:0,behavior:"instant"})})',
   ].join(';')
   const popstateExpression = [
     'var state=evt.state&&evt.state.datastar',
@@ -432,8 +437,13 @@ function buildNavigationScript(options) {
     'if(!url)return',
     'var navigation=window.' + navigationStateKey,
     'if(navigation.controller)navigation.controller.abort()',
+    'clearTimeout(navigation.scrollTimer)',
+    'var scrollY=evt.state.scrollY||0',
     'navigation.controller=new AbortController()',
-    '@get(url,{headers:' + headersJson + ',requestCancellation:navigation.controller})',
+    'var controller=navigation.controller',
+    '@get(url,{headers:'
+      + headersJson
+      + ',requestCancellation:controller}).then(function(){if(navigation.controller===controller&&!controller.signal.aborted)window.scrollTo({top:scrollY,behavior:"instant"})})',
   ].join(';')
 
   return [
@@ -442,9 +452,21 @@ function buildNavigationScript(options) {
     '  var navigationStateKey = ' + scriptJson(navigationStateKey) + ';',
     '  var navigationState = window[navigationStateKey];',
     '  if (!navigationState) {',
-    '    navigationState = { controller: null };',
+    '    navigationState = { controller: null, scrollTimer: null };',
     '    window[navigationStateKey] = navigationState;',
+    '    history.scrollRestoration = "manual";',
+    '    if (!history.state || !history.state.datastar || !history.state.datastar.url) {',
+    '      history.replaceState(Object.assign({}, history.state, { datastar: { url: location.pathname + location.search + location.hash }, scrollY: window.scrollY }), "");',
+    '    }',
+    '    window.addEventListener("scroll", function () {',
+    '      clearTimeout(navigationState.scrollTimer);',
+    '      navigationState.scrollTimer = setTimeout(function () {',
+    '        if (!history.state || !history.state.datastar) return;',
+    '        history.replaceState(Object.assign({}, history.state, { scrollY: window.scrollY }), "");',
+    '      }, 150);',
+    '    }, { passive: true });',
     '    window.addEventListener("pagehide", function () {',
+    '      clearTimeout(navigationState.scrollTimer);',
     '      if (navigationState.controller) navigationState.controller.abort();',
     '      navigationState.controller = null;',
     '    });',

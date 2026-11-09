@@ -11,6 +11,7 @@ Compared to the original PocketPages Datastar plugin, this package adds a few Da
 - Vendors the Datastar `v1.0.4` browser bundle for local asset usage.
 - Uses Datastar 1.x attribute syntax in the SPA helper, such as `data-on:click`.
 - Keeps `spa` as the public navigation helper option for PocketPages layouts.
+- Registers the initial SPA history entry, saves scroll positions, and restores them after Back/Forward content updates. Cancelled or superseded requests do not restore scroll.
 - Supports `Datastar-Selector`, `Datastar-Mode`, `Datastar-Namespace`, `Datastar-Use-View-Transition`, and `Datastar-View-Transition-Selector` headers.
 - Supports `namespace`, `eventId`, `retryDuration`, and view-transition options in SSE patch helpers.
 - Adds `removeElements()` and `removeSignals()` conveniences for common removal patches.
@@ -34,11 +35,7 @@ Then add it after the EJS plugin in `pb_hooks/pages/+config.js`:
 ```js
 module.exports = function () {
   return {
-    plugins: [
-      'pocketpages-plugin-ejs',
-      'pocketpages-plugin-datastar-v1',
-      'pocketpages-plugin-realtime',
-    ],
+    plugins: ['pocketpages-plugin-ejs', 'pocketpages-plugin-datastar-v1', 'pocketpages-plugin-realtime'],
   }
 }
 ```
@@ -98,9 +95,9 @@ SPA and realtime helpers are opt-in:
 <%- datastar.scripts({
   spa: {
     scope: 'nav',
-    selector: '#main'
+    selector: '#main',
   },
-  realtime: true
+  realtime: true,
 }) %>
 ```
 
@@ -170,15 +167,13 @@ const form = datastar.requestSignals({
 For manual Datastar actions, send headers when you want PocketPages-rendered HTML to patch into a selector:
 
 ```html
-<button data-on:click="@get('/posts', {headers: {'Datastar-Selector': '#main'}})">
-  Reload
-</button>
+<button data-on:click="@get('/posts', { headers: { 'Datastar-Selector': '#main' } })">Reload</button>
 ```
 
 In EJS, `datastar.headers()` can build those headers:
 
 ```ejs
-<button data-on:click="@get('/posts', {headers: <%- stringify(datastar.headers({ selector: '#main' })) %>})">
+<button data-on:click="@get('/posts', { headers: <%- stringify(datastar.headers({ selector: '#main' })) %> })">
   Reload
 </button>
 ```
@@ -211,11 +206,7 @@ Use a custom topic when the page subscribes to a scoped stream:
 ```
 
 ```js
-datastar.realtime.patchSignals(
-  { status: 'ready' },
-  undefined,
-  { topic: 'dashboard' }
-)
+datastar.realtime.patchSignals({ status: 'ready' }, undefined, { topic: 'dashboard' })
 ```
 
 ## Background jobs

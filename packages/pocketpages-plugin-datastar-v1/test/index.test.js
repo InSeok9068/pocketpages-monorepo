@@ -391,7 +391,7 @@ test('scripts closes navigation and realtime script tags in raw HTML', function 
 
   assert.ok(html.includes('var source = new EventSource(endpoint)'))
   assert.ok(html.includes('data-on:click'))
-  assert.ok(html.includes('requestCancellation:navigation.controller'))
+  assert.ok(html.includes('requestCancellation:controller'))
   assert.ok(html.includes('navigation.controller.abort()'))
   assert.ok(html.includes('document.addEventListener("datastar-scope-children", bindLinks, true);'))
   assert.ok(html.includes('state.source.close()'))
@@ -399,6 +399,183 @@ test('scripts closes navigation and realtime script tags in raw HTML', function 
   assert.ok(html.includes('window.addEventListener("pageshow", handlePageShow)'))
   assert.strictEqual((html.match(/<\/script>/g) || []).length, 4)
   assert.strictEqual(html.includes('<\\/script>'), false)
+})
+
+function createNavigationHarness() {
+  const html = createHarness().api.datastar.scripts({ spa: true })
+  const scripts = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g), function (match) {
+    return match[1]
+  })
+  const attributes = {}
+  const listeners = {}
+  const requests = []
+  const scrolls = []
+  const timers = new Map()
+  let timerId = 0
+  const history = {
+    state: { existing: true },
+    replaceState: function (state) {
+      this.state = state
+    },
+    pushState: function (state) {
+      this.previousState = this.state
+      this.state = state
+    },
+  }
+  const context = {
+    history,
+    location: { pathname: '/first', search: '?page=1', hash: '#list', origin: 'https://example.test' },
+    URL,
+    AbortController,
+    setTimeout: function (callback) {
+      timers.set(++timerId, callback)
+      return timerId
+    },
+    clearTimeout: function (id) {
+      timers.delete(id)
+    },
+    document: {
+      readyState: 'complete',
+      baseURI: 'https://example.test/first',
+      body: { appendChild: function () {} },
+      getElementById: function () {
+        return attributes['data-on:popstate__window'] ? {} : null
+      },
+      createElement: function () {
+        return {
+          setAttribute: function (name, value) {
+            attributes[name] = value
+          },
+        }
+      },
+      querySelector: function () {
+        return {
+          querySelectorAll: function () {
+            return [
+              {
+                hasAttribute: function () {
+                  return false
+                },
+                setAttribute: function (name, value) {
+                  attributes[name] = value
+                },
+              },
+            ]
+          },
+        }
+      },
+      addEventListener: function () {},
+    },
+    get: function (url, options) {
+      const request = { url, options }
+      requests.push(request)
+      return {
+        then: function (callback) {
+          request.complete = callback
+        },
+      }
+    },
+  }
+  context.window = {
+    scrollY: 120,
+    addEventListener: function (name, callback) {
+      listeners[name] = callback
+    },
+    scrollTo: function (options) {
+      scrolls.push(options.top)
+    },
+  }
+  vm.createContext(context)
+  const script = scripts[scripts.length - 1]
+  vm.runInContext(script, context)
+  return {
+    context,
+    history,
+    listeners,
+    requests,
+    scrolls,
+    timers,
+    rerun: function () {
+      vm.runInContext(script, context)
+    },
+    click: function (path) {
+      context.evt = {
+        target: {
+          closest: function () {
+            return {
+              href: 'https://example.test' + path,
+              hasAttribute: function () {
+                return false
+              },
+            }
+          },
+        },
+        button: 0,
+        preventDefault: function () {},
+      }
+      vm.runInContext('(function(){' + attributes['data-on:click'].replace('@get(', 'get(') + '})()', context)
+    },
+    pop: function (state) {
+      history.state = state
+      context.evt = { state }
+      vm.runInContext(
+        '(function(){' + attributes['data-on:popstate__window'].replace('@get(', 'get(') + '})()',
+        context
+      )
+    },
+  }
+}
+
+test('scripts without SPA do not change history or scroll handling', function () {
+  const html = createHarness().api.datastar.scripts()
+  assert.strictEqual(html.includes('history.scrollRestoration'), false)
+  assert.strictEqual(html.includes('__pocketpagesDatastarNavigation'), false)
+})
+
+test('SPA registers the landing page and preserves history state on repeated setup', function () {
+  const nav = createNavigationHarness()
+  assert.strictEqual(nav.history.scrollRestoration, 'manual')
+  assert.strictEqual(nav.history.state.existing, true)
+  assert.strictEqual(nav.history.state.datastar.url, '/first?page=1#list')
+  assert.strictEqual(nav.history.state.scrollY, 120)
+  const scrollListener = nav.listeners.scroll
+  nav.rerun()
+  assert.strictEqual(nav.listeners.scroll, scrollListener)
+  nav.context.window.scrollY = 240
+  nav.listeners.scroll()
+  nav.timers.forEach(function (callback) {
+    callback()
+  })
+  assert.strictEqual(nav.history.state.scrollY, 240)
+})
+
+test('SPA saves scroll before navigation and restores it only after the active request completes', function () {
+  const nav = createNavigationHarness()
+  nav.listeners.scroll()
+  const landing = nav.history.state
+  nav.context.window.scrollY = 360
+  nav.click('/second')
+  assert.strictEqual(nav.timers.size, 0)
+  assert.strictEqual(nav.history.previousState.scrollY, 360)
+  assert.strictEqual(nav.history.previousState.existing, true)
+  assert.strictEqual(nav.history.state.scrollY, 0)
+  assert.strictEqual(nav.scrolls.length, 0)
+  nav.requests[0].complete()
+  assert.deepStrictEqual(nav.scrolls, [0])
+  nav.pop(Object.assign({}, landing, { scrollY: 360 }))
+  assert.strictEqual(nav.requests[0].options.requestCancellation.signal.aborted, true)
+  assert.strictEqual(nav.requests[1].url, '/first?page=1#list')
+  assert.deepStrictEqual(nav.scrolls, [0])
+  nav.requests[1].complete()
+  assert.deepStrictEqual(nav.scrolls, [0, 360])
+  nav.click('/third')
+  nav.click('/fourth')
+  nav.requests[2].complete()
+  assert.deepStrictEqual(nav.scrolls, [0, 360])
+  nav.requests[3].complete()
+  assert.deepStrictEqual(nav.scrolls, [0, 360, 0])
+  nav.listeners.pagehide()
+  assert.strictEqual(nav.requests[3].options.requestCancellation.signal.aborted, true)
 })
 
 test('scripts subscribes realtime clients to custom topics', function () {
