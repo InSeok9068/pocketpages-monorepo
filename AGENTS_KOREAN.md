@@ -20,8 +20,8 @@
 - `apps/<service>/pb_hooks/pages/+config.js` = 서비스 plugin/config entry
 - `apps/<service>/pocketpages-globals.d.ts` = 에디터 globals/plugin helper typing
 - `(site)`, `(reader)` 같은 route group은 URL segment를 추가하지 않고 layout을 묶는다
-- `xapi/*` = layout 없는 interaction
-- `api/*` = data/API
+- `xapi/*` = layout 없는 HTMX/partial HTML interaction
+- `api/*` = `fetch`용 JSON API; PocketBase 기본 `/api/*` 경로 이름은 피한다
 - `_private/*` = internal partial, service, util, module
 
 ---

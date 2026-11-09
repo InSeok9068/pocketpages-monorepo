@@ -20,8 +20,8 @@
 - `apps/<service>/pb_hooks/pages/+config.js` = service plugin/config entry
 - `apps/<service>/pocketpages-globals.d.ts` = editor globals/plugin helper typing
 - route groups such as `(site)` and `(reader)` group layouts without adding URL segments
-- `xapi/*` = no-layout interaction
-- `api/*` = data/API
+- `xapi/*` = no-layout HTMX/partial HTML interaction
+- `api/*` = JSON API for `fetch`; avoid PocketBase built-in `/api/*` names
 - `_private/*` = internal partials, services, utils, modules
 
 ---

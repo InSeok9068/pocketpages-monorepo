@@ -113,7 +113,7 @@
     const selectedDeveloper = String(workList.dataset.selectedDeveloper || '')
     const query = selectedDeveloper ? '?developer=' + encodeURIComponent(selectedDeveloper) : ''
 
-    window.htmx.ajax('GET', '/api/works/today' + query, {
+    window.htmx.ajax('GET', '/xapi/works/today' + query, {
       target: '#work-list',
       swap: 'outerHTML',
     })
