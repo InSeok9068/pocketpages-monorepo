@@ -179,5 +179,6 @@
 - PocketBase JSVM runtime API: `apps/<service>/pb_data/types.d.ts`
 - 서비스 공용 타입: `apps/<service>/types.d.ts`
 - PocketPages framework 동작: `.docs/pocketpages/*`
+- PocketPages AI 주의사항(보조 참고): `.docs/pocketpages-skill/*`; `AGENTS.md`의 프로젝트 규칙과 기존 로컬 패턴을 우선한다
 - PocketBase 동작: `.docs/pocketbase/*`
 - 문서 해석이 애매하면 schema나 runtime type을 무시하지 않는 범위에서 기존 서비스의 로컬 패턴을 확인한다.

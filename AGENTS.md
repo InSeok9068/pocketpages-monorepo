@@ -179,5 +179,6 @@ Use index sections when relevant:
 - PocketBase JSVM runtime API: `apps/<service>/pb_data/types.d.ts`
 - Shared service types: `apps/<service>/types.d.ts`
 - PocketPages framework behavior: `.docs/pocketpages/*`
+- PocketPages AI pitfalls (supplementary): `.docs/pocketpages-skill/*`; project rules in `AGENTS.md` and existing local patterns take precedence
 - PocketBase behavior: `.docs/pocketbase/*`
 - If documentation is ambiguous, inspect existing local service patterns without overriding schema or runtime types.
