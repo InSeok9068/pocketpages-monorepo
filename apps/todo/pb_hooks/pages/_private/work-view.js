@@ -24,6 +24,7 @@ function toDeveloperOptions(records) {
     options.push({
       id: String(record.get('id') || ''),
       name: String(record.get('name') || ''),
+      sort: Number(record.get('sort') || 0),
     })
   }
 

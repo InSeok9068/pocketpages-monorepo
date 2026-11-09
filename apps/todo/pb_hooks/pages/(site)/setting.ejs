@@ -10,6 +10,11 @@
   }
   const userId = String(request.auth.get('id') || '')
   const developers = todoData.listDevelopers(userId)
+  let nextDeveloperSort = 1
+  for (let index = 0; index < developers.length; index += 1) {
+    const sort = Number(developers[index].sort || 0)
+    if (sort >= nextDeveloperSort) nextDeveloperSort = sort + 1
+  }
   const setting = todoData.findSetting(userId)
   const daysBefore = workView.getUrgentDays(setting)
   dbg('todo/setting:response', { userId, developerCount: developers.length })
@@ -61,16 +66,26 @@
   </section>
   <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
     <h2 class="text-lg font-black">담당자</h2>
+    <p class="mt-1 text-sm text-slate-500">정렬 순서가 낮을수록 먼저 표시됩니다.</p>
     <form
       method="post"
       action="/xapi/developers/create"
-      class="mt-4 flex gap-2">
+      class="mt-4 flex items-center gap-2">
       <input
         name="name"
         required
         maxlength="60"
         placeholder="담당자 이름"
         class="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 px-3" />
+      <input
+        type="number"
+        name="sort"
+        min="1"
+        step="1"
+        required
+        value="<%= nextDeveloperSort %>"
+        aria-label="정렬 순서"
+        class="h-10 w-20 rounded-lg border border-slate-200 px-3" />
       <button
         class="inline-flex h-10 items-center gap-1 rounded-lg border-0 bg-blue-600 px-3 text-sm font-bold text-white">
         <span class="i-lucide-plus h-4 w-4"></span>
@@ -81,6 +96,7 @@
       <% for (let index = 0; index < developers.length; index += 1) { %>
       <li class="flex items-center gap-3 py-3">
         <span class="i-lucide-user-round h-4 w-4 text-slate-400"></span>
+        <span class="w-8 text-right text-xs font-bold text-slate-400"><%= developers[index].sort %></span>
         <span class="font-bold"><%= developers[index].name %></span>
         <form
           method="post"

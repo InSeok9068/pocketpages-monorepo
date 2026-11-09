@@ -6,6 +6,7 @@ declare namespace types {
   type DeveloperOption = {
     id: string
     name: string
+    sort: number
   }
 
   type WorkStateOption = {

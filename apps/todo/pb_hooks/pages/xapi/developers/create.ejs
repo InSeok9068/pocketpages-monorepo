@@ -2,15 +2,20 @@
   const form = body()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
   const name = String(form.name || '').trim()
+  const sortValue = String(form.sort || '').trim()
+  const sort = Number(sortValue)
   let errorMessage = ''
-  dbg('todo/xapi/developers/create:start', { userId, name })
+  dbg('todo/xapi/developers/create:start', { userId, name, sort })
   try {
     if (request.method !== 'POST' || !userId) throw new Error('로그인이 필요합니다.')
     if (!name) throw new Error('담당자 이름이 필요합니다.')
+    if (!sortValue || isNaN(sort) || !isFinite(sort) || sort < 1 || Math.floor(sort) !== sort) {
+      throw new Error('정렬 순서는 1 이상의 정수여야 합니다.')
+    }
     const record = new Record($app.findCollectionByNameOrId('developers'))
     record.set('user', userId)
     record.set('name', name)
-    record.set('sort', 0)
+    record.set('sort', sort)
     record.set('leader', false)
     record.set('del', false)
     $app.save(record)
