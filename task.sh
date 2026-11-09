@@ -49,9 +49,9 @@ Commands:
   ci        `npm` runs npm ci in root and app package.json dirs
   deploy    Verify and upload one service deploy targets using .vscode/sftp.json
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
-  docker-rollback  Retag a previous release image (from release/<service> git history) and restart its docker compose service
+  docker-rollback  Restore a recorded successful Docker deployment (1 = previous successful version)
   backup    Archive the remote pb_data directory over SSH and download it to ~/pocketpages-backups/<service>/
-  archive   Tag current HEAD as archive/<service>/<YYYY-MM-DD>, push it, then remove apps/<service>
+  archive   Tag and push current HEAD, then remove tracked service sources; preserve local-only data
   restore   Restore apps/<service> from an archive tag
   archives  List archive tags, optionally filtered by service; use --delete to remove one archive tag locally and from origin
   merge     Merge main into local release/* branches, then push them to origin
@@ -1269,13 +1269,14 @@ run_archive() {
   git -C "$ROOT_DIR" rm -r "$relative_path"
 
   if [[ -d "$ROOT_DIR/$relative_path" ]]; then
-    rm -rf -- "$ROOT_DIR/$relative_path"
+    echo "Preserved local-only files in $relative_path (including ignored data)."
+    echo "These files are not backed up by the Git archive tag; remove them only after a separate backup."
   fi
 
   cat <<EOF
 Archived service: $service_name
 Tag: $tag_name (pushed to origin)
-Removed directory: $relative_path
+Removed tracked sources: $relative_path
 
 Review, then commit:
   git commit -m "Archive $service_name app"
@@ -1286,6 +1287,7 @@ run_restore() {
   local service="$1"
   local tag_name="$2"
   local relative_path="apps/$service"
+  local tracked_files=""
 
   if ! command -v git >/dev/null 2>&1; then
     echo "git not found. Cannot restore service." >&2
@@ -1301,13 +1303,36 @@ run_restore() {
     exit 1
   fi
 
-  if [[ -e "$ROOT_DIR/$relative_path" ]]; then
-    echo "Service already exists: $relative_path" >&2
+  tracked_files="$(git -C "$ROOT_DIR" ls-files -- "$relative_path")"
+  if [[ -n "$tracked_files" || -L "$ROOT_DIR/$relative_path" || ( -e "$ROOT_DIR/$relative_path" && ! -d "$ROOT_DIR/$relative_path" ) ]]; then
+    echo "Service already exists or has an unsafe restore path: $relative_path" >&2
     exit 1
   fi
 
   if ! git -C "$ROOT_DIR" cat-file -e "$tag_name:$relative_path" 2>/dev/null; then
     echo "Archive tag does not contain $relative_path: $tag_name" >&2
+    exit 1
+  fi
+
+  # 보존한 로컬 파일과 충돌하면 어떤 소스도 복원하기 전에 중단합니다.
+  if ! git -C "$ROOT_DIR" ls-tree -r --name-only -z "$tag_name" -- "$relative_path" |
+    while IFS= read -r -d '' archived_path; do
+      target_path="$ROOT_DIR/$archived_path"
+      if [[ -e "$target_path" || -L "$target_path" ]]; then
+        echo "Restore would overwrite a local path: $archived_path" >&2
+        exit 1
+      fi
+      parent_dir="$(dirname "$target_path")"
+      while [[ "$parent_dir" != "$ROOT_DIR" ]]; do
+        if [[ -L "$parent_dir" || ( -e "$parent_dir" && ! -d "$parent_dir" ) ]]; then
+          echo "Unsafe restore parent: $parent_dir" >&2
+          exit 1
+        fi
+        parent_dir="$(dirname "$parent_dir")"
+      done
+    done
+  then
+    echo "Restore cancelled; local files were not changed." >&2
     exit 1
   fi
 
@@ -1845,12 +1870,12 @@ remove_type_conflicts() {
   done < <(cd "$stage_root" && find . -mindepth 1 -print0)
 }
 
-if [ "$delete_remote" = "true" ]; then
-  remove_remote_only_entries "$remote_path" "$stage_dir"
-fi
-
 if [ "$had_remote_path" -eq 1 ]; then
   create_history_snapshot "$remote_path"
+fi
+
+if [ "$delete_remote" = "true" ]; then
+  remove_remote_only_entries "$remote_path" "$stage_dir"
 fi
 remove_type_conflicts "$remote_path" "$stage_dir"
 cp -a "$stage_dir"/. "$remote_path"/
@@ -2288,16 +2313,19 @@ NODE
 run_docker_rollback() {
   local service="$1"
   local version_index="$2"
-  local branch="release/$service"
-  local shas=()
-  local target_sha=""
+  local remote_script="$ROOT_DIR/scripts/docker-release.sh"
   local private_key_path=""
   local ssh_target=""
   local ssh_cmd=()
   local image=""
 
-  if ! command -v git >/dev/null 2>&1; then
-    echo "git not found. Cannot resolve rollback target." >&2
+  if [[ ! "$service" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+    echo "Invalid Docker service name: $service" >&2
+    exit 1
+  fi
+
+  if [[ ! -f "$remote_script" ]]; then
+    echo "Missing Docker release script: $remote_script" >&2
     exit 1
   fi
 
@@ -2310,21 +2338,6 @@ run_docker_rollback() {
     echo "Docker rollback version must be 1, 2, or 3." >&2
     exit 1
   fi
-
-  echo "Fetching $branch from origin..."
-  if ! git -C "$ROOT_DIR" fetch --quiet origin "$branch"; then
-    echo "Unknown release branch on origin: $branch" >&2
-    exit 1
-  fi
-
-  mapfile -t shas < <(git -C "$ROOT_DIR" log --format=%H -n 5 FETCH_HEAD)
-
-  if [[ "${#shas[@]}" -le "$version_index" ]]; then
-    echo "Rollback version $version_index is not available for $branch (only ${#shas[@]} commits)." >&2
-    exit 1
-  fi
-
-  target_sha="${shas[$version_index]}"
 
   load_docker_host_config
 
@@ -2356,56 +2369,10 @@ run_docker_rollback() {
   fi
 
   echo "Rolling back Docker service: $service -> version $version_index"
-  echo "Target image: $image:$target_sha"
+  sed -e 's/\r$//' "$remote_script" |
+    "${ssh_cmd[@]}" "$ssh_target" sh -s -- rollback "$service" "$image" "$version_index"
 
-  "${ssh_cmd[@]}" "$ssh_target" bash -s -- "$service" "$image" "$target_sha" <<'EOF'
-set -euo pipefail
-
-service="$1"
-image="$2"
-target_sha="$3"
-compose_service="${service}-pocketpages"
-
-cd ./Docker-Compose
-
-echo "Pulling ${image}:${target_sha}"
-docker pull "${image}:${target_sha}"
-docker tag "${image}:${target_sha}" "${image}:release"
-
-docker compose stop "$compose_service"
-
-deploy_owner="$(id -u):$(id -g)"
-docker compose run --rm --no-deps --entrypoint sh "$compose_service" -c '
-  set -eu
-  service="$1"
-  deploy_owner="$2"
-  hooks_dir="/app/apps/${service}/pb_hooks"
-  public_dir="/app/apps/${service}/pb_public"
-
-  if [ ! -d /opt/defaults/pb_hooks ]; then
-    echo "Baked hooks directory not found: /opt/defaults/pb_hooks" >&2
-    exit 1
-  fi
-
-  mkdir -p "$hooks_dir"
-  find "$hooks_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-  cp -a /opt/defaults/pb_hooks/. "$hooks_dir"/
-  chown -R "$deploy_owner" "$hooks_dir"
-
-  if [ -d /opt/defaults/pb_public ]; then
-    mkdir -p "$public_dir"
-    find "$public_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-    cp -a /opt/defaults/pb_public/. "$public_dir"/
-    chown -R "$deploy_owner" "$public_dir"
-  fi
-' -- "$service" "$deploy_owner"
-
-docker compose up -d --no-deps --force-recreate --wait "$compose_service"
-docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
-docker image prune -f
-EOF
-
-  echo "Docker rollback complete: $service -> version $version_index ($target_sha)"
+  echo "Docker rollback complete: $service -> version $version_index"
 }
 
 if [[ "${1:-}" == "__complete_services" ]]; then

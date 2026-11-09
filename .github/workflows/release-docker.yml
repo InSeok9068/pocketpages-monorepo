@@ -3,7 +3,7 @@ name: Release Docker
 on:
   push:
     branches:
-      - "release/**"
+      - 'release/**'
   workflow_dispatch:
 
 concurrency:
@@ -54,6 +54,11 @@ jobs:
 
           if [[ "$SERVICE" == "$BRANCH_NAME" || -z "$SERVICE" ]]; then
             echo "Branch must be release/<service>. current=$BRANCH_NAME"
+            exit 1
+          fi
+
+          if [[ ! "$SERVICE" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+            echo "Invalid service name: $SERVICE"
             exit 1
           fi
 
@@ -118,6 +123,8 @@ jobs:
           file: ${{ steps.svc.outputs.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             PB_VERSION=${{ steps.pb.outputs.version }}
           tags: |
@@ -128,46 +135,17 @@ jobs:
 
       - name: Restart Server
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        env:
+          PP_DEPLOY_SERVICE: ${{ steps.svc.outputs.service }}
+          PP_DEPLOY_IMAGE: ${{ steps.svc.outputs.image }}
+          PP_DEPLOY_SHA: ${{ github.sha }}
         with:
           host: ${{ secrets.REMOTE_IP }}
           username: ${{ secrets.REMOTE_ID }}
           key: ${{ secrets.REMOTE_SSH_KEY }}
           port: 22
-          script: |
-            set -eu
-            cd ./Docker-Compose
-            git pull --ff-only
-            docker compose pull ${{ steps.svc.outputs.compose_service }}
-            docker compose stop ${{ steps.svc.outputs.compose_service }}
-            deploy_owner="$(id -u):$(id -g)"
-            docker compose run --rm --no-deps --entrypoint sh ${{ steps.svc.outputs.compose_service }} -c '
-              set -eu
-              service="$1"
-              deploy_owner="$2"
-              hooks_dir="/app/apps/${service}/pb_hooks"
-              public_dir="/app/apps/${service}/pb_public"
-
-              if [ ! -d /opt/defaults/pb_hooks ]; then
-                echo "Baked hooks directory not found: /opt/defaults/pb_hooks" >&2
-                exit 1
-              fi
-
-              mkdir -p "$hooks_dir"
-              find "$hooks_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-              cp -a /opt/defaults/pb_hooks/. "$hooks_dir"/
-              chown -R "$deploy_owner" "$hooks_dir"
-
-              if [ -d /opt/defaults/pb_public ]; then
-                mkdir -p "$public_dir"
-                find "$public_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-                cp -a /opt/defaults/pb_public/. "$public_dir"/
-                chown -R "$deploy_owner" "$public_dir"
-              fi
-            ' -- ${{ steps.svc.outputs.service }} "$deploy_owner"
-            docker compose up -d --no-deps --force-recreate --wait ${{ steps.svc.outputs.compose_service }}
-            docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile
-            docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
-            docker image prune -f
+          envs: PP_DEPLOY_SERVICE,PP_DEPLOY_IMAGE,PP_DEPLOY_SHA
+          script_path: scripts/docker-release.sh
 
       - name: Clean up old container versions
         id: cleanup
@@ -177,8 +155,8 @@ jobs:
           owner: ${{ env.IMAGE_OWNER }}
           package-name: ${{ steps.svc.outputs.service }}
           package-type: container
-          # Keep the current release and four previous versions for rollback.
-          min-versions-to-keep: 5
+          # Registry retention is separate from success history; rollback checks pull before stopping.
+          min-versions-to-keep: 10
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Report container cleanup failure

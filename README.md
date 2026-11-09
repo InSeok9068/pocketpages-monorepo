@@ -134,6 +134,43 @@
 # 배포
 ./task.sh deploy <service> [--skip-verify]
 ./task.sh rollback <service> <1|2|3>
+./task.sh docker-rollback <service> <1|2|3>
+```
+
+### 배포 방법
+
+| 방식             | 배포                            | 롤백                                            |
+| ---------------- | ------------------------------- | ----------------------------------------------- |
+| 파일 배포 (SFTP) | `./task.sh deploy <service>`    | `./task.sh rollback <service> <1\|2\|3>`        |
+| Docker 배포      | `release/<service>` 브랜치 push | `./task.sh docker-rollback <service> <1\|2\|3>` |
+
+**파일 배포**
+
+- 설정: `.vscode/sftp.json`
+- `deploy`: 검증(`verify`) → CSS 빌드 → 업로드합니다. 바꾸기 전에 원격 파일 스냅샷을 남깁니다.
+- `rollback`: 스냅샷으로 되돌립니다. `1`이 가장 최근 스냅샷이며 최근 3개를 보관합니다.
+
+**Docker 배포**
+
+- `main`을 반영하려면 `./task.sh merge [service]`로 `release/<service>`에 merge·push합니다.
+- push하면 GitHub Actions(`release-docker.yml`)가 이미지를 빌드해 GHCR에 올리고 서버를 재시작합니다.
+- 배포가 성공하면 서버에 성공 이력을 남깁니다(현재 + 롤백 대상 3개).
+- `docker-rollback 1`: 성공한 직전 배포로 되돌립니다. 성공 이력은 이 방식으로 배포한 뒤부터 쌓입니다.
+- 서버 이미지는 현재·직전 2개만 남기고, 더 오래된 버전은 롤백할 때 GHCR(최근 10개 보존)에서 받아옵니다.
+
+**공통**
+
+- DB는 롤백되지 않습니다. 필요하면 별도 백업으로 복구합니다.
+
+### 보관·복원
+
+- `archive`: Git 추적 소스만 지웁니다. `pb_data`, `.env` 같은 로컬 파일은 남지만 태그에는 백업되지 않습니다.
+- `restore`: 복원할 파일이 로컬 파일과 겹치면 아무것도 바꾸지 않고 중단합니다.
+
+운영 명령 테스트:
+
+```bash
+node --test scripts/task-safety.test.mjs scripts/docker-release.test.mjs
 ```
 
 ---
