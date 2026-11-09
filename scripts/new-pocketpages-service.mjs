@@ -20,7 +20,12 @@ const vendorByFeature = {
   htmx: ['htmx-2.0.11.min.js'],
   alpine: ['alpine-3.17.4-cdn.min.js'],
   datastar: ['datastar.min.js'],
-  unocss: ['preset-wind4-66.10.5.global.js', 'preset-icons-66.10.5.global.js', 'iconify-lucide-1.2.123.icons.json', 'unocss-core-66.10.5.global.js'],
+  unocss: [
+    'preset-wind4-66.10.5.global.js',
+    'preset-icons-66.10.5.global.js',
+    'iconify-lucide-1.2.123.icons.json',
+    'unocss-core-66.10.5.global.js',
+  ],
 }
 const vendorByFeaturePair = {
   'htmx+realtime': ['pocketbase-htmx-ext-sse-0.0.3.js'],
@@ -279,8 +284,8 @@ function hasFeature(options, feature) {
 function buildPackageJson(options) {
   const dependencies = {
     '@pocketpages/utils': 'file:../../packages/utils',
-    pocketpages: '^0.22.3',
-    'pocketpages-plugin-ejs': '^0.1.2',
+    'pocketpages': '0.22.5',
+    'pocketpages-plugin-ejs': '0.2.0',
   }
   const devDependencies = {
     'patch-package': '^8.0.1',
@@ -288,16 +293,16 @@ function buildPackageJson(options) {
 
   if (options.auth) {
     dependencies['@pocketpages/auth-cookie'] = 'file:../../packages/auth-cookie'
-    dependencies['pocketpages-plugin-auth'] = '^0.2.2'
-    dependencies['pocketpages-plugin-js-sdk'] = '^0.2.0'
-    devDependencies['pocketbase-js-sdk-jsvm'] = '^0.25.10004'
+    dependencies['pocketpages-plugin-auth'] = '0.3.0'
+    dependencies['pocketpages-plugin-js-sdk'] = '0.3.0'
+    devDependencies['pocketbase-js-sdk-jsvm'] = '0.28.10001'
   }
 
   if (hasFeature(options, 'datastar')) {
     dependencies['pocketpages-plugin-datastar-v1'] = 'file:../../packages/pocketpages-plugin-datastar-v1'
   }
   if (hasFeature(options, 'realtime')) {
-    dependencies['pocketpages-plugin-realtime'] = '^0.2.0'
+    dependencies['pocketpages-plugin-realtime'] = '0.2.0'
   }
 
   return `${JSON.stringify(
@@ -473,14 +478,18 @@ function buildLayoutEjs(options) {
   const isUno = hasFeature(options, 'unocss')
   const isDatastar = hasFeature(options, 'datastar')
   const scripts = []
-  if (hasFeature(options, 'htmx')) scripts.push('<script src="<%= asset(\'/assets/vendor/htmx-2.0.11.min.js\') %>"></script>')
+  if (hasFeature(options, 'htmx'))
+    scripts.push('<script src="<%= asset(\'/assets/vendor/htmx-2.0.11.min.js\') %>"></script>')
   if (hasFeature(options, 'htmx') && hasFeature(options, 'realtime')) {
     scripts.push('<script src="<%= asset(\'/assets/vendor/pocketbase-htmx-ext-sse-0.0.3.js\') %>"></script>')
   }
-  if (hasFeature(options, 'alpine')) scripts.push('<script defer src="<%= asset(\'/assets/vendor/alpine-3.17.4-cdn.min.js\') %>"></script>')
+  if (hasFeature(options, 'alpine'))
+    scripts.push('<script defer src="<%= asset(\'/assets/vendor/alpine-3.17.4-cdn.min.js\') %>"></script>')
 
   const unoHead = isUno ? "    <%- include('unocss-head.ejs', { isProduction }) %>\n" : ''
-  const datastarHead = isDatastar ? `    <%- datastar.scripts(${hasFeature(options, 'realtime') ? '{ realtime: true }' : ''}) %>\n` : ''
+  const datastarHead = isDatastar
+    ? `    <%- datastar.scripts(${hasFeature(options, 'realtime') ? '{ realtime: true }' : ''}) %>\n`
+    : ''
   const bodyAttrs = isUno ? '\n    un-cloak' : ''
 
   return `<% const isProduction = String(env('APP_ENV') || 'development').trim() === 'production' %>
@@ -623,8 +632,12 @@ function buildPocketPagesGlobals(options) {
   const authImport = options.auth
     ? "import type PocketBase from 'pocketbase-js-sdk-jsvm'\nimport type { AuthData as PocketPagesAuthData, User as PocketPagesAuthUser } from 'pocketpages-plugin-auth'\nimport type { PocketBaseClientOptions } from 'pocketpages-plugin-js-sdk'\n"
     : ''
-  const datastarImport = hasFeature(options, 'datastar') ? "import type DatastarPlugin = require('pocketpages-plugin-datastar-v1')\n" : ''
-  const realtimeImport = hasFeature(options, 'realtime') ? "import type { Client, ClientId, RealtimeFilter, RealtimeOptions } from 'pocketpages-plugin-realtime'\n" : ''
+  const datastarImport = hasFeature(options, 'datastar')
+    ? "import type DatastarPlugin = require('pocketpages-plugin-datastar-v1')\n"
+    : ''
+  const realtimeImport = hasFeature(options, 'realtime')
+    ? "import type { Client, ClientId, RealtimeFilter, RealtimeOptions } from 'pocketpages-plugin-realtime'\n"
+    : ''
   const datastarTypes = hasFeature(options, 'datastar')
     ? `
 type PocketPagesDatastarApi = DatastarPlugin.DatastarApi
@@ -823,7 +836,9 @@ COPY apps/${service}/pb_hooks ./apps/${service}/pb_hooks
 RUN bash ./task.sh css ${service}`
     : ''
   const cssSection = cssStage ? `\n\n${cssStage}\n\n\n` : '\n\n'
-  const cssCopy = hasFeature(options, 'unocss') ? `COPY --from=css /app/apps/${service}/pb_hooks/pages/assets/uno.min.css ./pb_hooks/pages/assets/uno.min.css\n` : ''
+  const cssCopy = hasFeature(options, 'unocss')
+    ? `COPY --from=css /app/apps/${service}/pb_hooks/pages/assets/uno.min.css ./pb_hooks/pages/assets/uno.min.css\n`
+    : ''
 
   return `# syntax=docker/dockerfile:1
 

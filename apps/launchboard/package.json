@@ -7,14 +7,14 @@
   "dependencies": {
     "@pocketpages/auth-cookie": "file:../../packages/auth-cookie",
     "@pocketpages/utils": "file:../../packages/utils",
-    "pocketpages": "^0.22.3",
-    "pocketpages-plugin-auth": "^0.2.2",
+    "pocketpages": "0.22.5",
+    "pocketpages-plugin-auth": "0.3.0",
     "pocketpages-plugin-datastar-v1": "file:../../packages/pocketpages-plugin-datastar-v1",
-    "pocketpages-plugin-ejs": "^0.1.2",
-    "pocketpages-plugin-js-sdk": "^0.2.0"
+    "pocketpages-plugin-ejs": "0.2.0",
+    "pocketpages-plugin-js-sdk": "0.3.0"
   },
   "devDependencies": {
     "patch-package": "^8.0.1",
-    "pocketbase-js-sdk-jsvm": "^0.25.10004"
+    "pocketbase-js-sdk-jsvm": "0.28.10001"
   }
 }

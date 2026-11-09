@@ -7,8 +7,8 @@
   "dependencies": {
     "@fullstackfamily/manseryeok": "1.0.8",
     "@pocketpages/utils": "file:../../packages/utils",
-    "pocketpages": "^0.22.3",
-    "pocketpages-plugin-ejs": "^0.1.2"
+    "pocketpages": "0.22.5",
+    "pocketpages-plugin-ejs": "0.2.0"
   },
   "devDependencies": {
     "patch-package": "^8.0.1"

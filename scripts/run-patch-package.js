@@ -146,7 +146,7 @@ try {
 } catch (error) {
   const message = error && error.message ? error.message : String(error)
 
-  if (message.includes('patch-package')) {
+  if (error.code === 'MODULE_NOT_FOUND' && message.includes("'patch-package/dist/index.js'")) {
     console.log('patch-package not installed, skip')
     process.exit(0)
   }

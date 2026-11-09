@@ -12,16 +12,16 @@
     "fast-xml-parser": "^5.5.9",
     "fflate": "^0.8.2",
     "he": "^1.2.0",
-    "pocketpages": "^0.22.3",
-    "pocketpages-plugin-auth": "^0.2.2",
-    "pocketpages-plugin-ejs": "^0.1.2",
-    "pocketpages-plugin-js-sdk": "^0.2.0"
+    "pocketpages": "0.22.5",
+    "pocketpages-plugin-auth": "0.3.0",
+    "pocketpages-plugin-ejs": "0.2.0",
+    "pocketpages-plugin-js-sdk": "0.3.0"
   },
   "devDependencies": {
     "@playwright/test": "1.64.0",
     "html-to-text": "^9.0.5",
     "patch-package": "^8.0.1",
-    "pocketbase-ejs": "^3.1.10006",
-    "pocketbase-js-sdk-jsvm": "^0.25.10004"
+    "pocketbase-ejs": "7.0.2001",
+    "pocketbase-js-sdk-jsvm": "0.28.10001"
   }
 }
