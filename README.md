@@ -281,33 +281,6 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
 
 ---
 
-## Node 버전 매니저 (fnm)
-
-### 설치 및 업데이트
-
-```bash
-scoop install fnm
-scoop update fnm
-```
-
-### Git Bash 설정
-
-`~/.bashrc`에 다음 한 줄을 추가합니다.
-
-```bash
-eval "$(fnm env --use-on-cd --version-file-strategy=recursive --shell bash)"
-```
-
-Node 버전을 설치합니다.
-
-```bash
-fnm install 24.20.0
-```
-
-저장소의 `.node-version`을 기준으로 하위 디렉터리에서도 Node 버전이 자동 전환됩니다.
-
----
-
 ## Git 확장 도구 설치/업데이트
 
 ### 설치
