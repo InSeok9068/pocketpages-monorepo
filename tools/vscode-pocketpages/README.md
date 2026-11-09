@@ -27,15 +27,15 @@ npm test
 
 주요 명령은 Command Palette와 editor context menu에서 사용할 수 있습니다.
 
-| 명령 | 설명 |
-| --- | --- |
-| `PocketPages: Inspect Current File` | 현재 파일의 app root 인식 여부와 diagnostics 개수 확인 |
-| `PocketPages: Refresh Diagnostics` | 현재 문서 diagnostics 재계산 |
-| `PocketPages: Reload PocketPages Cache` | 현재 앱 또는 전체 path/schema/reference cache 재적재 |
-| `PocketPages: Find File References` | `_private` partial/module/static route/asset 호출부 표시 |
-| `PocketPages: Explain Current File` | 현재 파일의 route, 실행 체인, 참조 요약 표시 |
-| `PocketPages: Extract Selection to Partial` | 선택한 EJS template markup을 `_private` partial로 추출 |
-| `PocketPages: Copy Debug Bundle` | 현재 파일 진단 정보와 최근 로그를 debug bundle로 복사 |
+| 명령                                        | 설명                                                     |
+| ------------------------------------------- | -------------------------------------------------------- |
+| `PocketPages: Inspect Current File`         | 현재 파일의 app root 인식 여부와 diagnostics 개수 확인   |
+| `PocketPages: Refresh Diagnostics`          | 현재 문서 diagnostics 재계산                             |
+| `PocketPages: Reload PocketPages Cache`     | 현재 앱 또는 전체 path/schema/reference cache 재적재     |
+| `PocketPages: Find File References`         | `_private` partial/module/static route/asset 호출부 표시 |
+| `PocketPages: Explain Current File`         | 현재 파일의 route, 실행 체인, 참조 요약 표시             |
+| `PocketPages: Extract Selection to Partial` | 선택한 EJS template markup을 `_private` partial로 추출   |
+| `PocketPages: Copy Debug Bundle`            | 현재 파일 진단 정보와 최근 로그를 debug bundle로 복사    |
 
 ## 지원 파일 범위
 
@@ -45,11 +45,11 @@ npm test
 
 PocketPages 전용 분석은 app root를 찾을 수 있는 파일에만 적용됩니다. app root는 상위 디렉터리에서 `pb_hooks/pages`를 찾는 방식으로 결정합니다.
 
-| 파일 범주 | 대상 | 제공 범위 |
-| --- | --- | --- |
-| EJS 문서 | app root 안의 `.ejs` | EJS virtual code, TypeScript 기능, PocketPages path/schema 기능, diagnostics, CodeLens |
-| pages script | `pb_hooks/pages/**/*.js`, `**/*.cjs`, `**/*.mjs` | TypeScript 기능, PocketPages path/schema 기능, diagnostics, document link, CodeLens |
-| schema-only hook script | `pb_hooks/**/*.js`, `**/*.cjs`, `**/*.mjs` 중 `pb_hooks/pages` 밖 파일 | PocketBase schema completion/diagnostics와 JSVM runtime diagnostics 중심 |
+| 파일 범주               | 대상                                                                   | 제공 범위                                                                              |
+| ----------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| EJS 문서                | app root 안의 `.ejs`                                                   | EJS virtual code, TypeScript 기능, PocketPages path/schema 기능, diagnostics, CodeLens |
+| pages script            | `pb_hooks/pages/**/*.js`, `**/*.cjs`, `**/*.mjs`                       | TypeScript 기능, PocketPages path/schema 기능, diagnostics, document link, CodeLens    |
+| schema-only hook script | `pb_hooks/**/*.js`, `**/*.cjs`, `**/*.mjs` 중 `pb_hooks/pages` 밖 파일 | PocketBase schema completion/diagnostics와 JSVM runtime diagnostics 중심               |
 
 `pb_hooks/pages` 안에 있어도 route-exposed `vendor/**`, `*.min.js`, `*.min.cjs`, `*.min.mjs`는 PocketPages code index에서 제외합니다. `_private/vendor/**`는 내부 dependency로 보고 계속 인덱싱합니다.
 
@@ -114,18 +114,18 @@ TypeScript가 알 수 없는 PocketPages 도메인 문자열은 custom feature�
 
 ### EJS
 
-| 기능 | 설명 |
-| --- | --- |
-| Completion | server block, template block, schema context, include locals, route/include/resolve/asset path |
-| Hover | TypeScript quick info, PocketPages path/schema hover |
-| Definition | TypeScript symbol, route/include/resolve/asset/require target |
-| References | TypeScript references, route/include/resolve/static require caller 추적 |
-| Rename | TypeScript rename, `_private` module member rename, file rename rewrite |
-| Signature Help | TypeScript signature help, `include()` custom signature help |
-| Diagnostics | TypeScript diagnostics, schema diagnostics, project-rule diagnostics |
-| Code Actions | unresolved path fix, `_private` prefix 제거, include locals 보정 |
-| Semantic Tokens | EJS code block 내부 token |
-| CodeLens | template boundary, route label, include target, lazy caller references |
+| 기능            | 설명                                                                                           |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| Completion      | server block, template block, schema context, include locals, route/include/resolve/asset path |
+| Hover           | TypeScript quick info, PocketPages path/schema hover                                           |
+| Definition      | TypeScript symbol, route/include/resolve/asset/require target                                  |
+| References      | TypeScript references, route/include/resolve/static require caller 추적                        |
+| Rename          | TypeScript rename, `_private` module member rename, file rename rewrite                        |
+| Signature Help  | TypeScript signature help, `include()` custom signature help                                   |
+| Diagnostics     | TypeScript diagnostics, schema diagnostics, project-rule diagnostics                           |
+| Code Actions    | unresolved path fix, `_private` prefix 제거, include locals 보정                               |
+| Semantic Tokens | EJS code block 내부 token                                                                      |
+| CodeLens        | template boundary, route label, include target, lazy caller references                         |
 
 EJS block 끝 위치는 사용자가 커서를 자주 멈추는 위치이므로 terminal end 위치를 TypeScript ownership으로 인정합니다. 같은 offset에서 다음 segment가 시작하는 내부 경계는 허용하지 않아 path literal이나 custom 영역을 오염시키지 않습니다.
 
@@ -135,16 +135,16 @@ EJS block 끝 위치는 사용자가 커서를 자주 멈추는 위치이므로 
 
 `pb_hooks/pages` 아래의 `.js`, `.cjs`, `.mjs` 파일은 PocketPages pages script로 분석합니다.
 
-| 기능 | 설명 |
-| --- | --- |
-| Completion | TypeScript completion, schema completion, PocketPages path completion |
-| Definition | TypeScript symbol, route/include/resolve/asset/require target |
-| References | TypeScript references, `_private`/route/static require caller 추적 |
-| Rename | TypeScript rename, `_private` module member rename, file rename rewrite |
-| Signature Help | TypeScript signature help, `include()` signature help |
-| Diagnostics | TypeScript diagnostics, schema diagnostics, PocketPages project-rule diagnostics |
-| Document Links | route/include/resolve/asset/require target link |
-| CodeLens | route label, include target, lazy caller references |
+| 기능           | 설명                                                                             |
+| -------------- | -------------------------------------------------------------------------------- |
+| Completion     | TypeScript completion, schema completion, PocketPages path completion            |
+| Definition     | TypeScript symbol, route/include/resolve/asset/require target                    |
+| References     | TypeScript references, `_private`/route/static require caller 추적               |
+| Rename         | TypeScript rename, `_private` module member rename, file rename rewrite          |
+| Signature Help | TypeScript signature help, `include()` signature help                            |
+| Diagnostics    | TypeScript diagnostics, schema diagnostics, PocketPages project-rule diagnostics |
+| Document Links | route/include/resolve/asset/require target link                                  |
+| CodeLens       | route label, include target, lazy caller references                              |
 
 일반 JavaScript hover는 VS Code의 기본 JS/TS 경험에 맡기고, 이 확장은 PocketPages path hover를 추가합니다.
 
@@ -175,21 +175,21 @@ EJS block 끝 위치는 사용자가 커서를 자주 멈추는 위치이므로 
 
 확장은 다음 문자열 패턴을 PocketPages target으로 해석합니다.
 
-| 패턴 | target |
-| --- | --- |
-| `resolve('...')`, `api.resolve('...')` | `_private` module |
-| `include('...')` | `_private` partial |
-| `asset('...')` | local/global asset |
-| `fetch('/path')`, `window.fetch('/path')`, `globalThis.fetch('/path')` | route, 안전한 public asset JS와 `.ejs` client `<script>`의 정적 내부 path와 `method` init 기준 |
-| `redirect('/path')`, `api.redirect('/path')` | route |
-| `datastar.redirect('/path')`, `datastar.replaceURL('/path')` | route |
-| `href="/path"` | route, static asset fallback |
-| `action="/path"` | route, `method` 기준 GET/POST 우선순위 적용 |
-| `hx-get`, `hx-post`, `hx-put`, `hx-patch`, `hx-delete`, `data-hx-*` | route |
-| `@get('/path')`, `@post('/path')`, `@put('/path')`, `@patch('/path')`, `@delete('/path')` in `data-*` attributes | route |
-| `require('...')` | static require target |
-| ``require(`${__hooks}/...`)`` | hooks-root require target |
-| `require(__hooks + '/...')` | hooks-root require target |
+| 패턴                                                                                                             | target                                                                                         |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `resolve('...')`, `api.resolve('...')`                                                                           | `_private` module                                                                              |
+| `include('...')`                                                                                                 | `_private` partial                                                                             |
+| `asset('...')`                                                                                                   | local/global asset                                                                             |
+| `fetch('/path')`, `window.fetch('/path')`, `globalThis.fetch('/path')`                                           | route, 안전한 public asset JS와 `.ejs` client `<script>`의 정적 내부 path와 `method` init 기준 |
+| `redirect('/path')`, `api.redirect('/path')`                                                                     | route                                                                                          |
+| `datastar.redirect('/path')`, `datastar.replaceURL('/path')`                                                     | route                                                                                          |
+| `href="/path"`                                                                                                   | route, static asset fallback                                                                   |
+| `action="/path"`                                                                                                 | route, `method` 기준 GET/POST 우선순위 적용                                                    |
+| `hx-get`, `hx-post`, `hx-put`, `hx-patch`, `hx-delete`, `data-hx-*`                                              | route                                                                                          |
+| `@get('/path')`, `@post('/path')`, `@put('/path')`, `@patch('/path')`, `@delete('/path')` in `data-*` attributes | route                                                                                          |
+| `require('...')`                                                                                                 | static require target                                                                          |
+| ``require(`${__hooks}/...`)``                                                                                    | hooks-root require target                                                                      |
+| `require(__hooks + '/...')`                                                                                      | hooks-root require target                                                                      |
 
 `require(...)` completion/navigation은 VS Code JS/TS 언어 기능에 맡기고, 이 확장은 정적 `require(...)` target의 document link/references/file rename rewrite만 보강합니다.
 
@@ -280,31 +280,31 @@ schema 타입은 custom 기능만을 위한 별도 세계가 아니라 TypeScrip
 
 PocketPages 전용 diagnostics는 `pp-*` 코드로 표시됩니다.
 
-| 코드 | 의미 |
-| --- | --- |
-| `pp-unresolved-resolve-path` | `resolve()` target을 찾지 못함 |
-| `pp-unresolved-include-path` | `include()` target을 찾지 못함 |
-| `pp-unresolved-asset-path` | `asset()` target을 찾지 못함 |
-| `pp-unresolved-route-path` | route target을 찾지 못함 |
-| `pp-resolve-private-prefix` | `resolve()`에 `_private` prefix를 직접 적음 |
-| `pp-manual-flash-query` | URL에 `__flash`를 직접 붙임 |
-| `pp-query-via-params` | query 값을 `params`로 읽으려는 패턴 |
-| `pp-schema-collection` | unknown PocketBase collection |
-| `pp-schema-field` | unknown PocketBase field, 지원되는 정적 filter/sort field operand 포함 |
-| `pp-schema-filter-param` | 정적 filter placeholder와 inline params object 불일치 |
-| `pp-redirect-missing-return` | `redirect()` 이후 `return` 누락 |
-| `pp-transaction-app` | `runInTransaction()` 내부에서 transaction app 대신 `$app` DB 호출 사용 |
-| `pp-jsvm-async-flow` | JSVM 서버 코드에서 `async`, `await`, `Promise`, `.then()` 사용 |
-| `pp-jsvm-esm-syntax` | CommonJS 전용 JSVM 서버 코드에서 ESM `import` / `export` 문법 사용 |
-| `pp-jsvm-handler-capture` | 격리 실행되는 PocketBase handler에서 handler 밖의 변수나 함수 캡처 |
-| `pp-jsvm-node-builtin` | JSVM 서버 코드에서 Node.js built-in module을 `require()`로 로드 |
-| `pp-middleware-next-bare-return` | `+middleware.js`에서 bare `return` 사용 |
-| `pp-middleware-next-empty-return` | `+middleware.js`에서 `return {}` 사용 |
-| `pp-middleware-next-missing-call` | `+middleware.js`에서 `next()` 호출 누락 |
-| `pp-partial-full-context` | partial include에 full context를 넘기는 패턴 |
-| `pp-private-resolve` | `_private` 내부에서 허용되지 않는 `resolve()` 사용 |
-| `pp-include-unknown-local` | include locals에 알 수 없는 key 사용 |
-| `pp-include-missing-local` | include locals에서 필요한 key 누락 |
+| 코드                              | 의미                                                                   |
+| --------------------------------- | ---------------------------------------------------------------------- |
+| `pp-unresolved-resolve-path`      | `resolve()` target을 찾지 못함                                         |
+| `pp-unresolved-include-path`      | `include()` target을 찾지 못함                                         |
+| `pp-unresolved-asset-path`        | `asset()` target을 찾지 못함                                           |
+| `pp-unresolved-route-path`        | route target을 찾지 못함                                               |
+| `pp-resolve-private-prefix`       | `resolve()`에 `_private` prefix를 직접 적음                            |
+| `pp-manual-flash-query`           | URL에 `__flash`를 직접 붙임                                            |
+| `pp-query-via-params`             | query 값을 `params`로 읽으려는 패턴                                    |
+| `pp-schema-collection`            | unknown PocketBase collection                                          |
+| `pp-schema-field`                 | unknown PocketBase field, 지원되는 정적 filter/sort field operand 포함 |
+| `pp-schema-filter-param`          | 정적 filter placeholder와 inline params object 불일치                  |
+| `pp-redirect-missing-return`      | `redirect()` 이후 `return` 누락                                        |
+| `pp-transaction-app`              | `runInTransaction()` 내부에서 transaction app 대신 `$app` DB 호출 사용 |
+| `pp-jsvm-async-flow`              | JSVM 서버 코드에서 `async`, `await`, `Promise`, `.then()` 사용         |
+| `pp-jsvm-esm-syntax`              | CommonJS 전용 JSVM 서버 코드에서 ESM `import` / `export` 문법 사용     |
+| `pp-jsvm-handler-capture`         | 격리 실행되는 PocketBase handler에서 handler 밖의 변수나 함수 캡처     |
+| `pp-jsvm-node-builtin`            | JSVM 서버 코드에서 Node.js built-in module을 `require()`로 로드        |
+| `pp-middleware-next-bare-return`  | `+middleware.js`에서 bare `return` 사용                                |
+| `pp-middleware-next-empty-return` | `+middleware.js`에서 `return {}` 사용                                  |
+| `pp-middleware-next-missing-call` | `+middleware.js`에서 `next()` 호출 누락                                |
+| `pp-partial-full-context`         | partial include에 full context를 넘기는 패턴                           |
+| `pp-private-resolve`              | `_private` 내부에서 허용되지 않는 `resolve()` 사용                     |
+| `pp-include-unknown-local`        | include locals에 알 수 없는 key 사용                                   |
+| `pp-include-missing-local`        | include locals에서 필요한 key 누락                                     |
 
 이외에도 다음 진단이 함께 표시될 수 있습니다.
 
@@ -421,23 +421,43 @@ EJS code block 내부에 semantic token을 제공합니다.
 
 ## 패키지 구성
 
-| 위치 | 역할 |
-| --- | --- |
-| `packages/vscode-pocketpages` | VS Code client, status bar, output channel, command wiring, file watcher, file rename edit 적용 |
-| `packages/language-server` | LSP 서버, completion/hover/definition/references/rename/diagnostics/code action/document link/semantic token/CodeLens 제공 |
-| `packages/language-service` | PocketPages project index, schema 분석, path 해석, TypeScript bridge, diagnostics, cache/invalidation 정책 |
-| `packages/language-core` | EJS parser, virtual code, source/generated mapper, snapshot 관리 |
-| `packages/typescript-plugin` | `.ejs` 문서를 TypeScript server project에 연결하는 TS plugin |
+| 위치                          | 역할                                                                                                                       |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `packages/vscode-pocketpages` | VS Code client, status bar, output channel, command wiring, file watcher, file rename edit 적용                            |
+| `packages/language-server`    | LSP 서버, completion/hover/definition/references/rename/diagnostics/code action/document link/semantic token/CodeLens 제공 |
+| `packages/language-service`   | PocketPages project index, schema 분석, path 해석, TypeScript bridge, diagnostics, cache/invalidation 정책                 |
+| `packages/language-core`      | EJS parser, virtual code, source/generated mapper, snapshot 관리                                                           |
+| `packages/typescript-plugin`  | `.ejs` 문서를 TypeScript server project에 연결하는 TS plugin                                                               |
+
+## CLI 구조 인덱스
+
+저장소 루트에서 같은 분석 엔진을 사용하는 CLI를 실행할 수 있습니다.
+
+```bash
+./task.sh index todo --section impactByFile --file '_private/work-view.js'
+./task.sh index booklog --section routeLinks --file 'assets/booklog-audio.js'
+```
+
+- `--file`은 pages 기준, `pb_hooks/pages/`를 붙인 앱 기준, `apps/<service>/...` 저장소 기준, 절대 경로를 지원합니다. 유일한 파일명이나 접미 경로도 가능하며 모호하면 오류를 반환합니다.
+- `resolveGraph`는 `resolve()`와 리터럴 로컬 `require()` 및 `require(__hooks + '/...')`를 수집하고 `sourceType`으로 구분합니다. npm 패키지명과 임의 동적 require는 분석하지 않습니다.
+- `impactByFile`은 페이지의 파일 의존성을 include/resolve/require 연결을 따라 전파하며, 순환 참조를 허용합니다. URL 링크는 코드 의존성으로 전파하지 않습니다.
+- layout·middleware는 디렉터리 하위, `+load.js`는 같은 디렉터리의 페이지, 루트 `+config.js`는 전체 페이지의 정적 영향 범위를 표시합니다. 응답 형식에 따라 layout을 건너뛰는 실행 분기까지 판정하는 결과는 아닙니다.
+- `fetch('/api/path?' + query.toString())`처럼 첫 리터럴에 고정 경로와 query/hash 구분자가 있는 호출도 수집합니다. `'/api/' + id` 같은 동적 경로는 추론하지 않습니다.
+- 스키마 상세 결과의 `accessKind`와 `methodName`은 Record 접근·필터·정렬 사용을 구분합니다.
+
+인덱스는 사용처 탐색의 출발점입니다. SQL, 변수로 조립한 필터, 데이터에서 생성한 URL, 함수 경계를 넘는 Record 출처를 모두 추론하지는 않습니다. 모듈 코드는 pages 내부 수집 범위를 기준으로 분석하며, pages 밖 require 대상은 직접 연결만 표시하고 그 내부 의존성을 재귀 분석하지 않습니다. 빈 결과나 미해결 0건을 사용처 부재의 증거로 해석하지 않습니다. `--section`은 출력 범위를 줄이며 분석 범위 자체를 제한하지는 않습니다.
 
 ## 검증
 
-회귀 검증은 다음 명령으로 실행합니다.
+CLI 경로·상세 정보 보존, 구조 보고서의 scope/모듈 간접 영향·순환 참조, query 조립 URL 수집 회귀 테스트도 npm test에 포함됩니다.
+
+`tools/vscode-pocketpages`에서 회귀 검증은 다음 명령으로 실행합니다.
 
 ```bash
 npm test
 ```
 
-`scripts/pocketpages.test.js` 하나에서 기존 검증 조건과 fixture를 유지하며 다음 흐름을 실행합니다.
+`scripts/pocketpages.test.js`는 기존 검증 조건과 fixture를 유지하며 다음 흐름을 실행합니다.
 
 - 독립 검증: snapshot·mirror, 자동완성·schema 복구, runtime 계약, 문서 상태·경로 분석
 - VS Code 연결: 시작·종료·재시작, 명령, 편집 이벤트 등 15개 시나리오

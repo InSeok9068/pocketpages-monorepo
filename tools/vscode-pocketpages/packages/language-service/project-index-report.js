@@ -2,12 +2,14 @@
 
 const fs = require('fs')
 const path = require('path')
+const ts = require('typescript')
 const { buildTemplateVirtualText } = require('../language-core/ejs-template')
 const { PocketPagesProjectIndex, normalizePath } = require('./project-index')
 const {
   collectPathContexts,
   collectResolveRequestPaths,
   collectResolvedModuleMemberContexts,
+  collectRequiredModuleMemberContexts,
   collectSchemaContexts,
 } = require('../language-core/custom-context')
 
@@ -279,7 +281,9 @@ function buildPartials(projectIndex, codeFiles) {
   const includeLocalOptions = { includeGlobalNamedLocals: true }
 
   return codeFiles
-    .filter((entry) => entry.relativePath.startsWith('_private/') && path.extname(entry.filePath).toLowerCase() === '.ejs')
+    .filter(
+      (entry) => entry.relativePath.startsWith('_private/') && path.extname(entry.filePath).toLowerCase() === '.ejs'
+    )
     .map((entry) => {
       const callers = projectIndex
         .getIncludeTargetCallSites(entry.filePath, includeLocalOptions)
@@ -312,25 +316,71 @@ function buildPartials(projectIndex, codeFiles) {
 }
 
 /**
- * resolve graph 보고서 섹션을 만듭니다.
- * @param {PocketPagesProjectIndex} projectIndex PocketPages 인덱스입니다.
- * @param {Array<{ filePath: string, relativePath: string, sourceText: string, analysisText: string }>} codeFiles 코드 파일 목록입니다.
- * @returns {{ edges: Array<object>, targets: Array<object> }} resolve graph 결과입니다.
+ * 리터럴 또는 __hooks 기준 로컬 require 요청을 수집합니다.
+ * @param {string} scriptText 분석할 코드입니다.
+ * @returns {Array<{ requestPath: string, rootKind: string }>} 로컬 모듈 요청입니다.
+ */
+function collectLocalRequireRequests(scriptText) {
+  const sourceFile = ts.createSourceFile('index-require.js', scriptText, ts.ScriptTarget.Latest, true)
+  const requests = new Map()
+  function visit(node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'require') {
+      let argument = node.arguments[0]
+      let rootKind = ''
+      while (argument && ts.isParenthesizedExpression(argument)) argument = argument.expression
+      if (
+        argument
+        && ts.isBinaryExpression(argument)
+        && argument.operatorToken.kind === ts.SyntaxKind.PlusToken
+        && ts.isIdentifier(argument.left)
+        && argument.left.text === '__hooks'
+      ) {
+        rootKind = '__hooks'
+        argument = argument.right
+      }
+      if (argument && ts.isStringLiteralLike(argument)) {
+        const requestPath = argument.text
+        if (rootKind ? requestPath.startsWith('/') : /^(?:\.\.?\/|\/)/.test(requestPath)) {
+          requests.set(`${rootKind}:${requestPath}`, { requestPath, rootKind })
+        }
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  return [...requests.values()]
+}
+
+/**
+ * resolve와 로컬 require의 파일 의존성을 정리합니다.
+ * @param {PocketPagesProjectIndex} projectIndex 프로젝트 인덱스입니다.
+ * @param {Array<object>} codeFiles 분석할 코드 파일입니다.
+ * @returns {object} 파일 의존 그래프입니다.
  */
 function buildResolveGraph(projectIndex, codeFiles) {
   const edges = []
   const targets = new Map()
 
   for (const entry of codeFiles) {
-    const requestPaths = collectResolveRequestPaths(entry.analysisText)
+    const requests = collectResolveRequestPaths(entry.analysisText)
+      .map((requestPath) => ({ requestPath, sourceType: 'resolve' }))
+      .concat(collectLocalRequireRequests(entry.analysisText).map((request) => ({ ...request, sourceType: 'require' })))
     const memberContexts = collectResolvedModuleMemberContexts(entry.analysisText)
+      .map((context) => ({ ...context, sourceType: 'resolve' }))
+      .concat(
+        collectRequiredModuleMemberContexts(entry.analysisText).map((context) => ({
+          ...context,
+          sourceType: 'require',
+        }))
+      )
     const membersByRequestPath = new Map()
 
     for (const memberContext of memberContexts) {
-      let memberState = membersByRequestPath.get(memberContext.modulePath)
+      const memberKey = `${memberContext.sourceType}:${memberContext.modulePath}`
+      let memberState = membersByRequestPath.get(memberKey)
       if (!memberState) {
         memberState = []
-        membersByRequestPath.set(memberContext.modulePath, memberState)
+        membersByRequestPath.set(memberKey, memberState)
       }
 
       memberState.push({
@@ -339,10 +389,14 @@ function buildResolveGraph(projectIndex, codeFiles) {
       })
     }
 
-    for (const requestPath of requestPaths) {
-      const targetFilePath = projectIndex.resolveResolveTarget(entry.filePath, requestPath)
+    for (const request of requests) {
+      const { requestPath, sourceType } = request
+      const targetFilePath =
+        sourceType === 'require'
+          ? projectIndex.resolveRequireTarget(entry.filePath, requestPath, { rootKind: request.rootKind })
+          : projectIndex.resolveResolveTarget(entry.filePath, requestPath)
       const normalizedTargetFilePath = targetFilePath ? normalizePath(targetFilePath) : null
-      const referencedMembers = (membersByRequestPath.get(requestPath) || [])
+      const referencedMembers = (membersByRequestPath.get(`${sourceType}:${requestPath}`) || [])
         .slice()
         .sort((left, right) => {
           if (left.memberName !== right.memberName) {
@@ -353,11 +407,14 @@ function buildResolveGraph(projectIndex, codeFiles) {
         })
 
       edges.push({
+        sourceType,
         sourceFilePath: entry.filePath,
         sourceRelativePath: entry.relativePath,
         requestPath,
         targetFilePath: normalizedTargetFilePath,
-        targetRelativePath: normalizedTargetFilePath ? toRelativePath(projectIndex.pagesRoot, normalizedTargetFilePath) : null,
+        targetRelativePath: normalizedTargetFilePath
+          ? toRelativePath(projectIndex.pagesRoot, normalizedTargetFilePath)
+          : null,
         targetKind: normalizedTargetFilePath ? getResolveTargetKind(normalizedTargetFilePath) : null,
         referencedMembers,
         unresolved: !normalizedTargetFilePath,
@@ -380,6 +437,7 @@ function buildResolveGraph(projectIndex, codeFiles) {
       }
 
       targetState.callers.push({
+        sourceType,
         sourceFilePath: entry.filePath,
         sourceRelativePath: entry.relativePath,
         requestPath,
@@ -422,10 +480,11 @@ function buildRouteLinks(projectIndex, codeFiles) {
 
   for (const entry of codeFiles) {
     const routePathAssetScript = projectIndex.isRoutePathAssetScriptFile(entry.filePath)
-    const contexts = collectPathContexts(entry.sourceText, { filePath: entry.filePath }).filter((context) => (
-      context.kind === 'route-path' &&
-      (!routePathAssetScript || String(context.routeSource || '').startsWith('fetch-'))
-    ))
+    const contexts = collectPathContexts(entry.sourceText, { filePath: entry.filePath }).filter(
+      (context) =>
+        context.kind === 'route-path'
+        && (!routePathAssetScript || String(context.routeSource || '').startsWith('fetch-'))
+    )
 
     for (const context of contexts) {
       const isDynamic = !!context.isDynamic
@@ -446,7 +505,9 @@ function buildRouteLinks(projectIndex, codeFiles) {
         requestPath: context.value,
         location: toLocation(entry.filePath, entry.sourceText, context.start, context.end),
         targetFilePath: normalizedTargetFilePath,
-        targetRelativePath: normalizedTargetFilePath ? toRelativePath(projectIndex.pagesRoot, normalizedTargetFilePath) : null,
+        targetRelativePath: normalizedTargetFilePath
+          ? toRelativePath(projectIndex.pagesRoot, normalizedTargetFilePath)
+          : null,
         targetRoutePath: targetDescriptor ? targetDescriptor.routePath : null,
         targetMethod: targetDescriptor ? targetDescriptor.method : null,
         isDynamic,
@@ -490,10 +551,9 @@ function buildSchemaUsage(projectIndex, codeFiles) {
       inferredCollectionName: collectionReference ? collectionReference.collectionName : null,
       inferenceConfidence: collectionReference ? collectionReference.confidence : null,
       inferenceStrategy: collectionReference ? collectionReference.strategy : null,
-      existsInSchema:
-        collectionReference
-          ? projectIndex.hasField(collectionReference.collectionName, context.value)
-          : null,
+      existsInSchema: collectionReference
+        ? projectIndex.hasField(collectionReference.collectionName, context.value)
+        : null,
       location: toLocation(entry.filePath, entry.sourceText, context.start, context.end),
     })
   }
@@ -541,12 +601,7 @@ function buildSchemaUsage(projectIndex, codeFiles) {
       }
 
       if (context.kind === 'filter-field' || context.kind === 'sort-field') {
-        addFieldUsage(
-          entry,
-          context,
-          inferCollectionArgumentReference(entry, context),
-          context.kind
-        )
+        addFieldUsage(entry, context, inferCollectionArgumentReference(entry, context), context.kind)
         continue
       }
 
@@ -614,15 +669,12 @@ function buildRoutesByPath(routes) {
 
 /**
  * 파일 기준 영향 요약 섹션을 만듭니다.
- * @param {{ routes: Array<object>, partials: Array<object>, resolveGraph: { edges: Array<object>, targets: Array<object> }, routeLinks: Array<object>, schemaUsage: { collections: Array<object>, fields: Array<object> } }} sections 기존 보고서 섹션입니다.
+ * @param {{ codeFiles: Array<object>, routes: Array<object>, partials: Array<object>, resolveGraph: { edges: Array<object>, targets: Array<object> }, routeLinks: Array<object>, schemaUsage: { collections: Array<object>, fields: Array<object> } }} sections 기존 보고서 섹션입니다.
  * @returns {Array<object>} 파일 기준 영향 요약입니다.
  */
 function buildImpactByFile(sections) {
   const impacts = new Map()
   const routesByPath = buildRoutesByPath(sections.routes)
-  const routesByFilePath = new Map(sections.routes.map((route) => [normalizePath(route.filePath), route]))
-  const partialsByFilePath = new Map(sections.partials.map((partial) => [normalizePath(partial.filePath), partial]))
-  const partialAffectedRouteCache = new Map()
 
   function ensureImpact(filePath, fileKind) {
     let state = impacts.get(filePath)
@@ -650,100 +702,33 @@ function buildImpactByFile(sections) {
   }
 
   function addAffectedRoute(state, route) {
-    state.affectedRoutes.set(`${route.routePath}::${route.method}`, {
+    const key = `${route.routePath}::${route.method}`
+    if (state.affectedRoutes.has(key)) return false
+    state.affectedRoutes.set(key, {
       routePath: route.routePath,
       method: route.method,
       filePath: route.filePath,
       relativePath: route.relativePath,
       area: route.area,
     })
+    return true
   }
 
-  function getDescendantRoutesForScopedFile(sourceFilePath) {
-    const normalizedSourceFilePath = normalizePath(sourceFilePath)
-    const sourceDir = path.dirname(normalizedSourceFilePath)
-
-    return sections.routes.filter((route) => {
-      const normalizedRouteFilePath = normalizePath(route.filePath)
-      return normalizedRouteFilePath === normalizedSourceFilePath || normalizedRouteFilePath.startsWith(`${sourceDir}/`)
-    })
-  }
-
-  function isRouteScopeFile(filePath) {
-    return /\/\+(?:layout|middleware|load)\.(?:ejs|js|cjs|mjs)$/.test(normalizePath(filePath))
-  }
-
-  function addRouteToMap(routeMap, route) {
-    if (!route || !route.routePath) {
-      return
+  for (const entry of sections.codeFiles) {
+    if (entry.relativePath.split('/').includes('_private')) continue
+    const match = path.basename(entry.filePath).match(/^\+(layout|middleware|load|config)\.(ejs|js|cjs|mjs)$/)
+    if (!match || (match[1] !== 'layout' && match[2] !== 'js')) continue
+    const kind = match[1]
+    if (kind === 'config' && path.posix.dirname(entry.relativePath) !== '.') continue
+    const state = ensureImpact(entry.filePath, kind)
+    state.relativePath = entry.relativePath
+    const sourceDir = path.dirname(entry.filePath)
+    for (const route of sections.routes) {
+      const applies =
+        kind === 'config'
+        || (kind === 'load' ? path.dirname(route.filePath) === sourceDir : route.filePath.startsWith(`${sourceDir}/`))
+      if (applies) addAffectedRoute(state, route)
     }
-
-    routeMap.set(`${route.routePath}::${route.method || 'PAGE'}`, route)
-  }
-
-  function getCallerAffectedRoutes(caller) {
-    const callerFilePath = caller && caller.callerFilePath ? normalizePath(caller.callerFilePath) : ''
-    if (!callerFilePath) {
-      return []
-    }
-
-    const callerRoute = routesByFilePath.get(callerFilePath)
-    if (callerRoute) {
-      return [callerRoute]
-    }
-
-    if (isRouteScopeFile(callerFilePath)) {
-      return getDescendantRoutesForScopedFile(callerFilePath)
-    }
-
-    if (caller.callerRoutePath) {
-      return [{
-        routePath: caller.callerRoutePath,
-        method: caller.callerRouteMethod || 'PAGE',
-        filePath: caller.callerFilePath,
-        relativePath: caller.callerRelativePath,
-        area: null,
-      }]
-    }
-
-    return []
-  }
-
-  function getPartialAffectedRoutes(partialFilePath, visiting = new Set()) {
-    const normalizedPartialFilePath = normalizePath(partialFilePath)
-    if (partialAffectedRouteCache.has(normalizedPartialFilePath)) {
-      return partialAffectedRouteCache.get(normalizedPartialFilePath)
-    }
-
-    if (visiting.has(normalizedPartialFilePath)) {
-      return []
-    }
-
-    const partial = partialsByFilePath.get(normalizedPartialFilePath)
-    if (!partial) {
-      return []
-    }
-
-    visiting.add(normalizedPartialFilePath)
-    const routeMap = new Map()
-
-    for (const caller of partial.callers) {
-      for (const route of getCallerAffectedRoutes(caller)) {
-        addRouteToMap(routeMap, route)
-      }
-
-      const callerPartialFilePath = normalizePath(caller.callerFilePath)
-      if (partialsByFilePath.has(callerPartialFilePath)) {
-        for (const route of getPartialAffectedRoutes(callerPartialFilePath, visiting)) {
-          addRouteToMap(routeMap, route)
-        }
-      }
-    }
-
-    visiting.delete(normalizedPartialFilePath)
-    const routes = [...routeMap.values()]
-    partialAffectedRouteCache.set(normalizedPartialFilePath, routes)
-    return routes
   }
 
   for (const route of sections.routes) {
@@ -772,19 +757,8 @@ function buildImpactByFile(sections) {
         routeMethod: caller.callerRouteMethod,
       })
 
-      if (caller.callerRoutePath) {
-        addAffectedRoute(state, {
-          routePath: caller.callerRoutePath,
-          method: caller.callerRouteMethod || 'PAGE',
-          filePath: caller.callerFilePath,
-          relativePath: caller.callerRelativePath,
-          area: null,
-        })
-      }
-    }
-
-    for (const route of getPartialAffectedRoutes(partial.filePath)) {
-      addAffectedRoute(state, route)
+      const callerState = ensureImpact(caller.callerFilePath, 'other')
+      if (!callerState.relativePath) callerState.relativePath = caller.callerRelativePath
     }
   }
 
@@ -794,39 +768,38 @@ function buildImpactByFile(sections) {
       sourceState.relativePath = edge.sourceRelativePath
     }
 
-    sourceState.resolveTargetsUsed.set(`${edge.requestPath}::${edge.targetFilePath || 'unresolved'}`, {
-      requestPath: edge.requestPath,
-      targetFilePath: edge.targetFilePath,
-      targetRelativePath: edge.targetRelativePath,
-      targetKind: edge.targetKind,
-      unresolved: edge.unresolved,
-      referencedMemberNames: [...new Set(edge.referencedMembers.map((entry) => entry.memberName))].sort(),
-    })
+    sourceState.resolveTargetsUsed.set(
+      `${edge.sourceType}::${edge.requestPath}::${edge.targetFilePath || 'unresolved'}`,
+      {
+        sourceType: edge.sourceType,
+        requestPath: edge.requestPath,
+        targetFilePath: edge.targetFilePath,
+        targetRelativePath: edge.targetRelativePath,
+        targetKind: edge.targetKind,
+        unresolved: edge.unresolved,
+        referencedMemberNames: [...new Set(edge.referencedMembers.map((entry) => entry.memberName))].sort(),
+      }
+    )
 
     if (!edge.targetFilePath) {
       continue
     }
 
-    const targetState = ensureImpact(edge.targetFilePath, edge.targetKind === 'module' ? 'private-module' : edge.targetKind || 'other')
+    const targetState = ensureImpact(
+      edge.targetFilePath,
+      edge.targetKind === 'module' ? 'private-module' : edge.targetKind || 'other'
+    )
     if (!targetState.relativePath) {
       targetState.relativePath = edge.targetRelativePath
     }
 
-    targetState.directCallers.set(`${edge.sourceFilePath}::resolve::${edge.requestPath}`, {
-      sourceType: 'resolve',
+    targetState.directCallers.set(`${edge.sourceFilePath}::${edge.sourceType}::${edge.requestPath}`, {
+      sourceType: edge.sourceType,
       filePath: edge.sourceFilePath,
       relativePath: edge.sourceRelativePath,
       requestPath: edge.requestPath,
       referencedMemberNames: [...new Set(edge.referencedMembers.map((entry) => entry.memberName))].sort(),
     })
-
-    const isRouteScopeCaller = isRouteScopeFile(edge.sourceFilePath)
-    const callerRoutes = isRouteScopeCaller
-      ? getDescendantRoutesForScopedFile(edge.sourceFilePath)
-      : sections.routes.filter((route) => route.filePath === edge.sourceFilePath)
-    for (const callerRoute of callerRoutes) {
-      addAffectedRoute(targetState, callerRoute)
-    }
   }
 
   for (const link of sections.routeLinks) {
@@ -871,17 +844,17 @@ function buildImpactByFile(sections) {
       state.relativePath = fieldUsage.sourceRelativePath
     }
 
-      state.schemaFields.set(`${fieldUsage.fieldName}::${fieldUsage.location.start || 0}`, {
-        fieldName: fieldUsage.fieldName,
-        accessKind: fieldUsage.accessKind,
-        methodName: fieldUsage.methodName,
-        receiverExpression: fieldUsage.receiverExpression,
-        inferredCollectionName: fieldUsage.inferredCollectionName,
-        inferenceConfidence: fieldUsage.inferenceConfidence,
-        inferenceStrategy: fieldUsage.inferenceStrategy,
-        existsInSchema: fieldUsage.existsInSchema,
-        location: fieldUsage.location,
-      })
+    state.schemaFields.set(`${fieldUsage.fieldName}::${fieldUsage.location.start || 0}`, {
+      fieldName: fieldUsage.fieldName,
+      accessKind: fieldUsage.accessKind,
+      methodName: fieldUsage.methodName,
+      receiverExpression: fieldUsage.receiverExpression,
+      inferredCollectionName: fieldUsage.inferredCollectionName,
+      inferenceConfidence: fieldUsage.inferenceConfidence,
+      inferenceStrategy: fieldUsage.inferenceStrategy,
+      existsInSchema: fieldUsage.existsInSchema,
+      location: fieldUsage.location,
+    })
   }
 
   for (const state of impacts.values()) {
@@ -889,6 +862,26 @@ function buildImpactByFile(sections) {
       for (const route of routesByPath.get(state.routeInfo.routePath)) {
         addAffectedRoute(state, route)
       }
+    }
+  }
+
+  // 파일 의존성만 역전파합니다. URL 링크는 코드 의존성이 아니므로 포함하지 않습니다.
+  const dependenciesByCaller = new Map()
+  for (const target of impacts.values()) {
+    for (const caller of target.directCallers.values()) {
+      if (!dependenciesByCaller.has(caller.filePath)) dependenciesByCaller.set(caller.filePath, new Set())
+      dependenciesByCaller.get(caller.filePath).add(target)
+    }
+  }
+  const pending = [...impacts.values()]
+  for (let index = 0; index < pending.length; index += 1) {
+    const caller = pending[index]
+    for (const target of dependenciesByCaller.get(caller.filePath) || []) {
+      let changed = false
+      for (const route of caller.affectedRoutes.values()) {
+        if (addAffectedRoute(target, route)) changed = true
+      }
+      if (changed) pending.push(target)
     }
   }
 
@@ -919,7 +912,9 @@ function buildImpactByFile(sections) {
 
         return (left.location.start || 0) - (right.location.start || 0)
       }),
-      resolveTargetsUsed: [...state.resolveTargetsUsed.values()].sort((left, right) => left.requestPath.localeCompare(right.requestPath)),
+      resolveTargetsUsed: [...state.resolveTargetsUsed.values()].sort((left, right) =>
+        left.requestPath.localeCompare(right.requestPath)
+      ),
       schemaCollections: [...state.schemaCollections.values()].sort((left, right) => {
         if (left.collectionName !== right.collectionName) {
           return left.collectionName.localeCompare(right.collectionName)
@@ -965,6 +960,7 @@ function buildProjectIndexReport(options) {
     routeLinks,
     schemaUsage,
     impactByFile: buildImpactByFile({
+      codeFiles,
       routes,
       partials,
       resolveGraph,

@@ -83,7 +83,7 @@ function parseArgs(argv) {
 
     if (value === '--file') {
       const nextValue = argv[index + 1]
-      if (!nextValue) {
+      if (!nextValue || nextValue.startsWith('-')) {
         throw new Error('--file requires a relative path or file name.')
       }
 
@@ -193,16 +193,21 @@ function resolveRelativePath(report, fileSpecifier) {
   }
 
   const knownPaths = collectKnownRelativePaths(report)
-  const normalizedInput = toPortablePath(fileSpecifier)
-    .replace(/^\.\/+/, '')
-    .replace(/^\/+/, '')
-  const pagesRootPrefix = toPortablePath(report.pagesRoot) + '/'
-  const appRootPrefix = toPortablePath(report.appRoot) + '/'
-  const portableInput = normalizedInput.startsWith(pagesRootPrefix)
-    ? normalizedInput.slice(pagesRootPrefix.length)
-    : normalizedInput.startsWith(appRootPrefix)
-      ? normalizedInput.slice(appRootPrefix.length).replace(/^pb_hooks\/pages\//, '')
-      : normalizedInput
+  const normalizePath = (value) =>
+    path.posix
+      .normalize(toPortablePath(fromMsysPath(value)))
+      .replace(/^([A-Z]):/, (_, drive) => `${drive.toLowerCase()}:`)
+  const normalizedInput = normalizePath(fileSpecifier)
+  const prefixes = [
+    normalizePath(report.pagesRoot) + '/',
+    normalizePath(report.appRoot) + '/',
+    normalizePath(path.relative(ROOT_DIR, report.appRoot)) + '/',
+  ]
+  const prefix = prefixes.find((value) => normalizedInput.startsWith(value))
+  const portableInput = (prefix ? normalizedInput.slice(prefix.length) : normalizedInput).replace(
+    /^pb_hooks\/pages\//,
+    ''
+  )
 
   if (knownPaths.includes(portableInput)) {
     return portableInput
@@ -325,6 +330,7 @@ function buildPartialsView(report, relativePath) {
 function compactResolveEdge(edge) {
   return {
     sourceFile: edge.sourceRelativePath,
+    sourceType: edge.sourceType || 'resolve',
     requestPath: edge.requestPath,
     targetFile: edge.targetRelativePath,
     targetKind: edge.targetKind,
@@ -502,6 +508,8 @@ function buildSchemaUsageView(report, relativePath) {
     })),
     fields: entry.fields.map((field) => ({
       fieldName: field.fieldName,
+      accessKind: field.accessKind,
+      methodName: field.methodName,
       receiverExpression: field.receiverExpression,
       inferredCollectionName: field.inferredCollectionName,
       inferenceConfidence: field.inferenceConfidence,
@@ -561,6 +569,7 @@ function buildImpactByFileView(report, relativePath) {
       location: compactLocation(link.location),
     })),
     resolveTargetsUsed: (item.resolveTargetsUsed || []).map((entry) => ({
+      sourceType: entry.sourceType || 'resolve',
       requestPath: entry.requestPath,
       targetFile: entry.targetRelativePath,
       targetKind: entry.targetKind,
@@ -575,6 +584,8 @@ function buildImpactByFileView(report, relativePath) {
     })),
     schemaFields: (item.schemaFields || []).map((entry) => ({
       fieldName: entry.fieldName,
+      accessKind: entry.accessKind,
+      methodName: entry.methodName,
       receiverExpression: entry.receiverExpression,
       inferredCollectionName: entry.inferredCollectionName,
       inferenceConfidence: entry.inferenceConfidence,

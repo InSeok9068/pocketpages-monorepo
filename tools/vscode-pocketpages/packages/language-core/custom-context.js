@@ -1545,6 +1545,32 @@ function getStringLiteralPathRange(argument, sourceFile, scriptText, offsetBase 
   }
 }
 
+function getScriptCallPathRange(argument, descriptor, sourceFile, scriptText, offsetBase = 0, options = {}) {
+  const literalRange = getStringLiteralPathRange(argument, sourceFile, scriptText, offsetBase, options)
+  if (literalRange || descriptor.kind !== 'route-path') {
+    return literalRange
+  }
+
+  let target = skipParenthesizedExpression(argument)
+  if (!target || !ts.isBinaryExpression(target) || target.operatorToken.kind !== ts.SyntaxKind.PlusToken) {
+    return null
+  }
+
+  // 왼쪽 결합 순서를 유지해 동적 값보다 앞선 리터럴만 확인합니다.
+  while (ts.isBinaryExpression(target) && target.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    target = skipParenthesizedExpression(target.left)
+  }
+
+  const prefixRange = getStringLiteralPathRange(target, sourceFile, scriptText, offsetBase)
+  // 구분자가 첫 리터럴에 있어야 이후 값이 경로를 구성하지 않습니다.
+  // 이스케이프는 소스 범위와 실제 URL의 해석이 달라질 수 있어 제외합니다.
+  if (!prefixRange || !/[?#]/.test(prefixRange.value) || prefixRange.value.includes('\\')) {
+    return null
+  }
+
+  return prefixRange
+}
+
 function createScriptPathContextFromCall(node, descriptor, pathRange, sourceFile, sourceText) {
   const context = {
     quote: pathRange.quote,
@@ -1583,7 +1609,7 @@ function collectScriptPathContexts(scriptText, options = {}) {
     if (ts.isCallExpression(node) && node.arguments.length) {
       const descriptor = getPathCallDescriptor(node.expression)
       if (descriptor) {
-        const pathRange = getStringLiteralPathRange(node.arguments[0], sourceFile, sourceText, offsetBase)
+        const pathRange = getScriptCallPathRange(node.arguments[0], descriptor, sourceFile, sourceText, offsetBase)
         if (pathRange) {
           const context = createScriptPathContextFromCall(node, descriptor, pathRange, sourceFile, sourceText)
           if (shouldIncludeScriptPathContext(context, options)) {
@@ -1620,8 +1646,9 @@ function getOpenScriptPathContextAtOffset(scriptText, offset, options = {}) {
     if (ts.isCallExpression(node) && node.arguments.length) {
       const descriptor = getPathCallDescriptor(node.expression)
       if (descriptor) {
-        const pathRange = getStringLiteralPathRange(
+        const pathRange = getScriptCallPathRange(
           node.arguments[0],
+          descriptor,
           sourceFile,
           sourceText,
           offsetBase,
