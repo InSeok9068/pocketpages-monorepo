@@ -126,13 +126,14 @@ docker compose run --rm --no-deps --pull never --entrypoint sh "$compose_service
     cp -a /opt/defaults/pb_public/. "$public_dir"/
     chown -R "$deploy_owner" "$public_dir"
   fi
-' -- "$service" "$deploy_owner"
+' -- "$service" "$deploy_owner" </dev/null
 
 docker compose up -d --no-deps --force-recreate --pull never --wait "$compose_service"
 inspect_container
 [ "$container_revision" = "$target_sha" ] && [ "$container_running" = true ] || fail 'Started container does not match the target revision or is not running; success history was not advanced.'
-docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile
-docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+# sh -s receives this script on stdin; container commands must not consume it.
+docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile </dev/null
+docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile </dev/null
 
 # The global lock serializes writers; publish with a same-directory atomic rename.
 record_history() {

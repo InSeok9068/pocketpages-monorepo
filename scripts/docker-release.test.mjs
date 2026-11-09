@@ -70,6 +70,7 @@ case "$1 $2" in
   'tag '*) fail_at tag ;;
   'compose stop') fail_at stop ;;
   'compose run')
+    if [ "\${PP_TEST_DRAIN_STDIN:-}" = 1 ]; then cat >/dev/null; fi
     fail_at copy
     case " $* " in *' --pull never '*) ;; *) exit 43 ;; esac
     ;;
@@ -80,6 +81,7 @@ case "$1 $2" in
     : > "$PP_TEST_ROOT/up"
     ;;
   'compose exec')
+    if [ "\${PP_TEST_DRAIN_STDIN:-}" = 1 ]; then cat >/dev/null; fi
     case " $* " in
       *' caddy validate '*) fail_at validate ;;
       *' caddy reload '*)
@@ -189,7 +191,7 @@ fi
         shell,
         [
           '-c',
-          'PATH="$PP_TEST_BIN:$PATH"; export PATH; [ "$(command -v docker)" = "$PP_TEST_BIN/docker" ] && [ "$(command -v git)" = "$PP_TEST_BIN/git" ] || exit 99; exec sh "$PP_TEST_SCRIPT" "$@"',
+          'PATH="$PP_TEST_BIN:$PATH"; export PATH; [ "$(command -v docker)" = "$PP_TEST_BIN/docker" ] && [ "$(command -v git)" = "$PP_TEST_BIN/git" ] || exit 99; if [ "\${PP_TEST_SCRIPT_STDIN:-}" = 1 ]; then exec sh -s -- "$@"; else exec sh "$PP_TEST_SCRIPT" "$@"; fi',
           'docker-release-test',
           ...args,
         ],
@@ -197,6 +199,7 @@ fi
           cwd: root,
           env: { ...env, ...overrides },
           encoding: 'utf8',
+          input: readFileSync(script, 'utf8').replaceAll('\r\n', '\n'),
           timeout: 15000,
         }
       )
@@ -213,6 +216,17 @@ fi
         : [],
   }
 }
+
+test('rollback via sh stdin survives Docker commands reading stdin', (t) => {
+  const f = fixture(t, { history: [B, A], env: { PP_TEST_REVISION: B } })
+  const result = f.run(['rollback', 'demo', image, '1'], {
+    PP_TEST_SCRIPT_STDIN: '1',
+    PP_TEST_DRAIN_STDIN: '1',
+  })
+  succeeded(result)
+  assert.equal(f.history(), `${A}\n${B}\n`)
+  assert.match(result.stdout, /Docker rollback complete:/)
+})
 
 function succeeded(result) {
   assert.equal(result.status, 0, result.stderr + result.stdout)
