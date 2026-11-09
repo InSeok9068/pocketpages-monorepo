@@ -22,8 +22,8 @@ targetRules = ["generic-api-key"]
 paths = [
   '''^scripts/vendor/pocketbase-0\.27\.0\.umd\.js$''',
   '''^apps/todo/pb_hooks/pages/assets/vendor/pocketbase-0\.27\.0\.umd\.js$''',
-  '''^scripts/vendor/pocketbase-0\.28\.0\.umd\.js$''',
-  '''^apps/todo/pb_hooks/pages/assets/vendor/pocketbase-0\.28\.0\.umd\.js$''',
+  '''^scripts/vendor/pocketbase-0\.28\.2\.umd\.js$''',
+  '''^apps/todo/pb_hooks/pages/assets/vendor/pocketbase-0\.28\.2\.umd\.js$''',
 ]
 
 [[allowlists]]
