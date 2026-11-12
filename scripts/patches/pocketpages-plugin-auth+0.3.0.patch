@@ -1,0 +1,21 @@
+diff --git a/node_modules/pocketpages-plugin-auth/dist/index.js b/node_modules/pocketpages-plugin-auth/dist/index.js
+--- a/node_modules/pocketpages-plugin-auth/dist/index.js
++++ b/node_modules/pocketpages-plugin-auth/dist/index.js
+@@ -44,1 +44,1 @@
+-		dbg(`created paswordless user: ${email}:${password}`);
++		dbg(`creating passwordless user`);
+@@ -84,1 +84,1 @@
+-				dbg(`invalid auth cookie format: ${cookieRecordAuth}`);
++				dbg(`invalid auth cookie format`);
+@@ -89,1 +89,1 @@
+-				const validAuthRecord = $app.findAuthRecordByToken(cookieRecordAuth.token);
++				const validAuthRecord = $app.findAuthRecordByToken(cookieRecordAuth.token, "auth");
+@@ -91,1 +91,1 @@
+-					dbg(`invalid auth token found in cookie: ${cookieRecordAuth.token}`);
++					dbg(`invalid auth token found in cookie`);
+@@ -99,1 +99,1 @@
+-				dbg(`error fetching auth record: ${e}`);
++				dbg(`error fetching auth record`);
+@@ -161,1 +161,1 @@
+-				dbg(`signing in with token and saving to pb_auth cookie: ${record.id} ${token}`);
++				dbg(`signing in and saving pb_auth cookie: ${record.id}`);

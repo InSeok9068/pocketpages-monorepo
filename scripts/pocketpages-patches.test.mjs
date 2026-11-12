@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { inspect } from 'node:util'
 import vm from 'node:vm'
 import test from 'node:test'
 
@@ -46,15 +47,99 @@ function loadDist(entry, dependencies, globals = {}) {
   return module.exports
 }
 
+/** 객체와 예외 인자를 포함해 실제 로그에 노출될 값을 수집한다. */
+function logHarness() {
+  const messages = []
+  const capture = (...args) =>
+    messages.push(args.map((value) => (typeof value === 'string' ? value : inspect(value))).join(' '))
+  return {
+    logger: { dbg: capture, info: capture, warn: capture, error: capture },
+    assertHidden(...secrets) {
+      for (const secret of secrets) {
+        assert.equal(
+          messages.some((message) => message.includes(secret)),
+          false,
+          '민감정보가 로그에 노출됨'
+        )
+      }
+    },
+    messages,
+  }
+}
+
+/** 쿠키 인증과 로그인 API를 실행할 최소 환경을 만든다. */
+function authHarness(entry, { rawCookie, auth, findAuthRecordByToken = () => null } = {}) {
+  const logging = logHarness()
+  const cookies = []
+  const lookups = []
+  const enrichments = []
+  const creations = []
+  const password = 'PASSWORDLESS_PASSWORD_SENTINEL'
+  const request = {
+    auth,
+    event: {},
+    cookies(name) {
+      assert.equal(name, 'pb_auth')
+      return rawCookie
+    },
+  }
+  const response = { cookie: (...args) => cookies.push(args) }
+  const globalApi = {
+    ...logging.logger,
+    pb: () => ({
+      collection(name) {
+        assert.equal(name, 'users')
+        return {
+          create(data) {
+            creations.push(data)
+            return { id: 'created-user' }
+          },
+        }
+      },
+    }),
+  }
+  const factory = loadDist(
+    entry,
+    {},
+    {
+      ...logging.logger,
+      $app: {
+        findAuthRecordByToken(...args) {
+          lookups.push(args)
+          return findAuthRecordByToken(...args)
+        },
+      },
+      $apis: { enrichRecord: (...args) => enrichments.push(args) },
+      $security: { randomStringWithAlphabet: () => password },
+    }
+  )
+  const plugin = factory({ globalApi })
+  const api = { ...globalApi, request, response }
+  plugin.onExtendContextApi({ api })
+  return { plugin, api, request, response, cookies, lookups, enrichments, creations, password, ...logging }
+}
+
+/** 쿠키를 삭제하되 요청에 인증 정보를 설정하지 않았는지 확인한다. */
+function assertCookieAuthRejected(harness) {
+  assert.equal(harness.request.auth, undefined)
+  assert.equal(harness.request.authToken, undefined)
+  assert.equal(harness.enrichments.length, 0)
+  assert.equal(harness.cookies.length, 1)
+  const [name, value, options] = harness.cookies[0]
+  assert.equal(name, 'pb_auth')
+  assert.equal(value, '')
+  assert.equal(options.maxAge, 0)
+}
+
 /** 부트스트랩과 정적 응답을 실행할 최소 PocketBase 환경을 만든다. */
-function coreHarness(entry, { glob = () => [], directoryExists = true } = {}) {
+function coreHarness(entry, { glob = () => [], directoryExists = true, logger = log } = {}) {
   const store = new Map()
   const existsCalls = []
   const globCalls = []
   const core = loadDist(
     entry,
     {
-      'pocketbase-log': log,
+      'pocketbase-log': logger,
       'pocketbase-stringify': { stringify: JSON.stringify },
       'pocketbase-node': {
         path: path.posix,
@@ -293,6 +378,173 @@ const apps = readdirSync(path.join(root, 'apps'), { withFileTypes: true })
 assert.ok(apps.length > 0, 'PocketPages 앱이 없음')
 
 for (const app of apps) {
+  if (readJson(app.packageFile).dependencies?.['pocketpages-plugin-auth']) {
+    test(`${app.name}: 설치된 auth 패치`, async (t) => {
+      const requireFromApp = createRequire(app.packageFile)
+      const installed = installedPackage(requireFromApp, 'pocketpages-plugin-auth')
+      t.diagnostic(`auth ${installed.version}: ${installed.entry}`)
+      await t.test('auth 버전은 0.3.0', () => assert.equal(installed.version, '0.3.0'))
+
+      await t.test('auth 토큰으로 조회하고 enrich 후 요청에 record와 token을 설정한다', () => {
+        const token = 'VALID_AUTH_TOKEN_SENTINEL'
+        const record = { id: 'auth-user', email: 'AUTH_RECORD_EMAIL_SENTINEL' }
+        const harness = authHarness(installed.entry, {
+          rawCookie: JSON.stringify({ token, record: { id: 'untrusted-cookie-user' } }),
+          findAuthRecordByToken: () => record,
+        })
+        harness.plugin.onRequest(harness)
+        assert.deepEqual(harness.lookups, [[token, 'auth']])
+        assert.equal(harness.request.auth, record)
+        assert.equal(harness.request.authToken, token)
+        assert.deepEqual(harness.enrichments, [[harness.request.event, record]])
+        assert.equal(harness.cookies.length, 0)
+        harness.assertHidden(token, record.email)
+      })
+
+      for (const type of ['file', 'verifyEmail', 'changeEmail', 'passwordReset', 'expired', 'invalid']) {
+        await t.test(`${type} 토큰은 거부하고 쿠키를 삭제한다`, () => {
+          const token = `${type}_TOKEN_SENTINEL`
+          const harness = authHarness(installed.entry, {
+            rawCookie: JSON.stringify({ token }),
+            findAuthRecordByToken(value, allowedType) {
+              assert.equal(value, token)
+              if (type === 'invalid') return null
+              if (type === 'expired' || (allowedType && allowedType !== type)) {
+                throw new Error(`rejected ${token}`)
+              }
+              return { id: 'non-auth-token-user' }
+            },
+          })
+          harness.plugin.onRequest(harness)
+          assertCookieAuthRejected(harness)
+          assert.deepEqual(harness.lookups, [[token, 'auth']])
+          harness.assertHidden(token)
+        })
+      }
+
+      await t.test('기존 header 인증이 있으면 쿠키 조회와 인증 조회를 건너뛴다', () => {
+        const auth = { id: 'header-user' }
+        const harness = authHarness(installed.entry, { auth })
+        harness.request.authToken = 'HEADER_TOKEN_SENTINEL'
+        harness.request.cookies = () => assert.fail('기존 인증에서 쿠키를 조회함')
+        harness.plugin.onRequest(harness)
+        assert.equal(harness.request.auth, auth)
+        assert.equal(harness.request.authToken, 'HEADER_TOKEN_SENTINEL')
+        assert.equal(harness.lookups.length, 0)
+        assert.equal(harness.enrichments.length, 0)
+        assert.equal(harness.cookies.length, 0)
+        harness.assertHidden('HEADER_TOKEN_SENTINEL')
+      })
+
+      await t.test('signIn은 쿠키 내용을 유지하지만 토큰과 record 내용을 로그에 남기지 않는다', () => {
+        const harness = authHarness(installed.entry)
+        const record = { id: 'signed-in-user', email: 'SIGN_IN_RECORD_SENTINEL' }
+        const token = 'SIGN_IN_TOKEN_SENTINEL'
+        harness.api.signIn({ token, record })
+        assert.equal(harness.cookies.length, 1)
+        assert.equal(harness.cookies[0][0], 'pb_auth')
+        assert.deepEqual(JSON.parse(JSON.stringify(harness.cookies[0][1])), { token, record })
+        harness.assertHidden(token, record.email)
+      })
+
+      await t.test('비밀번호 없는 계정 생성은 이메일과 생성 비밀번호를 로그에 남기지 않는다', () => {
+        const harness = authHarness(installed.entry)
+        const email = 'PASSWORDLESS_EMAIL_SENTINEL@example.com'
+        const result = harness.api.createPaswordlessUser(email, { sendVerificationEmail: false })
+        assert.equal(result.password, harness.password)
+        assert.equal(result.user.id, 'created-user')
+        assert.equal(harness.creations.length, 1)
+        assert.deepEqual(JSON.parse(JSON.stringify(harness.creations[0])), {
+          email,
+          password: harness.password,
+          passwordConfirm: harness.password,
+        })
+        harness.assertHidden(email, harness.password)
+      })
+
+      await t.test('잘못된 쿠키는 삭제하고 원문을 로그에 남기지 않는다', () => {
+        const rawCookie = 'MALFORMED_COOKIE_SECRET_SENTINEL{'
+        const harness = authHarness(installed.entry, { rawCookie })
+        harness.plugin.onRequest(harness)
+        assertCookieAuthRejected(harness)
+        assert.equal(harness.lookups.length, 0)
+        harness.assertHidden(rawCookie)
+      })
+
+      await t.test('인증 조회 예외는 쿠키를 삭제하고 예외 내용과 토큰을 로그에 남기지 않는다', () => {
+        const token = 'THROWN_AUTH_TOKEN_SENTINEL'
+        const errorText = `AUTH_EXCEPTION_DETAILS_SENTINEL: ${token}`
+        const harness = authHarness(installed.entry, {
+          rawCookie: JSON.stringify({ token }),
+          findAuthRecordByToken() {
+            throw new Error(errorText)
+          },
+        })
+        harness.plugin.onRequest(harness)
+        assertCookieAuthRejected(harness)
+        harness.assertHidden(token, errorText, 'AUTH_EXCEPTION_DETAILS_SENTINEL')
+      })
+    })
+
+    test(`${app.name}: 설치된 SDK 인증 로그 패치`, async (t) => {
+      const installed = installedPackage(createRequire(app.packageFile), 'pocketpages-plugin-js-sdk')
+      t.diagnostic(`js-sdk ${installed.version}: ${installed.entry}`)
+      await t.test('SDK 버전은 0.3.0', () => assert.equal(installed.version, '0.3.0'))
+
+      for (const mode of ['request', 'generated', 'anonymous']) {
+        await t.test(`${mode}: SDK 저장값과 host는 유지하고 민감정보는 로그에서 제외한다`, () => {
+          const logging = logHarness()
+          const clients = []
+          const saved = []
+          const host = 'https://sdk-test.example.com'
+          const token = 'SDK_AUTH_TOKEN_SENTINEL'
+          let generated = 0
+          const auth = {
+            id: 'sdk-user',
+            email: 'SDK_FULL_AUTH_RECORD_SENTINEL@example.com',
+            nested: { secret: 'SDK_NESTED_RECORD_SENTINEL' },
+            newAuthToken() {
+              generated++
+              return token
+            },
+          }
+          class PocketBase {
+            constructor(value) {
+              this.host = value
+              this.authStore = { save: (...args) => saved.push(args) }
+              clients.push(this)
+            }
+          }
+          const factory = loadDist(installed.entry, { 'pocketbase-js-sdk-jsvm': PocketBase }, logging.logger)
+          const globalApi = { ...logging.logger }
+          factory({ globalApi })
+          const options =
+            mode === 'request'
+              ? { host, request: { auth, authToken: token } }
+              : mode === 'generated'
+                ? { host, auth }
+                : { host }
+          const client = globalApi.pb(options)
+          assert.equal(clients.length, 1)
+          assert.equal(client, clients[0])
+          assert.equal(client.host, host)
+          assert.equal(globalApi.pb(options), client)
+          assert.equal(generated, mode === 'generated' ? 1 : 0)
+          if (mode === 'anonymous') {
+            assert.equal(saved.length, 0)
+          } else {
+            assert.equal(saved.length, 1)
+            assert.equal(saved[0][0], token)
+            assert.deepEqual(JSON.parse(JSON.stringify(saved[0][1])), JSON.parse(JSON.stringify(auth)))
+            assert.ok(logging.messages.some((message) => message.includes(auth.id)))
+          }
+          assert.ok(logging.messages.some((message) => message.includes(host)))
+          logging.assertHidden(token, auth.email, auth.nested.secret)
+        })
+      }
+    })
+  }
+
   test(`${app.name}: 설치된 core 패치`, async (t) => {
     const requireFromApp = createRequire(app.packageFile)
     const corePackage = installedPackage(requireFromApp, 'pocketpages')
@@ -300,6 +552,53 @@ for (const app of apps) {
 
     await t.test('core 버전은 0.22.5', () => {
       assert.equal(corePackage.version, '0.22.5')
+    })
+
+    await t.test('verbose 로그는 응답 헤더와 쿠키의 이름만 남기고 실제 값은 유지한다', () => {
+      const logging = logHarness()
+      const { core, store } = coreHarness(corePackage.entry, { logger: logging.logger })
+      const headers = new Map()
+      const cookies = []
+      const token = 'CORE_AUTH_TOKEN_SENTINEL'
+      store.set('__pocketpages_debug', true)
+      store.set('pocketpages', {
+        config: {
+          debug: 'verbose',
+          plugins: [
+            () => ({
+              name: 'auth-log-test',
+              onRequest({ response }) {
+                response.header('Authorization', `Bearer ${token}`)
+                response.cookie('pb_auth', { token }, { httpOnly: true })
+              },
+            }),
+          ],
+        },
+        routes: [],
+      })
+      core.MiddlewareHandler({
+        request: {
+          method: 'GET',
+          url: { string: () => 'http://localhost/no-route' },
+          header: { get: () => '' },
+        },
+        response: {
+          header: () => ({
+            get: (name) => headers.get(name),
+            set: (name, value) => headers.set(name, value),
+            add: (name, value) => cookies.push([name, value]),
+          }),
+        },
+        next: noop,
+      })
+      assert.equal(headers.get('Authorization'), `Bearer ${token}`)
+      assert.equal(cookies.length, 1)
+      assert.equal(cookies[0][0], 'Set-Cookie')
+      assert.ok(cookies[0][1].includes(token))
+      assert.ok(cookies[0][1].includes('HttpOnly'))
+      assert.ok(logging.messages.some((message) => message.includes('header: Authorization')))
+      assert.ok(logging.messages.some((message) => message.includes('cookie: pb_auth')))
+      logging.assertHidden(token)
     })
 
     await t.test('pagesRoot를 dir 종류로 확인한다', () => {

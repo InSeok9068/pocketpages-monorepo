@@ -1,7 +1,39 @@
 diff --git a/node_modules/pocketpages-plugin-ejs/dist/index.js b/node_modules/pocketpages-plugin-ejs/dist/index.js
 --- a/node_modules/pocketpages-plugin-ejs/dist/index.js
 +++ b/node_modules/pocketpages-plugin-ejs/dist/index.js
-@@ -43,32 +43,61 @@
+@@ -29,6 +29,31 @@ const pocketbase_stringify = __toESM(require("pocketbase-stringify"));
+ const oldCompile = pocketbase_ejs.default.compile;
+ const oldResolveInclude = pocketbase_ejs.default.resolveInclude;
+ const oldIncludeFile = pocketbase_ejs.default.includeFile;
++// JSVM은 동기 실행하므로 활성 렌더만 보관하고 finally에서 이전 렌더로 복원한다.
++let activeRenderContext;
++// 컴파일 캐시에는 요청을 캡처하지 않는 이 훅만 저장한다.
++const includeWithContext = (includePath, options) => {
++	const renderContext = activeRenderContext;
++	if (!renderContext) throw new Error("Missing EJS render context");
++	const renderFunc = oldIncludeFile(includePath, options);
++	const absolute = includePath.startsWith("/") || (includePath[1] === ":" && includePath[2] === String.fromCharCode(92));
++	let rootedPath = includePath;
++	while (rootedPath.startsWith("/")) rootedPath = rootedPath.slice(1);
++	const filePath = absolute
++		? pocketbase_ejs.default.resolveInclude(rootedPath, options.root, true)
++		: pocketbase_ejs.default.resolveInclude(includePath, options.filename, false);
++	return (data) => {
++		const rawRendered = renderFunc(data);
++		return renderContext.plugins.filter((plugin) => plugin.name !== "ejs").reduce((content, plugin) => {
++			return plugin.onRender?.({
++				...renderContext,
++				api: data,
++				content,
++				filePath
++			}) ?? content;
++		}, rawRendered);
++	};
++};
+ const VALID_CONFIG_KEYS = [
+ 	"name",
+ 	"extensions",
+@@ -43,32 +68,61 @@ const ejsPluinFactory = (config, extra) => {
  		if (!VALID_CONFIG_KEYS.includes(key)) throw new Error(`Invalid config key: ${key}`);
  	});
  	const { pagesRoot, dbg } = config;
@@ -73,7 +105,7 @@ diff --git a/node_modules/pocketpages-plugin-ejs/dist/index.js b/node_modules/po
  				dbg(`skipping ${attemptPath} in ${pagesRoot}`);
  				break;
  			}
-@@ -76,8 +105,8 @@
+@@ -76,8 +130,8 @@ const ejsPluinFactory = (config, extra) => {
  			const foundPath = tryExtensions(attemptPath);
  			if (foundPath) return foundPath;
  			triedPaths.push(attemptPath);
@@ -84,12 +116,86 @@ diff --git a/node_modules/pocketpages-plugin-ejs/dist/index.js b/node_modules/po
  		}
  		throw new Error(`No partial '${includePath}' found in any _private directory. Tried: ${triedPaths.join(", ")}`);
  	};
-@@ -110,7 +139,7 @@
-           `,
- 				compileDebug: true,
- 				async: false,
+@@ -90,50 +144,41 @@ const ejsPluinFactory = (config, extra) => {
+ 			return _handles(filePath);
+ 		},
+ 		onRender: (renderContext) => {
+-			const { api, filePath, plugins } = renderContext;
++			const { api, filePath } = renderContext;
+ 			if (!_handles(filePath)) return renderContext.content;
+-			dbg(`onRender ${filePath}`);
+-			const content = pocketbase_ejs.default.renderFile(filePath, {
+-				...api,
+-				api
+-			}, {
+-				prepend: `
+-            const echo = (...args) => {
+-              const result = args.map((arg) => {
+-                if (typeof arg === 'object') {
+-                  return JSON.stringify(arg)
+-                }
+-                return arg.toString()
+-              })
+-              return __append(result.join(' '))
+-            }
+-          `,
+-				compileDebug: true,
+-				async: false,
 -				cache: false,
-+				cache: templateCache,
- 				root: pagesRoot,
- 				includeFile: function(path$1, options) {
- 					dbg(`includeFile ${path$1}`);
+-				root: pagesRoot,
+-				includeFile: function(path$1, options) {
+-					dbg(`includeFile ${path$1}`);
+-					const renderFunc = oldIncludeFile(path$1, options);
+-					return (data) => {
+-						const rawRendered = renderFunc(data);
+-						return plugins.filter((otherPlugin) => otherPlugin.name !== thisPlugin.name).reduce((content$1, plugin) => {
+-							dbg(`calling ${plugin.name}:onRender ${path$1}`);
+-							return plugin.onRender?.({
+-								...renderContext,
+-								api: data,
+-								content: content$1,
+-								filePath: pocketbase_ejs.default.resolveInclude(path$1, filePath, false)
+-							}) ?? content$1;
+-						}, rawRendered);
+-					};
++			const previousRenderContext = activeRenderContext;
++			activeRenderContext = renderContext;
++			try {
++				dbg(`onRender ${filePath}`);
++				const content = pocketbase_ejs.default.renderFile(filePath, {
++					...api,
++					api
++				}, {
++					prepend: `
++	            const echo = (...args) => {
++	              const result = args.map((arg) => {
++	                if (typeof arg === 'object') {
++	                  return JSON.stringify(arg)
++	                }
++	                return arg.toString()
++	              })
++	              return __append(result.join(' '))
++	            }
++	          `,
++					compileDebug: true,
++					async: false,
++					cache: templateCache,
++					root: pagesRoot,
++					includeFile: includeWithContext
++				});
++				if (typeof content !== "string") {
++					if (content === void 0 || content === null) return "";
++					return (0, pocketbase_stringify.stringify)(content);
+ 				}
+-			});
+-			if (typeof content !== "string") {
+-				if (content === void 0 || content === null) return "";
+-				return (0, pocketbase_stringify.stringify)(content);
++				return content;
++			} finally {
++				activeRenderContext = previousRenderContext;
+ 			}
+-			return content;
+ 		}
+ 	};
+ 	return thisPlugin;

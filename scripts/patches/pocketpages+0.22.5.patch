@@ -24,6 +24,12 @@ diff --git a/node_modules/pocketpages/dist/index.js b/node_modules/pocketpages/d
  				if (maybeLayouts && maybeLayouts.length > 0) {
  					if (maybeLayouts.length > 1) throw new Error(`Multiple layouts found for ${relativePath}`);
  					const maybeLayout = maybeLayouts[0];
+@@ -1296,1 +1301,1 @@
+-			dbg(`header: ${name} ${value}`);
++			dbg(`header: ${name}`);
+@@ -1314,1 +1319,1 @@
+-			dbg(`cookie: ${serialized}`);
++			dbg(`cookie: ${name}`);
 @@ -1339,6 +1344,9 @@
  		*/
  		if (route.isStatic) {
