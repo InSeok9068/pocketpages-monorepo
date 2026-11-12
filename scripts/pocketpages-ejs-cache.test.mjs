@@ -20,6 +20,7 @@ function createHarness(requireFromApp, templates) {
   const files = new Map(Object.entries(templates))
   const modules = new Map()
   const compilations = []
+  const fileReads = []
   const memoryNode = {
     path: path.posix,
     fs: {
@@ -27,6 +28,7 @@ function createHarness(requireFromApp, templates) {
         return (kind === undefined || kind === 'file') && files.has(filename)
       },
       readFileSync(filename) {
+        fileReads.push(filename)
         assert.ok(files.has(filename), `메모리 템플릿이 없음: ${filename}`)
         return files.get(filename)
       },
@@ -74,6 +76,7 @@ function createHarness(requireFromApp, templates) {
   return {
     ejs,
     compilations,
+    fileReads,
     pluginEntry,
     engineEntry,
     plugin(debug = false) {
@@ -141,6 +144,47 @@ for (const app of apps) {
     const requireFromApp = app.requireFromApp
     t.diagnostic(requireFromApp.resolve('pocketpages-plugin-ejs'))
     t.diagnostic(createRequire(requireFromApp.resolve('pocketpages-plugin-ejs')).resolve('pocketbase-ejs'))
+
+    await t.test('실제 엔진도 위험한 include 이름은 파일 읽기 전에 거부하고 정상 렌더를 유지한다', () => {
+      const outside = '/app/pb_hooks/outside.ejs'
+      const harness = createHarness(requireFromApp, {
+        [page]: '<%- include(request.partialName) %>',
+        [card]: '<%= request.id %>',
+        [outside]: 'OUTSIDE FILE',
+        [`${pagesRoot}/outside.ejs`]: 'OUTSIDE PRIVATE',
+      })
+      const plugin = harness.plugin()
+      const forbidden = [
+        '../outside.ejs',
+        '..\\outside.ejs',
+        '../../../outside.ejs',
+        '/../../outside.ejs',
+        '/_private/../outside.ejs',
+        'ui/.. /outside.ejs',
+        'C:/outside.ejs',
+        'C:\\outside.ejs',
+        '//server/share/outside.ejs',
+        '\\\\server\\share\\outside.ejs',
+        'card.ejs:stream',
+        'card\0.ejs',
+        '',
+      ]
+      for (const partialName of forbidden) {
+        const current = createRequest(plugin, 'rejected')
+        current.context.request.partialName = partialName
+        assert.throws(current.render, /Invalid include path/)
+      }
+      assert.ok(harness.fileReads.every((filename) => filename === page))
+      assert.deepEqual(
+        harness.compilations.map((item) => item.filename),
+        [page]
+      )
+      const current = createRequest(plugin, 'allowed')
+      current.context.request.partialName = 'card'
+      assert.equal(current.render(), 'allowed')
+      assert.equal(current.calls.length, 1)
+      assert.equal(current.calls[0].filePath, card)
+    })
 
     await t.test('debug=false: factory A/B의 현재 요청과 locals만 사용한다', () => {
       const harness = createHarness(requireFromApp, basicTemplates)

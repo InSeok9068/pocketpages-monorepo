@@ -25,6 +25,8 @@
 - 운영 환경에서는 컴파일된 템플릿을 캐시하고 debug 모드에서는 캐시하지 않는다. 렌더링된 사용자별 HTML을 캐시하는 기능은 아니다.
 - 컴파일 옵션에는 요청을 캡처하지 않는 공통 include 훅만 저장한다. 현재 렌더의 컨텍스트·플러그인은 동기 실행 중에만 연결하고 `finally`에서 이전 상태를 복원한다. 예외와 동기 재진입에서도 이전 요청이 남지 않도록 한다.
 - 중첩 include 후처리의 파일 경로는 최상위 페이지가 아닌 현재 부모 템플릿을 기준으로 계산한다. 절대 include는 기존 루트 기준을 유지한다.
+- include 이름은 역슬래시를 `/`로 통일한 뒤 빈 값·NUL·콜론·UNC 경로와 `..` 경로 구간을 파일 탐색 전에 거부한다. 단일 `/` 루트 경로, `.` 구간과 일반 파일명의 연속 점은 유지한다.
+- 루트 경계는 디렉터리 구분자까지 비교해 접두사가 같은 형제 디렉터리를 허용하지 않는다. 이는 이름·문자열 경계 방어이며, 심볼릭 링크의 실제 대상 경로를 검증하는 파일 시스템 샌드박스는 아니다.
 - 앱의 직접 의존성과 PocketPages 내부에서 해석되는 EJS가 같은 설치본이어야 한다. 이전 `0.1.2`를 함께 설치하지 않는다.
 
 ## pocketbase-js-sdk-jsvm 0.28.10001
@@ -40,8 +42,8 @@
 저장소 루트에서:
 
 ```sh
-node --test scripts/pocketpages-patches.test.mjs scripts/pocketpages-ejs-cache.test.mjs
+node --test scripts/pocketpages-patches.test.mjs scripts/pocketpages-ejs-cache.test.mjs scripts/pocketpages-include-paths.test.mjs
 ./task.sh lint <service>
 ```
 
-회귀 테스트는 각 앱의 실제 설치된 dist를 VM에서 로드하고 PocketBase API와 외부 의존성을 대체한다. EJS 캐시 테스트는 실제 `pocketbase-ejs` 엔진과 메모리 파일 시스템으로 요청 간 격리, 컴파일 재사용, 중첩 include, 예외 정리 및 동기 재진입을 검증한다. 실제 PocketBase 서버 실행 검증을 대신하지는 않는다.
+회귀 테스트는 각 앱의 실제 설치된 dist를 VM에서 로드하고 PocketBase API와 외부 의존성을 대체한다. EJS 캐시 테스트는 실제 `pocketbase-ejs` 엔진과 메모리 파일 시스템으로 요청 간 격리, 컴파일 재사용, 중첩 include, 예외 정리 및 동기 재진입을 검증한다. include 경로 테스트는 앱과 공용 패키지의 호출을 조사하고, 고정 경로가 실제 기존 파일로 해석되는지 확인한다. 동적 include가 추가되면 허용 목록과 별도 검증을 요구한다. 실제 PocketBase 서버 실행 검증을 대신하지는 않는다.

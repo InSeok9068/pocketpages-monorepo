@@ -1,18 +1,28 @@
 diff --git a/node_modules/pocketpages-plugin-ejs/dist/index.js b/node_modules/pocketpages-plugin-ejs/dist/index.js
 --- a/node_modules/pocketpages-plugin-ejs/dist/index.js
 +++ b/node_modules/pocketpages-plugin-ejs/dist/index.js
-@@ -29,6 +29,31 @@ const pocketbase_stringify = __toESM(require("pocketbase-stringify"));
+@@ -29,6 +29,41 @@ const pocketbase_stringify = __toESM(require("pocketbase-stringify"));
  const oldCompile = pocketbase_ejs.default.compile;
  const oldResolveInclude = pocketbase_ejs.default.resolveInclude;
  const oldIncludeFile = pocketbase_ejs.default.includeFile;
++// include 이름은 논리 경로만 허용한다. OS별 부모 경로·드라이브 해석에 맡기지 않는다.
++const normalizeIncludePath = (includePath) => {
++	if (typeof includePath !== "string" || !includePath) throw new Error("Invalid include path");
++	const normalized = includePath.replaceAll("\\", "/");
++	if (normalized.includes(String.fromCharCode(0)) || normalized.includes(":") || normalized.startsWith("//") || normalized.split("/").some((part) => part.trim() === "..")) {
++		throw new Error("Invalid include path");
++	}
++	return normalized;
++};
 +// JSVM은 동기 실행하므로 활성 렌더만 보관하고 finally에서 이전 렌더로 복원한다.
 +let activeRenderContext;
 +// 컴파일 캐시에는 요청을 캡처하지 않는 이 훅만 저장한다.
 +const includeWithContext = (includePath, options) => {
++	includePath = normalizeIncludePath(includePath);
 +	const renderContext = activeRenderContext;
 +	if (!renderContext) throw new Error("Missing EJS render context");
 +	const renderFunc = oldIncludeFile(includePath, options);
-+	const absolute = includePath.startsWith("/") || (includePath[1] === ":" && includePath[2] === String.fromCharCode(92));
++	const absolute = includePath.startsWith("/");
 +	let rootedPath = includePath;
 +	while (rootedPath.startsWith("/")) rootedPath = rootedPath.slice(1);
 +	const filePath = absolute
@@ -33,7 +43,7 @@ diff --git a/node_modules/pocketpages-plugin-ejs/dist/index.js b/node_modules/po
  const VALID_CONFIG_KEYS = [
  	"name",
  	"extensions",
-@@ -43,32 +68,61 @@ const ejsPluinFactory = (config, extra) => {
+@@ -43,32 +78,62 @@ const ejsPluinFactory = (config, extra) => {
  		if (!VALID_CONFIG_KEYS.includes(key)) throw new Error(`Invalid config key: ${key}`);
  	});
  	const { pagesRoot, dbg } = config;
@@ -43,6 +53,7 @@ diff --git a/node_modules/pocketpages-plugin-ejs/dist/index.js b/node_modules/po
  		return oldCompile(newTemplate, { ...options });
  	};
  	pocketbase_ejs.default.resolveInclude = function(includePath, templatePath, isDir) {
++		includePath = normalizeIncludePath(includePath);
  		dbg(`ejs resolveInclude ${includePath} from ${templatePath} <${isDir ? "dir" : "file"}>`);
 -		if (isDir) return pocketbase_node.path.resolve(pagesRoot, includePath);
 +		const normalizeSlashes = (p) => p.replaceAll("\\", "/");
@@ -101,11 +112,11 @@ diff --git a/node_modules/pocketpages-plugin-ejs/dist/index.js b/node_modules/po
 -			if (!attemptPath.startsWith(pagesRoot)) {
 +			const attemptPath = joinPath(currentPath, `_private`, includePath);
 +			const normalizedAttemptPath = comparePath(attemptPath);
-+			if (!normalizedAttemptPath.startsWith(normalizedPagesRoot)) {
++			if (!normalizedAttemptPath.startsWith(normalizedPagesRoot + "/")) {
  				dbg(`skipping ${attemptPath} in ${pagesRoot}`);
  				break;
  			}
-@@ -76,8 +130,8 @@ const ejsPluinFactory = (config, extra) => {
+@@ -76,8 +141,8 @@ const ejsPluinFactory = (config, extra) => {
  			const foundPath = tryExtensions(attemptPath);
  			if (foundPath) return foundPath;
  			triedPaths.push(attemptPath);
@@ -116,7 +127,7 @@ diff --git a/node_modules/pocketpages-plugin-ejs/dist/index.js b/node_modules/po
  		}
  		throw new Error(`No partial '${includePath}' found in any _private directory. Tried: ${triedPaths.join(", ")}`);
  	};
-@@ -90,50 +144,41 @@ const ejsPluinFactory = (config, extra) => {
+@@ -90,50 +155,41 @@ const ejsPluinFactory = (config, extra) => {
  			return _handles(filePath);
  		},
  		onRender: (renderContext) => {
