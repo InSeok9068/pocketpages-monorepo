@@ -24,5 +24,8 @@
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^4.3.2",
     "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "esbuild": true
   }
 }
