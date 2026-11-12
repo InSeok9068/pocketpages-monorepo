@@ -1,7 +1,7 @@
 {
   "files.autoSave": "off",
   "files.associations": {
-    "tailwind.css": "tailwindcss"
+    "tailwind.css": "tailwindcss",
   },
   "html.validate.styles": false,
   "html.validate.scripts": false,
@@ -13,12 +13,13 @@
     "pocketbase.exe": "pbw.exe",
     "README.md": "MEMO.md, DBSCHEMA.md",
     "AGENTS.md": "AGENTS*.md",
-    "package.json": "package-lock.json, .prettier*, eslint.config.js, unocss.config.js, tailwind.css, .dockerignore, .gitignore, .gitleaks.toml, knip.config.js, .node-version"
+    "package.json": "package-lock.json, .prettier*, eslint.config.js, unocss.config.js, tailwind.css, .dockerignore, .gitignore, .gitleaks.toml, knip.config.js, .node-version",
   },
   // prettier-ignore
   "files.exclude": {
     ".docs/**": true,
     ".cache/**": true,
+    ".backup/**": true,
     ".githooks/**": true,
     // "tools/**": true,
     // "scripts/**": true,
@@ -41,20 +42,20 @@
   "tailwindCSS.lint.cssConflict": "ignore",
   "tailwindCSS.lint.suggestCanonicalClasses": "ignore",
   "tailwindCSS.includeLanguages": {
-    "ejs": "html"
+    "ejs": "html",
   },
   "tailwindCSS.experimental.configFile": {
-    "tailwind.css": ["apps/*/pb_hooks/pages/**/*.ejs", "apps/*/pb_hooks/pages/**/*.js"]
+    "tailwind.css": ["apps/*/pb_hooks/pages/**/*.ejs", "apps/*/pb_hooks/pages/**/*.js"],
   },
   "editor.tokenColorCustomizations": {
     "textMateRules": [
       {
         "scope": "keyword.operator.datastar.prefix",
         "settings": {
-          "foreground": "#FFD866"
-        }
-      }
-    ]
+          "foreground": "#FFD866",
+        },
+      },
+    ],
   },
   "dbcode.connections": [
     {
@@ -66,12 +67,12 @@
       "readOnly": false,
       "postConnectionSqlType": "inline",
       "driverOptions": {
-        "extensions": []
+        "extensions": [],
       },
       "idleTimeout": 0,
       "introspection": {
-        "progressive": false
-      }
-    }
-  ]
+        "progressive": false,
+      },
+    },
+  ],
 }
