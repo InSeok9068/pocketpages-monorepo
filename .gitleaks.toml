@@ -14,6 +14,7 @@ targetRules = ["generic-api-key"]
 paths = [
   '''^apps/[^/]+/patches/pocketbase-js-sdk-jsvm\+0\.25\.10004\.patch$''',
   '''^scripts/patches/pocketbase-js-sdk-jsvm\+0\.28\.10001\.patch$''',
+  '''^\.backup/patches/pocketbase-js-sdk-jsvm\+0\.28\.10001\.patch$''',
 ]
 
 [[allowlists]]

@@ -1,0 +1,36 @@
+diff --git a/node_modules/pocketpages/dist/index.js b/node_modules/pocketpages/dist/index.js
+--- a/node_modules/pocketpages/dist/index.js
++++ b/node_modules/pocketpages/dist/index.js
+@@ -781,7 +781,7 @@
+ };
+ const AfterBootstrapHandler = (e) => {
+ 	(0, pocketbase_log.info)(`pocketpages startup`);
+-	if (!pocketbase_node.fs.existsSync(pagesRoot)) throw new Error(`${pagesRoot} must exist. Did you launch pocketbase with --dir or --hooksDir`);
++	if (!pocketbase_node.fs.existsSync(pagesRoot, `dir`)) throw new Error(`${pagesRoot} must exist. Did you launch pocketbase with --dir or --hooksDir`);
+ 	const VALID_CONFIG_KEYS = ["plugins", "debug"];
+ 	/**
+ 	* Load the config file
+@@ -865,7 +865,12 @@
+ 		{
+ 			const pathParts = $filepath.toSlash($filepath.dir(relativePath)).split(`/`).filter((node) => node !== ".").filter((p) => !!p);
+ 			do {
+-				const maybeLayouts = $filepath.glob($filepath.join(pagesRoot, ...pathParts, `+layout.*`).replace(/\[/g, "\\[").replace(/\]/g, "\\]"));
++				let maybeLayouts = [];
++				try {
++					maybeLayouts = $filepath.glob($filepath.join(pagesRoot, ...pathParts, `+layout.*`).replace(/\[/g, "\\[").replace(/\]/g, "\\]")) || [];
++				} catch (e$1) {
++					maybeLayouts = [];
++				}
+ 				if (maybeLayouts && maybeLayouts.length > 0) {
+ 					if (maybeLayouts.length > 1) throw new Error(`Multiple layouts found for ${relativePath}`);
+ 					const maybeLayout = maybeLayouts[0];
+@@ -1339,6 +1344,9 @@
+ 		*/
+ 		if (route.isStatic) {
+ 			dbg(`Serving static file ${absolutePath}`);
++			const requestedName = request.url.pathname.split("/").pop();
++			const originalName = route.segments[route.segments.length - 1].nodeName;
++			if (!config.debug && route.fingerprint && requestedName === fingerprint(originalName, route.fingerprint)) response.header("Cache-Control", "public, max-age=31536000, immutable");
+ 			return response.file(absolutePath);
+ 		}
+ 		const api = {

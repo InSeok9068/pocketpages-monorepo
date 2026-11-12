@@ -1,0 +1,199 @@
+{
+  "createdAt": "2026-11-12T01:46:56.762Z",
+  "scope": "PocketPages and pocketbase-* registry packages from apps/*/package-lock.json; original unpatched tarballs, not a complete offline dependency backup",
+  "packages": [
+    {
+      "name": "pocketbase-ejs",
+      "version": "7.0.2001",
+      "resolved": "https://registry.npmjs.org/pocketbase-ejs/-/pocketbase-ejs-7.0.2001.tgz",
+      "integrity": "sha512-90km8NPdXGHaX5t7+8sRkE+dtjb67NYKD70UbSN14aaKvZ4K9frgWQheBFiem26QqL2+davHtToH/LVHq9dqFQ==",
+      "apps": [
+        "booklog",
+        "gyeolbit",
+        "homepocket",
+        "launchboard",
+        "sample",
+        "todo"
+      ],
+      "file": "pocketbase-ejs-7.0.2001.tgz",
+      "bytes": 34512,
+      "sha256": "e47edae8d25ce321019128604af3ad453885023c9f3ad89ae02c708bd5e17922"
+    },
+    {
+      "name": "pocketbase-js-sdk-jsvm",
+      "version": "0.28.10001",
+      "resolved": "https://registry.npmjs.org/pocketbase-js-sdk-jsvm/-/pocketbase-js-sdk-jsvm-0.28.10001.tgz",
+      "integrity": "sha512-XhwdCPq0LJJ6O0l3DgMOJdycyMsCVoRGO8hXGizb4ZGvEVOXP3LRWPATSxxMUROW4ZqEDCDnuG8SG/S0NdY89w==",
+      "apps": [
+        "booklog",
+        "homepocket",
+        "launchboard",
+        "todo"
+      ],
+      "file": "pocketbase-js-sdk-jsvm-0.28.10001.tgz",
+      "bytes": 197209,
+      "sha256": "880217dee344da104a77fc659a0a4a48af8d89eeab766ff22775eab805802135"
+    },
+    {
+      "name": "pocketbase-log",
+      "version": "0.0.2",
+      "resolved": "https://registry.npmjs.org/pocketbase-log/-/pocketbase-log-0.0.2.tgz",
+      "integrity": "sha512-d0thSPYopTZzC4I85hlN6hrZaQEX7BzHieovV45zqFfE3kl4rb65xITe3UDZ+/42IfCTEchaPbTUDP2yd1/E8g==",
+      "apps": [
+        "booklog",
+        "gyeolbit",
+        "homepocket",
+        "launchboard",
+        "sample",
+        "todo"
+      ],
+      "file": "pocketbase-log-0.0.2.tgz",
+      "bytes": 2154,
+      "sha256": "6148f36a9ab15aaf77524ddb39cfc68567af208b6f8f7d0150c6cbcf89a25c7c"
+    },
+    {
+      "name": "pocketbase-node",
+      "version": "0.0.3",
+      "resolved": "https://registry.npmjs.org/pocketbase-node/-/pocketbase-node-0.0.3.tgz",
+      "integrity": "sha512-ZGrRFRlJqSXDl63913ZoHdtmpXJcaKO1km8STlGDbUJY6A+4xRC84e31gM4frRwSNhW6HsgsqkmzAj+UkZkDLg==",
+      "apps": [
+        "booklog",
+        "gyeolbit",
+        "homepocket",
+        "launchboard",
+        "sample",
+        "todo"
+      ],
+      "file": "pocketbase-node-0.0.3.tgz",
+      "bytes": 34088,
+      "sha256": "6d4707422f0f86ca135007c3ac8af0c57045cb53570961f77d123d7ef98e1d14"
+    },
+    {
+      "name": "pocketbase-node",
+      "version": "0.0.4",
+      "resolved": "https://registry.npmjs.org/pocketbase-node/-/pocketbase-node-0.0.4.tgz",
+      "integrity": "sha512-Al/+Vavb7N++4+Yx3dfJJZuXjR8LkGFta2YSvROOsMeiwxquOheFjafL8RIqs2Poq3/AwGUbFUm9YMMgcU4y6Q==",
+      "apps": [
+        "booklog",
+        "gyeolbit",
+        "homepocket",
+        "launchboard",
+        "sample",
+        "todo"
+      ],
+      "file": "pocketbase-node-0.0.4.tgz",
+      "bytes": 10226,
+      "sha256": "aacf0fe898a2c438580292454b8b45e96ddaf74c8bd3a1034bb7cc8c7ae161b0"
+    },
+    {
+      "name": "pocketbase-stringify",
+      "version": "0.0.2",
+      "resolved": "https://registry.npmjs.org/pocketbase-stringify/-/pocketbase-stringify-0.0.2.tgz",
+      "integrity": "sha512-KqN6K1fmRpw62PJ7Ue4zwnTuGaYkZ2XPwY+3yrHrwbmXvutLalbDd8ipOORPZI8myLrN6xkMIWXvqoDjfgBo5A==",
+      "apps": [
+        "booklog",
+        "gyeolbit",
+        "homepocket",
+        "launchboard",
+        "sample",
+        "todo"
+      ],
+      "file": "pocketbase-stringify-0.0.2.tgz",
+      "bytes": 1914,
+      "sha256": "fcfeaf3ad1e4f9c1aac3f33ab6c1e3e1b420ef760b190d1b9fc1d9b313216b5b"
+    },
+    {
+      "name": "pocketbase-stringify",
+      "version": "0.1.0",
+      "resolved": "https://registry.npmjs.org/pocketbase-stringify/-/pocketbase-stringify-0.1.0.tgz",
+      "integrity": "sha512-6FRNwA7GKwazGaRw234mugolVh3At+rc2RrNDgZz3pBtzuMdISJtlyM0egcpiL6K2Ck8aNLpkH+UEy0pxwMDOw==",
+      "apps": [
+        "booklog",
+        "gyeolbit",
+        "homepocket",
+        "launchboard",
+        "sample",
+        "todo"
+      ],
+      "file": "pocketbase-stringify-0.1.0.tgz",
+      "bytes": 2443,
+      "sha256": "195b34fdd6a5ae120d7467fd9938bea51229722f72bab9f1c1f18061537ea024"
+    },
+    {
+      "name": "pocketpages",
+      "version": "0.22.5",
+      "resolved": "https://registry.npmjs.org/pocketpages/-/pocketpages-0.22.5.tgz",
+      "integrity": "sha512-baYQ6p/u3GWd9EMPlL9mpSPanuEX2Ru8MSw+l3LvDbMsXmSfrl3o/tZfFfrViq8CtOoKIZrHIVbXwpy5BtzwKg==",
+      "apps": [
+        "booklog",
+        "gyeolbit",
+        "homepocket",
+        "launchboard",
+        "sample",
+        "todo"
+      ],
+      "file": "pocketpages-0.22.5.tgz",
+      "bytes": 22579,
+      "sha256": "698d3a7d4f0c06f1f3279084abf11f3eb1703610e3bbff16e4373844e1e5c235"
+    },
+    {
+      "name": "pocketpages-plugin-auth",
+      "version": "0.3.0",
+      "resolved": "https://registry.npmjs.org/pocketpages-plugin-auth/-/pocketpages-plugin-auth-0.3.0.tgz",
+      "integrity": "sha512-dGRDIq0KUnrS+AnRWDMATY3ieI1K4+t0rJLmSDlDusf/ZOi/ING47U4flclwKTcaKM+PN0RpmdwVP0Uffwmg7w==",
+      "apps": [
+        "booklog",
+        "homepocket",
+        "launchboard",
+        "todo"
+      ],
+      "file": "pocketpages-plugin-auth-0.3.0.tgz",
+      "bytes": 4733,
+      "sha256": "41241644c9f7d9914bfe2e7e3dc43bae538fa2551f968abcca70a7489ede3f55"
+    },
+    {
+      "name": "pocketpages-plugin-ejs",
+      "version": "0.2.0",
+      "resolved": "https://registry.npmjs.org/pocketpages-plugin-ejs/-/pocketpages-plugin-ejs-0.2.0.tgz",
+      "integrity": "sha512-YM330W6rMXbWeyg5kqzpNuKh4XIpZciXe/nr03GY4uM14CSurGNGJub5ZPc4oiFZwFA5hnV4ObdFZNw+BXQ9hA==",
+      "apps": [
+        "booklog",
+        "gyeolbit",
+        "homepocket",
+        "launchboard",
+        "sample",
+        "todo"
+      ],
+      "file": "pocketpages-plugin-ejs-0.2.0.tgz",
+      "bytes": 4642,
+      "sha256": "9ad8c12cd82ee1c6204ca770f71d94c950dffc20a18777950f5a44adad823c07"
+    },
+    {
+      "name": "pocketpages-plugin-js-sdk",
+      "version": "0.3.0",
+      "resolved": "https://registry.npmjs.org/pocketpages-plugin-js-sdk/-/pocketpages-plugin-js-sdk-0.3.0.tgz",
+      "integrity": "sha512-/Na8+hs0Xp+CVykjx2pHQGn/wUjNHf8jzfc+15A5H/GktzbWTr57c2U92LrFH1qANqnOYKfq7tUFBAhKcX4wKQ==",
+      "apps": [
+        "booklog",
+        "homepocket",
+        "launchboard",
+        "todo"
+      ],
+      "file": "pocketpages-plugin-js-sdk-0.3.0.tgz",
+      "bytes": 3254,
+      "sha256": "d4225eb0884ee3254ef6e507b01270c9863731b799b5674aa7fc94195aa120f0"
+    },
+    {
+      "name": "pocketpages-plugin-realtime",
+      "version": "0.2.0",
+      "resolved": "https://registry.npmjs.org/pocketpages-plugin-realtime/-/pocketpages-plugin-realtime-0.2.0.tgz",
+      "integrity": "sha512-NBFrHkmymZKXc1pgwJdimXSjMXLtYfv1dZp2OROYUmaZXX8fHiQpFrwEf8fQIDedokYpDNgC4KttXCR3M6luxg==",
+      "apps": [
+        "sample"
+      ],
+      "file": "pocketpages-plugin-realtime-0.2.0.tgz",
+      "bytes": 2360,
+      "sha256": "afae62c9091552232766dcf5a9a7998c7ce831685b5a0051d497fc26026c7a40"
+    }
+  ]
+}
