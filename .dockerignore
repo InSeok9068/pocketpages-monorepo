@@ -6,6 +6,7 @@
 .download
 .history
 .vscode
+.zed
 .docs
 
 **/.env
@@ -23,6 +24,7 @@ tools
 
 apps/*/.docs
 apps/*/__tests__
+apps/*/test-results
 apps/*/node_modules
 apps/*/pb_data
 apps/*/Dockerfile
@@ -33,5 +35,6 @@ apps/*/pbw.exe
 apps/*/*.d.ts
 apps/*/jsconfig.json
 apps/*/pb_schema.json
+apps/todo/todo-portable.zip
 
 packages/*/node_modules

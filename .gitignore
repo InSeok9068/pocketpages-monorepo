@@ -14,6 +14,8 @@ apps/booklog/.docs/*.epub
 
 # 환경변수
 .env
+.env.*
+!.env.example
 
 # 실행파일
 pocketbase.exe
@@ -25,8 +27,6 @@ pbw.exe
 !.download/pocketbase.exe
 !.download/pbw.exe
 
-# SeedLab 관련 보안문서
-apps/seedlab/.docs/private
 
 # 테스트 결과
 apps/*/test-results/
