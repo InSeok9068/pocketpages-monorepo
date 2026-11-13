@@ -137,10 +137,16 @@ function loadWithFallback(name, cacheKey, ttlMs, load) {
   throw failure || new Error('도서관정보나루 목록을 잠시 불러올 수 없습니다. ' + readCache('failed:' + name))
 }
 
+// 집계 전이거나 응답이 비면 빈 목록이 캐시와 마지막 목록을 덮어 하루 이상 비어 보이므로 실패로 처리합니다.
+function requireBooks(books) {
+  if (!books.length) throw new Error('도서관정보나루가 빈 목록을 돌려줬습니다.')
+  return books
+}
+
 function fetchPopularList(deps, tab, now) {
   const result = deps.data4libraryService.getPopularLoanBooks(deps.config, buildListRequest(tab, now))
 
-  return dedupeBooks(result.docs.map(toPopularBook)).slice(0, LIST_SIZE)
+  return requireBooks(dedupeBooks(result.docs.map(toPopularBook)).slice(0, LIST_SIZE))
 }
 
 function fetchHotTrend(deps, now) {
@@ -153,7 +159,14 @@ function fetchHotTrend(deps, now) {
     })
   })
 
-  return dedupeBooks(docs.map(toPopularBook)).slice(0, HOT_TREND_SIZE)
+  return requireBooks(dedupeBooks(docs.map(toPopularBook)).slice(0, HOT_TREND_SIZE))
+}
+
+function readCachedOrLastGood(name, cacheKey) {
+  const cached = readCache(cacheKey)
+
+  if (cached !== undefined || readCache('failed:' + name) === undefined) return cached
+  return readCache('last:' + name)
 }
 
 /**
@@ -163,10 +176,16 @@ function fetchHotTrend(deps, now) {
  * @returns {types.PopularBook[] | undefined} 보여 줄 목록
  */
 function readCachedPopularList(tab, now) {
-  const cached = readCache(getListCacheKey(tab, now))
+  return readCachedOrLastGood('list:' + tab, getListCacheKey(tab, now))
+}
 
-  if (cached !== undefined || readCache('failed:list:' + tab) === undefined) return cached
-  return readCache('last:list:' + tab)
+/**
+ * 오늘 받은 급상승 목록을 읽습니다. 최근 받기가 실패했으면 마지막 목록을 줍니다.
+ * @param {Date} now 기준 시각
+ * @returns {types.PopularBook[] | undefined} 보여 줄 목록
+ */
+function readCachedHotTrend(now) {
+  return readCachedOrLastGood('hot', getHotTrendCacheKey(now))
 }
 
 /**
@@ -289,6 +308,7 @@ module.exports = {
   normalizeTab,
   buildListRequest,
   readCachedPopularList,
+  readCachedHotTrend,
   loadPopularList,
   loadHotTrend,
   refreshAll,

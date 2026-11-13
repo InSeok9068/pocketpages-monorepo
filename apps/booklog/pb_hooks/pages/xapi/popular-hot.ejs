@@ -1,0 +1,60 @@
+<script server>
+  const popularBooksData = resolve('popular-books-data')
+
+  if (request.method !== 'GET') {
+    dbg('xapi/popular-hot:redirect', {
+      status: 303,
+      redirectTo: '/popular',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/popular', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/popular-hot:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const tab = popularBooksData.normalizeTab(String(request.url.query.tab || ''))
+  const fromPath = '/popular?tab=' + tab
+  let books = []
+  let shelfBookIds = {}
+
+  dbg('xapi/popular-hot:start', {
+    userId: userId,
+    tab: tab,
+  })
+
+  try {
+    books = popularBooksData.loadHotTrend(
+      {
+        data4libraryService: resolve('data4library-service'),
+        config: { apiKey: env('DATA4LIBRARY_APIKEY'), timeout: 15 },
+      },
+      new Date()
+    )
+    shelfBookIds = popularBooksData.findShelfBookIds(userId, books)
+  } catch (exception) {
+    warn('xapi/popular-hot:failed', {
+      userId: userId,
+      error: String(exception && exception.message ? exception.message : exception),
+    })
+  }
+</script>
+
+<% if (books.length) { %>
+<%- include('popular-hot-books.ejs', { books, shelfBookIds, fromPath }) %>
+<% } %>

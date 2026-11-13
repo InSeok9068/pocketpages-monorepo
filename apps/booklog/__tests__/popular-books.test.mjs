@@ -51,11 +51,13 @@ function createDeps(overrides = {}) {
         getPopularLoanBooks(_config, input) {
           calls.popular.push(input)
           if (overrides.popular) return overrides.popular(input)
-          return { numFound: 3, docs: [] }
+          return { numFound: 1, docs: [doc(1, '기본 책', '저자')] }
         },
         getHotTrendBooks(_config, input) {
           calls.hot.push(input)
-          return overrides.hot ? overrides.hot(input) : []
+          return overrides.hot
+            ? overrides.hot(input)
+            : [{ date: input.searchDt, docs: [doc(1, '기본 급상승', '저자')] }]
         },
       },
     },
@@ -279,6 +281,52 @@ test('When the API fails, the last good list is shown and the API is left alone 
   } finally {
     clock.restore()
   }
+})
+
+test('An empty rising list is a failure that keeps the last good list and retries after ten minutes', () => {
+  const data = loadModule()
+  const clock = withClock(Date.parse('2026-10-22T03:00:00Z'))
+  let empty = false
+  const { deps, calls } = createDeps({
+    hot: (input) =>
+      empty ? [{ date: input.searchDt, docs: [] }] : [{ date: input.searchDt, docs: [doc(1, '어제 급상승', '저자')] }],
+  })
+
+  try {
+    data.loadHotTrend(deps, new Date(Date.now()))
+    empty = true
+    clock.advance(24 * 60 * 60 * 1000)
+    const nextDay = new Date(Date.now())
+
+    assert.equal(data.readCachedHotTrend(nextDay), undefined)
+    assert.deepEqual(
+      data.loadHotTrend(deps, nextDay).map((book) => book.title),
+      ['어제 급상승']
+    )
+    assert.deepEqual(
+      data.readCachedHotTrend(nextDay).map((book) => book.title),
+      ['어제 급상승']
+    )
+    data.loadHotTrend(deps, nextDay)
+    assert.equal(calls.hot.length, 2, 'no retry inside the wait window')
+
+    clock.advance(10 * 60 * 1000 + 1)
+    empty = false
+    assert.equal(data.readCachedHotTrend(new Date(Date.now())), undefined)
+    data.loadHotTrend(deps, new Date(Date.now()))
+    assert.equal(calls.hot.length, 3)
+  } finally {
+    clock.restore()
+  }
+})
+
+test('An empty ranking from the scheduled refresh is not cached as a fresh list', () => {
+  const data = loadModule()
+  const { deps } = createDeps({ popular: () => ({ numFound: 0, docs: [] }), hot: () => [] })
+
+  assert.deepEqual({ ...data.refreshAll(deps, now) }, { 'list:month': false, 'list:steady': false, 'hot': false })
+  assert.equal(data.readCachedPopularList('month', now), undefined)
+  assert.equal(data.readCachedHotTrend(now), undefined)
 })
 
 test('Without any earlier list, a failure is reported quickly instead of waiting on the API every visit', () => {

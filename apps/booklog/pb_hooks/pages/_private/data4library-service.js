@@ -90,6 +90,10 @@ function requestData4LibraryJson(config, path, query) {
     throw new Error('도서관정보나루 API 응답 형식이 올바르지 않습니다.')
   }
 
+  if (response.json.response.error) {
+    throw new Error('도서관정보나루 API 오류: ' + redactKey(response.json.response.error))
+  }
+
   return response.json
 }
 

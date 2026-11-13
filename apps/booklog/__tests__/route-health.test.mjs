@@ -155,6 +155,7 @@ const FRAGMENTS = [
   '/xapi/reviews-more?offset=9999',
   '/xapi/popular-list?tab=month',
   '/xapi/popular-list?tab=steady',
+  '/xapi/popular-hot?tab=month',
 ]
 const POST_ONLY = [
   '/api/books/delete-bookmark',

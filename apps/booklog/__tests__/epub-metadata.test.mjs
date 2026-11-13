@@ -200,6 +200,26 @@ test('A data4library network error never carries the API key', () => {
   )
 })
 
+test('A data4library error sent with status 200 is a failure, not an empty result', () => {
+  const context = {
+    module: { exports: {} },
+    require: (name) => (name === 'pocketpages' ? { globalApi: { dbg() {} } } : require(name)),
+    $http: {
+      send() {
+        return { statusCode: 200, json: { response: { error: 'SECRET-KEY/1 일일 호출 한도를 초과했습니다.' } } }
+      },
+    },
+  }
+  vm.runInNewContext(
+    readFileSync(new URL('../pb_hooks/pages/_private/data4library-service.js', import.meta.url), 'utf8'),
+    context
+  )
+  assert.throws(
+    () => context.module.exports.getHotTrendBooks({ apiKey: 'SECRET-KEY/1' }, { searchDt: '2026-10-21' }),
+    (error) => /API 오류: \[REDACTED\] 일일 호출 한도/.test(error.message) && !/SECRET-KEY/.test(error.message)
+  )
+})
+
 test('Unpacked EPUB text is limited to 16MB per file and 200MB per book', () => {
   const { createTextEntrySizeGuard } = testRequire('../pb_hooks/pages/_private/epub-reading-metrics.js')
   const MB = 1024 * 1024

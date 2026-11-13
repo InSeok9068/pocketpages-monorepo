@@ -494,7 +494,7 @@ test('Home counts every shelf book and points to the library when the chosen sta
   }
 })
 
-test('The popular page shows rising books at once, loads the ranking separately, then serves it from cache', async () => {
+test('The popular page opens without waiting, loads rising books and the ranking separately, then serves both from cache', async () => {
   const resetCache = await fetch(service.baseUrl + '/_test/reset-popular-books-cache', { method: 'POST' })
   assert.equal(resetCache.status, 200)
 
@@ -504,9 +504,14 @@ test('The popular page shows rising books at once, loads the ranking separately,
     .get()
   assert.equal(menuLinks[menuLinks.indexOf('EPUB 도서관') + 1], '인기 도서')
   assert.equal(first('h1').text().trim(), '인기 도서')
-  assert.equal(first('[data-hot-book]').length, 1)
-  assert.match(first('[data-hot-book]').text(), /급상승 책[\s\S]*순위 42계단 상승/)
+  assert.equal(first('[data-hot-book]').length, 0)
+  assert.equal(first('#popular-hot').attr('hx-get'), '/xapi/popular-hot?tab=month')
   assert.equal(first('#popular-list').attr('hx-get'), '/xapi/popular-list?tab=month')
+
+  const hot = await html('/xapi/popular-hot?tab=month')
+  assert.equal(hot('h1').length, 0, 'the HTMX fragment has no page layout')
+  assert.equal(hot('#popular-hot [data-hot-book]').length, 1)
+  assert.match(hot('[data-hot-book]').text(), /급상승 책[\s\S]*순위 42계단 상승/)
   assert.deepEqual(
     first('a[href*="aladin.co.kr"], a[href*="kyobobook.co.kr"]')
       .map((_, element) => [first(element).attr('target'), first(element).attr('rel')])
@@ -536,6 +541,8 @@ test('The popular page shows rising books at once, loads the ranking separately,
   const cached = await html('/popular')
   assert.equal(cached('#popular-list').attr('hx-get'), undefined)
   assert.equal(cached('[data-popular-book]').length, 2)
+  assert.equal(cached('#popular-hot').attr('hx-get'), undefined)
+  assert.equal(cached('[data-hot-book]').length, 1)
 })
 
 test('When the ranking cannot be loaded, the popular page still opens and explains the failure', async () => {
