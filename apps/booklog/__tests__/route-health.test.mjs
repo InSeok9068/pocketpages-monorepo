@@ -172,6 +172,7 @@ const POST_ONLY = [
   '/xapi/books/delete-highlight',
   '/xapi/books/delete-review',
   '/xapi/books/recalculate-page-count',
+  '/xapi/books/recommend',
   '/xapi/books/refresh-metadata',
   '/xapi/books/remove-from-shelf',
   '/xapi/books/reset-reading-sessions',

@@ -106,6 +106,11 @@ routerAdd('GET', '/_test/settings', function (event) {
   })
 })
 
+routerAdd('POST', '/_test/reset-popular-books-cache', function (event) {
+  $app.store().set('booklog:popular-books', { version: 1, entries: {} })
+  return event.json(200, { ok: true })
+})
+
 routerAdd('POST', '/_test/popular-books-job', function (event) {
   return event.json(200, require(__hooks + '/jobs/popular-books-job.js').run())
 })

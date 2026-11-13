@@ -495,6 +495,9 @@ test('Home counts every shelf book and points to the library when the chosen sta
 })
 
 test('The popular page shows rising books at once, loads the ranking separately, then serves it from cache', async () => {
+  const resetCache = await fetch(service.baseUrl + '/_test/reset-popular-books-cache', { method: 'POST' })
+  assert.equal(resetCache.status, 200)
+
   const first = await html('/popular')
   const menuLinks = first('header a, nav a, [x-show="open"] a')
     .map((_, element) => first(element).text().trim())
