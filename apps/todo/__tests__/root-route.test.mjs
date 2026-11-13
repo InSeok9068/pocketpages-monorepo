@@ -68,6 +68,11 @@ test('a signed-up user can create and complete a work', async () => {
   assert.equal(homePage('h1').first().text().trim(), '오늘의 업무')
   assert.equal(homePage('[x-data="appToast"]').attr('data-initial-message'), '업무를 등록했습니다.')
   assert.ok(workId)
+  assert.equal(homePage('script[src*="pocketbase-0.29.0"]').length, 1)
+
+  const sdkResponse = await fetch(service.baseUrl + '/assets/vendor/pocketbase-0.29.0.umd.js')
+  assert.equal(sdkResponse.status, 200)
+  assert.match(await sdkResponse.text(), /autoClearAuthStore/)
 
   const dashboardResponse = await fetch(`${service.baseUrl}/dashboard`, { headers: { Cookie: cookie } })
   const dashboardBody = await dashboardResponse.text()
