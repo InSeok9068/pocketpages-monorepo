@@ -1,14 +1,15 @@
 'use strict'
 
 const assert = require('assert')
+const { readFileSync } = require('fs')
 const vm = require('vm')
 const datastarPluginFactory = require('..')
 
-function createHarness(requestHeaders) {
+function createHarness(requestHeaders, factory) {
   const output = []
   const responseHeaders = {}
   const realtimeMessages = []
-  const plugin = datastarPluginFactory({ dbg: function () {} })
+  const plugin = (factory || datastarPluginFactory)({ dbg: function () {} })
   const api = {
     response: {
       header: function (name, value) {
@@ -50,7 +51,17 @@ function createHarness(requestHeaders) {
   }
 }
 
-function createRealtimeSenderHarness() {
+function createIsolatedFactory() {
+  const context = vm.createContext({ module: { exports: {} } })
+  const filename = require.resolve('..')
+  vm.runInContext(readFileSync(filename, 'utf8'), context, { filename, timeout: 1000 })
+  return {
+    factory: context.module.exports,
+    prototype: vm.runInContext('Object.prototype', context),
+  }
+}
+
+function createRealtimeSenderHarness(factory) {
   const sentMessages = []
   function SubscriptionMessage(input) {
     this.name = input.name
@@ -71,7 +82,7 @@ function createRealtimeSenderHarness() {
     blocked: createClient('blocked', ['dashboard']),
     unrelated: createClient('unrelated', []),
   }
-  const sender = datastarPluginFactory.createRealtimeSender({
+  const sender = (factory || datastarPluginFactory).createRealtimeSender({
     app: {
       subscriptionsBroker: function () {
         return {
@@ -152,6 +163,190 @@ test('removeSignals lets parent removal win over nested keys', function () {
   harness.api.datastar.removeSignals(['draft', 'draft.title'])
 
   assert.strictEqual(harness.output(), 'event: datastar-patch-signals\n' + 'data: signals {"draft":null}\n' + '\n')
+})
+
+test('all removeSignals entry points reject reserved path segments before sending or changing prototypes', function () {
+  const invalid = [
+    '__proto__.__datastar_test_marker__',
+    '__proto__',
+    'constructor',
+    'prototype',
+    'constructor.prototype.__datastar_test_marker__',
+    'draft.__proto__.title',
+    'draft.constructor.title',
+    'draft.prototype.title',
+    'draft.__proto__',
+    ['draft', 'draft.__proto__.title'],
+    ['draft.title', 'other.constructor.title'],
+  ]
+
+  invalid.forEach(function (key) {
+    const isolated = createIsolatedFactory()
+    const before = Object.getOwnPropertyDescriptors(isolated.prototype)
+    const harness = createHarness(undefined, isolated.factory)
+    const realtime = createRealtimeSenderHarness(isolated.factory)
+    const calls = [
+      function () {
+        harness.api.datastar.removeSignals(key)
+      },
+      function () {
+        harness.api.datastar.realtime.removeSignals(key)
+      },
+      function () {
+        isolated.factory.realtime.buildRemoveSignalsPayload(key)
+      },
+      function () {
+        realtime.sender.removeSignals(key)
+      },
+    ]
+
+    calls.forEach(function (call) {
+      assert.throws(call, /Invalid Datastar signal key/)
+      assert.deepStrictEqual(Object.getOwnPropertyDescriptors(isolated.prototype), before)
+      assert.strictEqual(harness.output(), '')
+      assert.deepStrictEqual(harness.responseHeaders, {})
+      assert.deepStrictEqual(harness.realtimeMessages, [])
+      assert.deepStrictEqual(realtime.sentMessages, [])
+    })
+
+    harness.api.datastar.removeSignals('draft.title')
+    assert.strictEqual(harness.output(), 'event: datastar-patch-signals\ndata: signals {"draft":{"title":null}}\n\n')
+  })
+})
+
+test('removeSignals never follows inherited object properties', function () {
+  const isolated = createIsolatedFactory()
+  const inherited = { keep: true }
+  Object.defineProperty(isolated.prototype, 'inheritedGroup', { value: inherited, writable: true, configurable: true })
+  const harness = createHarness(undefined, isolated.factory)
+
+  harness.api.datastar.removeSignals('inheritedGroup.child')
+
+  assert.deepStrictEqual(inherited, { keep: true })
+  assert.strictEqual(isolated.prototype.inheritedGroup, inherited)
+  assert.strictEqual(
+    harness.output(),
+    'event: datastar-patch-signals\ndata: signals {"inheritedGroup":{"child":null}}\n\n'
+  )
+})
+
+test('removeSignals keeps ordinary names and parent removal independent of key order', function () {
+  const harness = createHarness()
+  harness.api.datastar.removeSignals([
+    'draft.title',
+    'draft',
+    'constructorName',
+    'prototypeVersion',
+    '__proto__value',
+    'toString.name',
+  ])
+  assert.strictEqual(
+    harness.output(),
+    'event: datastar-patch-signals\ndata: signals {"draft":null,"constructorName":null,"prototypeVersion":null,"__proto__value":null,"toString":{"name":null}}\n\n'
+  )
+})
+
+test('readSignals preserves defaults, target identity and shallow replacement of ordinary nested values', function () {
+  const harness = createHarness()
+  const target = { keep: true, count: 0, form: { old: true } }
+  const prototype = Object.getPrototypeOf(target)
+  const payload = {
+    'count': 2,
+    'form': { title: 'constructor', body: '__proto__' },
+    'items': [null, { prototypeVersion: 1 }],
+    'profile.name': 'reader',
+  }
+  const request = {
+    method: 'POST',
+    body: function () {
+      return payload
+    },
+  }
+  const result = harness.api.datastar.readSignals(request, target)
+
+  assert.strictEqual(result, target)
+  assert.strictEqual(Object.getPrototypeOf(result), prototype)
+  assert.deepStrictEqual(result, Object.assign({ keep: true }, payload))
+  assert.strictEqual(result.form.old, undefined)
+  assert.strictEqual(harness.api.datastar.readSignals({ method: 'GET', url: { query: {} } }, target), target)
+  harness.api.request = { method: 'DELETE', url: { query: { datastar: { count: 3 } } } }
+  assert.strictEqual(harness.api.datastar.requestSignals(target), target)
+  assert.strictEqual(target.count, 3)
+})
+
+test('readSignals rejects reserved keys at every depth before changing the target', function () {
+  const inputs = [
+    '{"count":99,"__proto__":{"__datastar_test_marker__":true}}',
+    '{"constructor":{"prototype":{"__datastar_test_marker__":true}}}',
+    '{"prototype":null}',
+    '{"form":{"__proto__":{"__datastar_test_marker__":true}}}',
+    '{"form":{"constructor":"value"}}',
+    '{"items":[{"prototype":true}]}',
+    '{"form.__proto__.title":"value"}',
+    '{"form.constructor.title":"value"}',
+    '{"form.prototype":"value"}',
+  ]
+
+  inputs.forEach(function (input) {
+    const requests = [
+      { method: 'GET', url: { query: { datastar: input } } },
+      { method: 'GET', url: { query: { datastar: JSON.parse(input) } } },
+      { method: 'DELETE', url: { query: { datastar: input } } },
+      {
+        method: 'POST',
+        body: function () {
+          return JSON.parse(input)
+        },
+      },
+      { method: 'PATCH', body: input },
+    ]
+    requests.forEach(function (request) {
+      const isolated = createIsolatedFactory()
+      const before = Object.getOwnPropertyDescriptors(isolated.prototype)
+      const harness = createHarness(undefined, isolated.factory)
+      const target = { count: 0, keep: { value: true } }
+      const targetPrototype = Object.getPrototypeOf(target)
+      const targetBefore = Object.getOwnPropertyDescriptors(target)
+      harness.api.request = request
+
+      assert.throws(function () {
+        harness.api.datastar.readSignals(request, target)
+      }, /Invalid Datastar signal key/)
+      assert.throws(function () {
+        harness.api.datastar.requestSignals(target)
+      }, /Invalid Datastar signal key/)
+      assert.deepStrictEqual(Object.getOwnPropertyDescriptors(target), targetBefore)
+      assert.strictEqual(Object.getPrototypeOf(target), targetPrototype)
+      assert.deepStrictEqual(Object.getOwnPropertyDescriptors(isolated.prototype), before)
+      assert.strictEqual(harness.output(), '')
+      assert.deepStrictEqual(harness.responseHeaders, {})
+      assert.deepStrictEqual(harness.realtimeMessages, [])
+    })
+  })
+})
+
+test('readSignals retains JSON-object validation and leaves the target untouched after errors', function () {
+  const harness = createHarness()
+  const target = { count: 0 }
+  ;['null', '[]', '123', 'true', '"text"', '{bad'].forEach(function (input) {
+    assert.throws(function () {
+      harness.api.datastar.readSignals({ method: 'POST', body: input }, target)
+    }, /Datastar signals must be a JSON object|Failed to parse Datastar signals/)
+    assert.deepStrictEqual(target, { count: 0 })
+    assert.strictEqual(Object.getPrototypeOf(target), Object.prototype)
+  })
+  const result = harness.api.datastar.readSignals({ method: 'POST', body: '{"count":1}' }, target)
+  assert.strictEqual(result, target)
+  assert.deepStrictEqual(result, { count: 1 })
+})
+
+test('readSignals validates deep ordinary JSON without recursive traversal', function () {
+  const harness = createHarness()
+  const depth = 2000
+  const input = '{"nested":'.repeat(depth) + '0' + '}'.repeat(depth)
+  let result = harness.api.datastar.readSignals({ method: 'POST', body: input })
+  for (let i = 0; i < depth; i += 1) result = result.nested
+  assert.strictEqual(result, 0)
 })
 
 test('removeSignals rejects onlyIfMissing because removal must be explicit', function () {

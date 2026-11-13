@@ -8,7 +8,7 @@ This package keeps the server side thin: it loads a local Datastar browser bundl
 
 Compared to the original PocketPages Datastar plugin, this package adds a few Datastar 1.x focused helpers while keeping the adapter thin:
 
-- Vendors the Datastar `v1.0.4` browser bundle for local asset usage.
+- Vendors the Datastar `v1.0.5` browser bundle for local asset usage.
 - Uses Datastar 1.x attribute syntax in the SPA helper, such as `data-on:click`.
 - Keeps `spa` as the public navigation helper option for PocketPages layouts.
 - Registers the initial SPA history entry, saves scroll positions, and restores them after Back/Forward content updates. Cancelled or superseded requests do not restore scroll.
@@ -161,6 +161,8 @@ const form = datastar.requestSignals({
   body: '',
 })
 ```
+
+`removeSignals()`의 점 구분 경로와 `readSignals()` / `requestSignals()` 입력 키에서는 `__proto__`, `constructor`, `prototype` 구간을 거부합니다. 입력 JSON은 중첩 객체·배열까지 검사한 뒤 기존 대상에 얕게 복사하므로, 예약 키가 있으면 대상 객체를 변경하기 전에 예외를 던집니다. 문자열 값이나 `constructorName` 같은 일반 키는 허용합니다.
 
 ## Headers
 

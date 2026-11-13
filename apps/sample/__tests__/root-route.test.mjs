@@ -49,12 +49,12 @@ test('GET /datastar returns the Datastar sample page', async () => {
   assert.match(body, /datastar\.min/);
 });
 
-test('GET /assets/vendor/datastar.min.js returns the vendored Datastar v1.0.4 bundle', async () => {
+test('GET /assets/vendor/datastar.min.js returns the vendored Datastar v1.0.5 bundle', async () => {
   const response = await fetch(`${service.baseUrl}/assets/vendor/datastar.min.js`);
   const body = await response.text();
 
   assert.equal(response.status, 200);
-  assert.match(body, /^\/\/ Datastar v1\.0\.4/);
+  assert.match(body, /^\/\/ Datastar v1\.0\.5/);
   assert.match(body, /viewTransitionSelector/);
 });
 
@@ -99,6 +99,49 @@ test('POST /xapi/datastar/form returns signal and element patches', async () => 
   assert.match(body, /event: datastar-patch-elements/);
   assert.match(body, /form 저장 완료/);
   assert.match(body, /Test title/);
+});
+
+test('Datastar signal input rejects reserved keys and keeps the next valid request working', async () => {
+  const inputs = [
+    '{"title":"Test title","body":"Test body","__proto__":{"__datastar_test_marker__":true}}',
+    '{"title":"Test title","body":"Test body","nested":{"constructor":{"prototype":{"__datastar_test_marker__":true}}}}',
+    '{"title":"Test title","body":"Test body","items":[{"prototype":true}]}',
+    '{"title":"Test title","body":"Test body","draft.__proto__.title":"value"}',
+  ];
+
+  for (const method of ['GET', 'DELETE', 'POST']) {
+    for (const input of inputs) {
+      const route = '/xapi/datastar/form' + (method === 'POST' ? '' : '?datastar=' + encodeURIComponent(input));
+      const response = await fetch(service.baseUrl + route, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Datastar-Request': 'true',
+        },
+        ...(method === 'POST' ? { body: input } : {}),
+      });
+      const body = await response.text();
+
+      assert.equal(response.status, 500, method + ' ' + input);
+      assert.doesNotMatch(body, /event: datastar-patch-(signals|elements)/);
+    }
+  }
+
+  const response = await fetch(service.baseUrl + '/xapi/datastar/form', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Datastar-Request': 'true',
+    },
+    body: JSON.stringify({ title: 'constructor', body: '__proto__', items: [{ prototypeVersion: 1 }] }),
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') || '', /^text\/event-stream/);
+  assert.match(body, /event: datastar-patch-signals/);
+  assert.match(body, /event: datastar-patch-elements/);
+  assert.match(body, /form 저장 완료/);
 });
 
 test('POST /xapi/datastar/signal returns only a signal patch', async () => {

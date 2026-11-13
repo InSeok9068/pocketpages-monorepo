@@ -4,6 +4,8 @@
 
 기준: PocketPages `0.22.5`. 응답 처리·JSON 감지·슬롯 동작은 로컬 설치본 `apps/booklog/node_modules/pocketpages/dist/index.js`에서 확인했다. 버전 변경 시 설치본과 서비스 타입을 다시 확인한다.
 
+보안 재검토의 근거·재현 결과·미패치 항목은 [2026-11-13 검토 보고서](pocketpages-security-review-2026-11-13.md)에 기록한다. 해당 보고서는 특정 설치본의 검증 기록이며, 전체 안전성 보장이나 별도 프로젝트 규칙이 아니다.
+
 ## API 예시를 읽을 때
 
 - `formData`와 `body`는 함수다. `formData.email`이 아니라 `formData().email`로 읽는다. `pocketpages/loading-data.md`와 `pocketpages/context-api/redirect.md`의 일부 예시는 이 점을 반영하지 않는다.

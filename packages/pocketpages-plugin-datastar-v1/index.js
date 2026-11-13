@@ -96,6 +96,28 @@ function normalizeSignals(api, signals) {
   return contents
 }
 
+function assertSafeSignalKey(key) {
+  if (
+    key.split('.').some(function (part) {
+      return part === '__proto__' || part === 'constructor' || part === 'prototype'
+    })
+  ) {
+    throw new Error('Invalid Datastar signal key: ' + key)
+  }
+}
+
+function assertSafeSignalKeys(signals) {
+  const pending = [signals]
+  while (pending.length) {
+    const value = pending.pop()
+    Object.keys(value).forEach(function (key) {
+      assertSafeSignalKey(key)
+      const child = value[key]
+      if (child !== null && typeof child === 'object') pending.push(child)
+    })
+  }
+}
+
 function normalizeSignalKeys(signalKeys) {
   const keys = Array.isArray(signalKeys) ? signalKeys : [signalKeys]
   if (!keys.length) {
@@ -105,7 +127,9 @@ function normalizeSignalKeys(signalKeys) {
     if (!hasValue(key)) {
       throw new Error('Datastar removeSignals requires non-empty signal keys')
     }
-    return String(key)
+    const name = String(key)
+    assertSafeSignalKey(name)
+    return name
   })
 }
 
@@ -122,8 +146,9 @@ function setSignalRemoval(patch, key) {
       target[part] = null
       return
     }
-    if (target[part] === null) return
-    if (!target[part] || typeof target[part] !== 'object' || Array.isArray(target[part])) {
+    const own = Object.prototype.hasOwnProperty.call(target, part)
+    if (own && target[part] === null) return
+    if (!own || !target[part] || typeof target[part] !== 'object' || Array.isArray(target[part])) {
       target[part] = {}
     }
     target = target[part]
@@ -734,6 +759,7 @@ function datastarPluginFactory(config, pluginOptions) {
           throw new Error('Datastar signals must be a JSON object')
         }
 
+        assertSafeSignalKeys(parsed)
         return Object.assign(result, parsed)
       }
 
