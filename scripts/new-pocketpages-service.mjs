@@ -21,10 +21,10 @@ const vendorByFeature = {
   alpine: ['alpine-3.17.4-cdn.min.js'],
   datastar: ['datastar.min.js'],
   unocss: [
-    'preset-wind4-66.10.5.global.js',
-    'preset-icons-66.10.5.global.js',
-    'iconify-lucide-1.2.123.icons.json',
-    'unocss-core-66.10.5.global.js',
+    'preset-wind4-66.13.0.global.js',
+    'preset-icons-66.13.0.global.js',
+    'iconify-lucide-1.2.155.icons.json',
+    'unocss-core-66.13.0.global.js',
   ],
 }
 const vendorByFeaturePair = {
@@ -563,8 +563,8 @@ function buildUnoHeadEjs() {
     display: none !important;
   }
 </style>
-<script src="<%= asset('/assets/vendor/preset-wind4-66.10.5.global.js') %>"></script>
-<script src="<%= asset('/assets/vendor/preset-icons-66.10.5.global.js') %>"></script>
+<script src="<%= asset('/assets/vendor/preset-wind4-66.13.0.global.js') %>"></script>
+<script src="<%= asset('/assets/vendor/preset-icons-66.13.0.global.js') %>"></script>
 <script>
   let lucideIcons
 
@@ -580,7 +580,7 @@ function buildUnoHeadEjs() {
         window.__unocss_runtime.presets.presetIcons({
           collections: {
             lucide: () => {
-              lucideIcons = lucideIcons || fetch('<%= asset('/assets/vendor/iconify-lucide-1.2.123.icons.json') %>').then((response) => response.json())
+              lucideIcons = lucideIcons || fetch('<%= asset('/assets/vendor/iconify-lucide-1.2.155.icons.json') %>').then((response) => response.json())
 
               return lucideIcons
             },
@@ -592,7 +592,7 @@ function buildUnoHeadEjs() {
     },
   }
 </script>
-<script src="<%= asset('/assets/vendor/unocss-core-66.10.5.global.js') %>"></script>
+<script src="<%= asset('/assets/vendor/unocss-core-66.13.0.global.js') %>"></script>
 <% } %>
 `
 }

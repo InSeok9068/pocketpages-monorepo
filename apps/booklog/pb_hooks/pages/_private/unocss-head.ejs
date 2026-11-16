@@ -8,8 +8,8 @@
     display: none !important;
   }
 </style>
-<script src="<%= asset('/assets/vendor/preset-wind4-66.10.5.global.js') %>"></script>
-<script src="<%= asset('/assets/vendor/preset-icons-66.10.5.global.js') %>"></script>
+<script src="<%= asset('/assets/vendor/preset-wind4-66.13.0.global.js') %>"></script>
+<script src="<%= asset('/assets/vendor/preset-icons-66.13.0.global.js') %>"></script>
 <script>
   let lucideIcons
 
@@ -27,7 +27,7 @@
             lucide: () => {
               lucideIcons =
                 lucideIcons
-                || fetch('<%= asset('/assets/vendor/iconify-lucide-1.2.123.icons.json') %>').then((response) =>
+                || fetch('<%= asset('/assets/vendor/iconify-lucide-1.2.155.icons.json') %>').then((response) =>
                   response.json()
                 )
 
@@ -41,5 +41,5 @@
     },
   }
 </script>
-<script src="<%= asset('/assets/vendor/unocss-core-66.10.5.global.js') %>"></script>
+<script src="<%= asset('/assets/vendor/unocss-core-66.13.0.global.js') %>"></script>
 <% } %>
