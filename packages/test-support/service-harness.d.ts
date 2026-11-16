@@ -30,6 +30,8 @@ export interface StartServiceOptions {
   serviceName: string
   /** readiness 대기 시간입니다. */
   timeoutMs?: number
+  /** 테스트 서버 포트입니다. 기본값은 8090입니다. */
+  port?: number
   /** 서비스 시작 전 temp pb_data에 넣을 CSV 목록입니다. */
   imports?: ServiceImportOptions[]
 }
@@ -37,6 +39,8 @@ export interface StartServiceOptions {
 export interface StartedService {
   /** 실행 중인 서비스 base URL입니다. */
   baseUrl: string
+  /** 지금까지 수집한 서비스 stdout과 stderr입니다. */
+  output(): string
   /** 서비스 프로세스와 temp pb_data를 정리합니다. */
   stop(): Promise<void>
 }

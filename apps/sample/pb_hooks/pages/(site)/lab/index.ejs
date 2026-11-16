@@ -19,10 +19,12 @@
     urlItem: String(parsedUrl.query.item || ''),
     stringified: stringify({ lab: 'ok' }),
     appEnv: String(env('APP_ENV') || 'development').trim(),
+    relativeAsset: asset('lab-asset.css'),
+    absoluteAsset: asset('/assets/style.css'),
   }
 
   response.header('X-Lab-Page', 'rendered')
-  response.cookie('lab_seen', { at: 'lab' })
+  response.cookie('lab_seen', { at: 'lab' }, { path: '/lab', maxAge: 120, httpOnly: true, sameSite: 'strict' })
 
   dbg('page/lab:index:response', {
     method: labView.method,
@@ -41,6 +43,9 @@
   <a href="/lab/respond">Respond</a>
   <a href="/lab/scope">Scope</a>
   <a href="/lab/scope-root">Scope root</a>
+  <a href="/lab/slots">Slots</a>
+  <a href="/lab/slots/explicit-default">Slots default</a>
+  <a href="/lab/render-probe?probe=manual">Render probe</a>
   <a href="/lab/auth">Auth</a>
   <a href="/lab/auth/private">Private</a>
   <a href="/xapi/lab/echo">Echo</a>
@@ -67,6 +72,10 @@
   <dd data-lab="stringify"><%= labView.stringified %></dd>
   <dt>env</dt>
   <dd data-lab="env"><%= labView.appEnv %></dd>
+  <dt>relative asset</dt>
+  <dd data-lab="relative-asset"><%= labView.relativeAsset %></dd>
+  <dt>absolute asset</dt>
+  <dd data-lab="absolute-asset"><%= labView.absoluteAsset %></dd>
   <dt>escaped</dt>
   <dd data-lab="escaped"><%= labView.query %></dd>
 </dl>

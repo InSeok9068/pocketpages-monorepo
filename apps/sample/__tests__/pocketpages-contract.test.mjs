@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { load } from 'cheerio';
 
@@ -325,4 +326,20 @@ test('trailing slash resolves to the same directory index route', async () => {
 
   assert.equal(response.status, 200);
   assert.equal($('h1').first().text().trim(), 'Boards');
+});
+
+test('development renders template changes without restarting the server', async () => {
+  const probeFile = new URL('../pb_hooks/pages/xapi/lab/cache-probe.ejs', import.meta.url);
+  const original = '<span data-lab="cache-probe">original</span>\n';
+  const readProbe = async () => (await (await fetch(`${service.baseUrl}/xapi/lab/cache-probe`)).text()).trim();
+
+  writeFileSync(probeFile, original);
+
+  try {
+    assert.equal(await readProbe(), '<span data-lab="cache-probe">original</span>');
+    writeFileSync(probeFile, original.replace('original', 'modified'));
+    assert.equal(await readProbe(), '<span data-lab="cache-probe">modified</span>');
+  } finally {
+    writeFileSync(probeFile, original);
+  }
 });

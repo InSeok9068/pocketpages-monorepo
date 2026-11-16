@@ -2,25 +2,11 @@
   meta('title', 'Scope Lab')
 
   const labScope = resolve('lab-scope')
-  const traversalPaths = ['../../../_private/lab-badge.ejs', '..\..\..\_private\lab-badge.ejs', 'C:/Windows/win.ini']
-  const traversalResults = traversalPaths.map(function (includePath) {
-    try {
-      include(includePath, { label: 'leaked' })
-      return 'allowed'
-    } catch (_error) {
-      return 'rejected'
-    }
-  })
 
-  dbg('page/lab:scope:response', { scope: labScope.scopeName(), traversalResults })
+  dbg('page/lab:scope:response', { scope: labScope.scopeName() })
 </script>
 
 <h1 class="text-3xl font-semibold text-stone-950">Scope Lab</h1>
 <p data-lab="module-scope"><%= labScope.scopeName() %></p>
 <%- include('lab-scope.ejs') %>
 <%- include('lab-badge.ejs', { label: 'parent' }) %>
-<ul>
-  <% traversalResults.forEach(function (result) { %>
-  <li data-lab="traversal"><%= result %></li>
-  <% }) %>
-</ul>

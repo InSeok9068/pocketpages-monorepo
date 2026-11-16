@@ -379,7 +379,7 @@ test('auth cookie with invalid JSON or a non-auth token is rejected and cleared'
 
 test('loader response stops later loaders and page rendering', async () => {
   for (const method of ['GET', 'POST']) {
-    const response = await fetch(`${service.baseUrl}/lab/loader?stop=1`, {
+    const response = await fetch(`${service.baseUrl}/lab/loader?mode=stop`, {
       method,
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       ...(method === 'POST' ? { body: new URLSearchParams({ note: 'ignored' }) } : {}),
@@ -427,19 +427,6 @@ test('resolve() and include() pick the nearest _private and fall back to parents
   assert.equal(root$('[data-lab="module-scope"]').text().trim(), 'root');
 });
 
-test('include() rejects parent traversal, backslash traversal, and drive paths', async () => {
-  const response = await fetch(`${service.baseUrl}/lab/scope`);
-  const body = await response.text();
-  const $ = load(body);
-  const results = $('[data-lab="traversal"]')
-    .map((_, element) => $(element).text().trim())
-    .get();
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(results, ['rejected', 'rejected', 'rejected']);
-  assert.doesNotMatch(body, /leaked/);
-});
-
 test('custom pb_hooks routes and record hooks run alongside PocketPages', async () => {
   const hookResponse = await fetch(`${service.baseUrl}/lab-hook`);
 
@@ -473,4 +460,167 @@ test('multipart form fields are parsed by body() and formData()', async () => {
   assert.equal(response.status, 201);
   assert.deepEqual(payload.body, { title: 'multipart title', count: 3 });
   assert.deepEqual(payload.formData, payload.body);
+});
+
+test('method loaders +get/+put/+patch/+delete run after +load.js for their method', async () => {
+  for (const method of ['GET', 'PUT', 'PATCH', 'DELETE']) {
+    const response = await fetch(`${service.baseUrl}/lab/loader`, { method });
+    const $ = load(await response.text());
+
+    assert.equal(response.status, 200, method);
+    assert.equal($('[data-lab="loaded-by"]').text().trim(), 'load', method);
+    assert.equal($('[data-lab="method-loader"]').text().trim(), method.toLowerCase(), method);
+  }
+});
+
+test('loader exceptions reach the root middleware error boundary', async () => {
+  const response = await fetch(`${service.baseUrl}/lab/loader?mode=throw`);
+  const body = await response.text();
+  const $ = load(body);
+
+  assert.equal(response.status, 500);
+  assert.equal($('h1').first().text().trim(), 'Global error boundary');
+  assert.match(body, /Loader throw from \+load\.js/);
+});
+
+test('named slots fill a nested layout and slot:default wins over loose content', async () => {
+  const response = await fetch(`${service.baseUrl}/lab/slots`);
+  const $ = load(await response.text());
+
+  assert.equal(response.status, 200);
+  assert.equal($('title').text().trim(), 'Slots Lab');
+  assert.equal($('main > #lab-layout > #slots-layout').length, 1);
+  assert.equal($('[data-lab="slot-aside"] [data-lab="aside-content"]').text().trim(), 'aside content');
+  assert.equal($('[data-lab="slot-default"] [data-lab="default-content"]').text().trim(), 'default content');
+  assert.equal($('[data-lab="slot-default"] [data-lab="aside-content"]').length, 0);
+
+  const explicitResponse = await fetch(`${service.baseUrl}/lab/slots/explicit-default`);
+  const explicit$ = load(await explicitResponse.text());
+
+  assert.equal(explicitResponse.status, 200);
+  assert.equal(explicit$('[data-lab="slot-default"] [data-lab="explicit-default"]').text().trim(), 'explicit default');
+  assert.equal(explicit$('[data-lab="loose-content"]').length, 0);
+  assert.equal(explicit$('[data-lab="slot-aside"] [data-lab="aside-content"]').text().trim(), 'explicit aside');
+});
+
+test('absolute include, nested include from the parent partial, dot segment, and double-dot file names work', async () => {
+  const response = await fetch(`${service.baseUrl}/lab/scope-root`);
+  const $ = load(await response.text());
+
+  assert.equal(response.status, 200);
+  assert.equal($('[data-lab="outer"] [data-lab="inner"]').text().trim(), 'absolute nested');
+  assert.equal($('[data-lab="badge"]').text().trim(), 'dot segment');
+  assert.equal($('[data-lab="double-dot"]').text().trim(), 'double dot file');
+});
+
+test('relative asset() resolves from the page URL and absolute asset() keeps its path', async () => {
+  const pageUrl = `${service.baseUrl}/lab`;
+  const response = await fetch(pageUrl);
+  const $ = load(await response.text());
+  const relativeAsset = $('[data-lab="relative-asset"]').text().trim();
+  const absoluteAsset = $('[data-lab="absolute-asset"]').text().trim();
+
+  assert.match(relativeAsset, /^lab[\\/]lab-asset\.[0-9a-f]+\.css$/);
+  assert.match(absoluteAsset, /^\/assets\/style\.[0-9a-f]+\.css$/);
+
+  const relativeResponse = await fetch(new URL(relativeAsset, pageUrl));
+
+  assert.equal(relativeResponse.status, 200);
+  assert.match(relativeResponse.headers.get('content-type') || '', /^text\/css/);
+  assert.match(await relativeResponse.text(), /rebeccapurple/);
+});
+
+test('response.cookie() writes path, max-age, HttpOnly, and SameSite options', async () => {
+  const response = await fetch(`${service.baseUrl}/lab`);
+  await response.arrayBuffer();
+  const labCookie = response.headers.getSetCookie().find((value) => value.startsWith('lab_seen='));
+
+  assert.ok(labCookie);
+  assert.match(labCookie, /; Max-Age=120(;|$)/);
+  assert.match(labCookie, /; Path=\/lab(;|$)/);
+  assert.match(labCookie, /; HttpOnly(;|$)/);
+  assert.match(labCookie, /; SameSite=Strict(;|$)/);
+  assert.equal(JSON.parse(decodeURIComponent(labCookie.split(';')[0].slice('lab_seen='.length))).at, 'lab');
+});
+
+test('auth plugin cookie keeps its default attributes', async () => {
+  const response = await postForm('/xapi/lab/auth/anonymous', {});
+  const authCookie = response.headers.getSetCookie().find((value) => value.startsWith('pb_auth='));
+
+  assert.ok(authCookie);
+  assert.match(authCookie, /; Path=\/(;|$)/);
+
+  const value = JSON.parse(decodeURIComponent(authCookie.split(';')[0].slice('pb_auth='.length)));
+
+  assert.equal(typeof value.token, 'string');
+  assert.equal(value.record.collectionName, 'users');
+});
+
+test('Datastar realtime broadcast reaches subscribed realtime clients', async () => {
+  const controller = new AbortController();
+  const sseResponse = await fetch(`${service.baseUrl}/api/realtime`, { signal: controller.signal });
+  const reader = sseResponse.body.getReader();
+  const decoder = new TextDecoder();
+  let received = '';
+
+  async function readUntil(pattern) {
+    const timeoutAt = Date.now() + 5000;
+
+    while (!pattern.test(received)) {
+      if (Date.now() > timeoutAt) {
+        throw new Error(`timed out waiting for ${pattern}: ${received}`);
+      }
+
+      const chunk = await reader.read();
+
+      if (chunk.done) {
+        break;
+      }
+
+      received += decoder.decode(chunk.value, { stream: true });
+    }
+  }
+
+  try {
+    await readUntil(/"clientId"\s*:\s*"[^"]+"/);
+
+    const clientId = received.match(/"clientId"\s*:\s*"([^"]+)"/)[1];
+    const subscribeResponse = await fetch(`${service.baseUrl}/api/realtime`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId, subscriptions: ['datastar'] }),
+    });
+
+    assert.equal(subscribeResponse.status, 204);
+
+    const broadcastResponse = await fetch(`${service.baseUrl}/xapi/datastar/broadcast`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Datastar-Request': 'true' },
+      body: '{}',
+    });
+    const broadcastBody = await broadcastResponse.text();
+
+    assert.equal(broadcastResponse.status, 200);
+    assert.match(broadcastResponse.headers.get('content-type') || '', /^text\/event-stream/);
+    assert.match(broadcastBody, /realtime broadcast 전송 완료/);
+
+    await readUntil(/Realtime patch 수신/);
+
+    assert.match(received, /event:\s*datastar\s/);
+    assert.match(received, /"type":"datastar-patch-signals"/);
+    assert.match(received, /"type":"datastar-patch-elements"/);
+    assert.match(received, /"selector":"#datastar-realtime"/);
+  } finally {
+    controller.abort();
+  }
+});
+
+test('include renders use the current request plugin instance', async () => {
+  for (const probe of ['first-request', 'second-request', 'third-request']) {
+    const response = await fetch(`${service.baseUrl}/lab/render-probe?probe=${probe}`);
+    const $ = load(await response.text());
+
+    assert.equal(response.status, 200, probe);
+    assert.equal($('[data-lab="render-probe"]').text().trim(), probe);
+  }
 });

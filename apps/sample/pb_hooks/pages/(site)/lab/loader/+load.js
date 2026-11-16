@@ -1,11 +1,17 @@
 /** @type {import('pocketpages').PageDataLoaderFunc} */
 module.exports = function ({ dbg, request, response }) {
-  dbg('page/lab:loader:load', { method: request.method })
+  const mode = String(request.url.query.mode || '').trim()
 
-  if (String(request.url.query.stop || '') === '1') {
+  dbg('page/lab:loader:load', { method: request.method, mode })
+
+  if (mode === 'stop') {
     dbg('page/lab:loader:load:stopped', { status: 200 })
     response.json(200, { stoppedBy: 'load' })
     return {}
+  }
+
+  if (mode === 'throw') {
+    throw new Error('Loader throw from +load.js')
   }
 
   return {

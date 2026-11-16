@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { load } from 'cheerio';
 
 import { startService } from '@pocketpages/test-support/service-harness';
 
+const CACHE_PROBE_FILE = new URL('../pb_hooks/pages/xapi/lab/cache-probe.ejs', import.meta.url);
+const CACHE_PROBE_ORIGINAL = '<span data-lab="cache-probe">original</span>\n';
+
 let service;
 
 before(async () => {
+  writeFileSync(CACHE_PROBE_FILE, CACHE_PROBE_ORIGINAL);
   process.env.APP_ENV = 'production';
   service = await startService({
     serviceName: 'sample',
@@ -15,6 +20,8 @@ before(async () => {
 });
 
 after(async () => {
+  writeFileSync(CACHE_PROBE_FILE, CACHE_PROBE_ORIGINAL);
+
   if (service) {
     await service.stop();
   }
@@ -79,4 +86,30 @@ test('production error boundary hides exception details', async () => {
 
   assert.equal(pageResponse.status, 500);
   assert.doesNotMatch(pageBody, /Page throw from EJS route/);
+});
+
+test('production keeps compiled templates cached after the source file changes', async () => {
+  const readProbe = async () => (await (await fetch(`${service.baseUrl}/xapi/lab/cache-probe`)).text()).trim();
+
+  assert.equal(await readProbe(), '<span data-lab="cache-probe">original</span>');
+
+  try {
+    writeFileSync(CACHE_PROBE_FILE, CACHE_PROBE_ORIGINAL.replace('original', 'modified'));
+
+    for (let index = 0; index < 3; index += 1) {
+      assert.equal(await readProbe(), '<span data-lab="cache-probe">original</span>');
+    }
+  } finally {
+    writeFileSync(CACHE_PROBE_FILE, CACHE_PROBE_ORIGINAL);
+  }
+});
+
+test('production cached includes use the current request plugin instance', async () => {
+  for (const probe of ['first-request', 'second-request', 'third-request']) {
+    const response = await fetch(`${service.baseUrl}/lab/render-probe?probe=${probe}`);
+    const $ = load(await response.text());
+
+    assert.equal(response.status, 200, probe);
+    assert.equal($('[data-lab="render-probe"]').text().trim(), probe);
+  }
 });

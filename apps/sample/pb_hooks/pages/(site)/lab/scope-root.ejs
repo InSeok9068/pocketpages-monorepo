@@ -1,6 +1,11 @@
 <script server>
   meta('title', 'Scope Root Lab')
+
+  const labScope = resolve('lab-scope')
 </script>
 
 <h1 class="text-3xl font-semibold text-stone-950">Scope Root Lab</h1>
-<p data-lab="module-scope"><%= resolve('lab-scope').scopeName() %></p>
+<p data-lab="module-scope"><%= labScope.scopeName() %></p>
+<%- include('/(site)/lab/scope/_private/lab-outer.ejs', { label: 'absolute nested' }) %>
+<%- include('./lab-badge.ejs', { label: 'dot segment' }) %>
+<%- include('lab..double.ejs') %>

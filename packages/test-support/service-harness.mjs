@@ -313,7 +313,7 @@ function removeTempDir(tempRootDir) {
  * @param {number} [options.imports[].goroutines] importer 동시 실행 수입니다.
  * @param {string} [options.imports[].printDelay] importer 진행 출력 주기입니다.
  * @param {boolean} [options.imports[].validate] PocketBase validation 실행 여부입니다.
- * @returns {Promise<{ baseUrl: string, stop: () => Promise<void> }>}
+ * @returns {Promise<{ baseUrl: string, output: () => string, stop: () => Promise<void> }>}
  */
 export async function startService(options) {
   const serviceName = options.serviceName
@@ -383,6 +383,9 @@ export async function startService(options) {
 
   return {
     baseUrl,
+    output() {
+      return `${stdout}${stderr}`
+    },
     async stop() {
       await stopProcessTree(child)
       removeTempDir(tempData.tempRootDir)

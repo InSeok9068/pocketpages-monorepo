@@ -7,6 +7,7 @@ module.exports = function ({ body, data, dbg }) {
   dbg('page/lab:loader:post', { note, loadedBy: data.loadedBy })
 
   return {
+    methodLoader: 'post',
     postedNote: note,
     loadedBeforePost: data.loadedBy,
   }
