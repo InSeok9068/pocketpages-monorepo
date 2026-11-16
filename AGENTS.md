@@ -160,6 +160,8 @@
 - Multi-file or unclear impact -> targeted `./task.sh index <service> --section <name>` first
 - Full index only when multiple sections are needed
 - Service change -> run `./task.sh lint <service>` from **Windows Git Bash**
+- PocketBase or `scripts/patches/*` change -> run `npm run test:pocketpages-compat`; patch change -> also run `npm run test:pocketpages-patches`
+- MUST: When fixing behavior in `scripts/patches/*`, add a regression test: real PocketBase interaction -> `apps/sample/__tests__`, pure logic -> `scripts/pocketpages-*.test.mjs`; temporarily revert the fix to confirm the test fails, then restore it
 
 Use index sections when relevant:
 

@@ -42,8 +42,9 @@
 저장소 루트에서:
 
 ```sh
-node --test scripts/pocketpages-patches.test.mjs scripts/pocketpages-ejs-cache.test.mjs scripts/pocketpages-include-paths.test.mjs
+npm run test:pocketpages-patches
+npm run test:pocketpages-compat
 ./task.sh lint <service>
 ```
 
-회귀 테스트는 각 앱의 실제 설치된 dist를 VM에서 로드하고 PocketBase API와 외부 의존성을 대체한다. EJS 캐시 테스트는 실제 `pocketbase-ejs` 엔진과 메모리 파일 시스템으로 요청 간 격리, 컴파일 재사용, 중첩 include, 예외 정리 및 동기 재진입을 검증한다. include 경로 테스트는 앱과 공용 패키지의 호출을 조사하고, 고정 경로가 실제 기존 파일로 해석되는지 확인한다. 동적 include가 추가되면 허용 목록과 별도 검증을 요구한다. 실제 PocketBase 서버 실행 검증을 대신하지는 않는다.
+회귀 테스트는 각 앱의 실제 설치된 dist를 VM에서 로드하고 PocketBase API와 외부 의존성을 대체한다. EJS 캐시 테스트는 실제 `pocketbase-ejs` 엔진과 메모리 파일 시스템으로 요청 간 격리, 컴파일 재사용, 중첩 include, 예외 정리 및 동기 재진입을 검증한다. include 경로 테스트는 앱과 공용 패키지의 호출을 조사하고, 고정 경로가 실제 기존 파일로 해석되는지 확인한다. 동적 include가 추가되면 허용 목록과 별도 검증을 요구한다. 실제 PocketBase 서버 실행 검증을 대신하지는 않으며, 그 검증은 `apps/sample`을 실제 바이너리로 띄우는 `test:pocketpages-compat`이 맡는다.

@@ -160,6 +160,8 @@
 - multi-file change 또는 영향이 불명확한 change는 `./task.sh index <service> --section <name>`로 필요한 section만 먼저 본다
 - 전체 `./task.sh index <service>`는 여러 section이 필요할 때만 실행한다
 - 서비스 수정 후에는 반드시 **Windows Git Bash**에서 `./task.sh lint <service>`를 실행한다
+- PocketBase 또는 `scripts/patches/*`를 바꾸면 `npm run test:pocketpages-compat`를 실행하고, 패치를 바꿨으면 `npm run test:pocketpages-patches`도 실행한다
+- MUST: `scripts/patches/*`로 동작을 고치면 회귀 테스트를 추가한다. 실제 PocketBase와 맞물리는 동작은 `apps/sample/__tests__`, 순수 로직은 `scripts/pocketpages-*.test.mjs`에 둔다. 고친 내용을 잠시 되돌려 테스트가 실패하는지 확인한 뒤 원복한다
 
 필요한 경우 index section을 확인한다:
 
