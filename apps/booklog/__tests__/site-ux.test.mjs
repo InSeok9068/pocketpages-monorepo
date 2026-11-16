@@ -502,7 +502,7 @@ test('The popular page opens without waiting, loads rising books and the ranking
   const menuLinks = first('header a, nav a, [x-show="open"] a')
     .map((_, element) => first(element).text().trim())
     .get()
-  assert.equal(menuLinks[menuLinks.indexOf('EPUB 도서관') + 1], '인기 도서')
+  assert.equal(menuLinks[menuLinks.indexOf('EPUB 찾기') + 1], '인기 도서')
   assert.equal(first('h1').text().trim(), '인기 도서')
   assert.equal(first('[data-hot-book]').length, 0)
   assert.equal(first('#popular-hot').attr('hx-get'), '/xapi/popular-hot?tab=month')
