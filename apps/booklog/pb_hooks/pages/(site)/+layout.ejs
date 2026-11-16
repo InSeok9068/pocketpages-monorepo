@@ -1,6 +1,7 @@
 <%
   const isProduction = String(env('APP_ENV') || 'development').trim() === 'production'
   const canUseBooklog = request.auth && request.auth.get('booklog_enabled') === true
+  const epubSourceUrl = String(env('BOOKLOG_EPUB_SOURCE_URL') || '').trim()
 %>
 <!DOCTYPE html>
 <html lang="ko">
@@ -257,8 +258,9 @@
           x-transition.opacity.scale.origin.top.right
           class="absolute top-14 right-0 z-20 min-w-40 rounded-2xl border-none bg-white/92 p-2 shadow-[0_18px_40px_rgba(70,52,31,0.10)] backdrop-blur-sm">
           <% if (canUseBooklog) { %>
+          <% if (epubSourceUrl) { %>
           <a
-            href="https://ko.1lib.sk/"
+            href="<%= epubSourceUrl %>"
             target="_blank"
             rel="noreferrer noopener"
             class="flex w-full items-center gap-1.5 rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline ring-0 transition outline-none">
@@ -267,6 +269,7 @@
               class="i-lucide-external-link h-3.5 w-3.5 text-stone-400"
               aria-hidden="true"></span>
           </a>
+          <% } %>
           <a
             href="/popular"
             class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline ring-0 transition outline-none">

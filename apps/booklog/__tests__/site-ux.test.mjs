@@ -71,7 +71,7 @@ before(async () => {
   )
   writeFileSync(
     path.join(fixtureDir, '.env'),
-    'APP_ENV=production\nDATA4LIBRARY_APIKEY=test-key\nVERCEL_AI_GATEWAY_API_KEY=test-key\nONESIGNAL_APPID=\nONESIGNAL_API_KEY=\n'
+    'APP_ENV=production\nDATA4LIBRARY_APIKEY=test-key\nVERCEL_AI_GATEWAY_API_KEY=test-key\nONESIGNAL_APPID=\nONESIGNAL_API_KEY=\nBOOKLOG_EPUB_SOURCE_URL=https://epub.example.com/\n'
   )
   service = await startService({ serviceName: path.basename(fixtureDir), port: 18095, timeoutMs: 30000 })
   const response = await fetch(service.baseUrl + '/xapi/auth/sign-in', {

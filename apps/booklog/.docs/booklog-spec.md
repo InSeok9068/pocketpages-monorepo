@@ -13,8 +13,6 @@
 
 ※ 로그인 필수
 
-- .epub 파일 사이트 [z-library](https://ko.1lib.sk/)
-
 - .epub 파일 업로드 기능
   - 업로드한 파일정보 DB에 저장
   - 파일명 혹은 도서명 기반으로 [도서관정보나루_API_Manual.pdf] API 연동하여 메타 데이터 조회
