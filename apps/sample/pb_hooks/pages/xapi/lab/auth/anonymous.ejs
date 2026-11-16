@@ -1,0 +1,22 @@
+<script server>
+  dbg('xapi/lab/auth/anonymous:start', {})
+
+  try {
+    const authData = signInAnonymously()
+
+    dbg('xapi/lab/auth/anonymous:response', {
+      status: 303,
+      redirectTo: '/lab/auth',
+      message: 'Anonymous signed in.',
+      authId: String((authData.record && authData.record.id) || ''),
+    })
+    redirect('/lab/auth', { status: 303, message: 'Anonymous signed in.' })
+    return
+  } catch (exception) {
+    error('xapi/lab/auth/anonymous:failed', { error: String(exception.message || exception) })
+  }
+
+  dbg('xapi/lab/auth/anonymous:response', { status: 303, redirectTo: '/lab/auth', error: 'Anonymous sign in failed.' })
+  redirect('/lab/auth', { status: 303, message: 'Anonymous sign in failed.' })
+  return
+</script>

@@ -1,0 +1,9 @@
+<script server>
+  dbg('xapi/lab/auth/sign-out:start', { signedIn: !!request.auth })
+
+  signOut()
+
+  dbg('xapi/lab/auth/sign-out:response', { status: 303, redirectTo: '/lab/auth', message: 'Signed out.' })
+  redirect('/lab/auth', { status: 303, message: 'Signed out.' })
+  return
+</script>

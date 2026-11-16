@@ -1,0 +1,10 @@
+<script server>
+  meta('title', 'Private Lab')
+
+  const privateView = {
+    email: String(data.authEmail || ''),
+  }
+</script>
+
+<h1 class="text-3xl font-semibold text-stone-950">Private Lab</h1>
+<p data-lab="private-email"><%= privateView.email %></p>

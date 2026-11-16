@@ -1,0 +1,32 @@
+<script server>
+  const form = body() || {}
+  const email = String(form.email || '')
+    .trim()
+    .toLowerCase()
+  const password = form.password === undefined || form.password === null ? '' : String(form.password)
+  let errorMessage = ''
+
+  dbg('xapi/lab/auth/register:start', { email })
+
+  try {
+    if (!email || !password) throw new Error('Email and password are required.')
+
+    const authData = registerWithPassword(email, password, { sendVerificationEmail: false })
+
+    dbg('xapi/lab/auth/register:response', {
+      status: 303,
+      redirectTo: '/lab/auth',
+      message: 'Registered.',
+      authId: String((authData.record && authData.record.id) || ''),
+    })
+    redirect('/lab/auth', { status: 303, message: 'Registered.' })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/lab/auth/register:failed', { email, error: errorMessage })
+  }
+
+  dbg('xapi/lab/auth/register:response', { status: 303, redirectTo: '/lab/auth', error: 'Register failed.' })
+  redirect('/lab/auth', { status: 303, message: 'Register failed.' })
+  return
+</script>

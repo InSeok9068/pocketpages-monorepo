@@ -9,6 +9,7 @@ let service;
 before(async () => {
   service = await startService({
     serviceName: 'sample',
+    port: 18088,
   });
 });
 

@@ -1,0 +1,24 @@
+<script server>
+  meta('title', 'Respond Lab')
+
+  const mode = String(request.url.query.mode || '').trim()
+
+  dbg('page/lab:respond:start', { mode })
+
+  if (mode === 'json') {
+    response.json(202, { respondedBy: 'page' })
+    return
+  }
+
+  if (mode === 'html') {
+    response.html(200, '<p data-lab="raw-html">raw html</p>')
+    return
+  }
+
+  if (mode === 'content-type') {
+    response.header('Content-Type', 'text/html; charset=utf-8')
+  }
+</script>
+
+<h1 class="text-3xl font-semibold text-stone-950">Respond Lab</h1>
+<p data-lab="respond-mode"><%= mode || 'default' %></p>

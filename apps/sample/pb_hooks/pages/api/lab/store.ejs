@@ -1,0 +1,10 @@
+<script server>
+  const storeKey = 'sample:lab:counter'
+  const nextCount = Number(store(storeKey) || 0) + 1
+
+  store(storeKey, nextCount)
+
+  dbg('api/lab/store:response', { status: 200, count: nextCount })
+  response.json(200, { count: nextCount, appStoreCount: $app.store().get(storeKey) })
+  return
+</script>

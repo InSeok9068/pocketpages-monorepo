@@ -1,0 +1,27 @@
+<script server>
+  const payload = request.method === 'GET' || request.method === 'DELETE' ? {} : body() || {}
+  const cookieValue = request.cookies('lab_pref') || null
+
+  dbg('api/lab/echo:start', {
+    method: request.method,
+    contentType: request.header('Content-Type'),
+  })
+
+  response.header('X-Lab-Echo', request.method)
+
+  const result = {
+    method: request.method,
+    pathname: String(request.url.pathname || ''),
+    query: {
+      q: String(request.url.query.q || ''),
+    },
+    header: String(request.header('X-Lab') || ''),
+    body: payload,
+    formData: request.method === 'GET' || request.method === 'DELETE' ? {} : formData() || {},
+    cookie: cookieValue,
+  }
+
+  dbg('api/lab/echo:response', { status: 201, method: result.method })
+  response.json(201, result)
+  return
+</script>

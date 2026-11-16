@@ -1,0 +1,13 @@
+<script server>
+  const target = String(request.url.query.to || '') === 'loader' ? '/lab/loader' : '/lab'
+
+  if (String(request.url.query.status || '') === '303') {
+    dbg('xapi/lab/redirect:response', { status: 303, redirectTo: target, message: 'Lab redirect 303' })
+    redirect(target, { status: 303, message: 'Lab redirect 303' })
+    return
+  }
+
+  dbg('xapi/lab/redirect:response', { status: 302, redirectTo: target, message: 'Lab redirect default' })
+  redirect(target, { message: 'Lab redirect default' })
+  return
+</script>

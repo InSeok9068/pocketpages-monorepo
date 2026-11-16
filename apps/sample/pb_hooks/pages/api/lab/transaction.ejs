@@ -1,0 +1,65 @@
+<script server>
+  if (request.method !== 'POST') {
+    response.json(405, { error: 'POST only' })
+    return
+  }
+
+  const form = body() || {}
+  const mode = String(form.mode || '') === 'rollback' ? 'rollback' : 'commit'
+  const slug = String(form.slug || '').trim()
+
+  if (!slug) {
+    response.json(400, { error: 'slug is required' })
+    return
+  }
+
+  dbg('api/lab/transaction:start', { mode, slug })
+
+  let rolledBack = false
+
+  try {
+    $app.runInTransaction(function (txApp) {
+      const boards = txApp.findCollectionByNameOrId('boards')
+      const board = new Record(boards)
+      board.set('name', 'Lab ' + slug)
+      board.set('slug', slug)
+      board.set('description', 'transaction lab')
+      board.set('is_active', true)
+      board.set('sort_order', 0)
+      txApp.save(board)
+
+      const posts = txApp.findCollectionByNameOrId('posts')
+      const post = new Record(posts)
+      post.set('board', board.get('id'))
+      post.set('title', 'Lab post')
+      post.set('slug', slug + '-post')
+      post.set('content', 'transaction lab post')
+      post.set('author_name', 'lab')
+      post.set('status', 'draft')
+      post.set('view_count', 0)
+      txApp.save(post)
+
+      if (mode === 'rollback') {
+        throw new Error('lab rollback')
+      }
+    })
+  } catch (exception) {
+    rolledBack = true
+    warn('api/lab/transaction:rolled-back', { slug, message: String(exception.message || exception) })
+  }
+
+  let boardExists = false
+
+  try {
+    $app.findFirstRecordByFilter('boards', 'slug = {:slug}', { slug })
+    boardExists = true
+  } catch (_error) {
+    boardExists = false
+  }
+
+  const postCount = $app.countRecords('posts', $dbx.hashExp({ slug: slug + '-post' }))
+
+  dbg('api/lab/transaction:response', { status: 200, mode, rolledBack, boardExists, postCount })
+  response.json(200, { mode, rolledBack, boardExists, postCount })
+  return
+</script>

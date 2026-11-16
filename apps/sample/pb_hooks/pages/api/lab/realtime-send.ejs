@@ -1,0 +1,21 @@
+<script server>
+  if (request.method !== 'POST') {
+    response.json(405, { error: 'POST only' })
+    return
+  }
+
+  const form = body() || {}
+  const topic = String(form.topic || '').trim()
+  const message = String(form.message || '').trim()
+
+  if (!topic) {
+    response.json(400, { error: 'topic is required' })
+    return
+  }
+
+  dbg('api/lab/realtime-send:start', { topic })
+  realtime.send(topic, message)
+
+  response.json(200, { sent: true, topic })
+  return
+</script>

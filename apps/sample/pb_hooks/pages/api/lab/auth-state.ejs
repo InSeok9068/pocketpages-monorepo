@@ -1,0 +1,29 @@
+<script server>
+  const authRecord = request.auth || null
+  let sdkEmail = ''
+  let sdkError = ''
+
+  dbg('api/lab/auth-state:start', { authId: authRecord ? String(authRecord.get('id')) : '' })
+
+  if (authRecord) {
+    try {
+      const sdkUser = pb({ auth: request.auth })
+        .collection('users')
+        .getOne(String(authRecord.get('id')))
+      sdkEmail = String(sdkUser.email || '')
+    } catch (exception) {
+      sdkError = String(exception.message || exception)
+      warn('api/lab/auth-state:sdk-failed', { authId: String(authRecord.get('id')), error: sdkError })
+    }
+  }
+
+  response.json(200, {
+    signedIn: !!authRecord,
+    authId: authRecord ? String(authRecord.get('id')) : '',
+    email: authRecord ? String(authRecord.get('email') || '') : '',
+    collection: authRecord ? authRecord.collection().name : '',
+    sdkEmail,
+    sdkError,
+  })
+  return
+</script>

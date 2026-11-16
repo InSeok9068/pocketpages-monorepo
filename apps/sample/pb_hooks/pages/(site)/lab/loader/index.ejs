@@ -1,0 +1,14 @@
+<script server>
+  meta('title', 'Loader Lab')
+
+  const loaderView = {
+    loadedBy: String(data.loadedBy || ''),
+    postedNote: String(data.postedNote || ''),
+    loadedBeforePost: String(data.loadedBeforePost || ''),
+  }
+</script>
+
+<h1 class="text-3xl font-semibold text-stone-950">Loader Lab</h1>
+<p data-lab="loaded-by"><%= loaderView.loadedBy %></p>
+<p data-lab="posted-note"><%= loaderView.postedNote %></p>
+<p data-lab="loaded-before-post"><%= loaderView.loadedBeforePost %></p>

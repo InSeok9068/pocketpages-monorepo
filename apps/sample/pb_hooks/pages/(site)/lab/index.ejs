@@ -1,0 +1,74 @@
+<script server>
+  meta('title', 'PocketPages Lab')
+  meta('description', 'PocketPages core feature lab')
+
+  /** @type {{ theme?: string } | null} */
+  const prefCookie = request.cookies('lab_pref') || null
+  const labInput = {
+    query: String(request.url.query.q || '').trim(),
+    header: String(request.header('X-Lab') || '').trim(),
+    method: request.method,
+    cookieValue: prefCookie,
+  }
+  const parsedUrl = url('https://example.test/path?item=lab')
+  const labView = {
+    query: labInput.query,
+    header: labInput.header,
+    method: labInput.method,
+    cookieTheme: labInput.cookieValue && labInput.cookieValue.theme ? String(labInput.cookieValue.theme) : '',
+    urlItem: String(parsedUrl.query.item || ''),
+    stringified: stringify({ lab: 'ok' }),
+    appEnv: String(env('APP_ENV') || 'development').trim(),
+  }
+
+  response.header('X-Lab-Page', 'rendered')
+  response.cookie('lab_seen', { at: 'lab' })
+
+  dbg('page/lab:index:response', {
+    method: labView.method,
+    query: labView.query,
+    hasCookie: !!labView.cookieTheme,
+  })
+</script>
+
+<h1 class="text-3xl font-semibold text-stone-950">PocketPages Lab</h1>
+
+<nav
+  id="lab-nav"
+  class="flex flex-wrap gap-3 text-sm">
+  <a href="/">Home</a>
+  <a href="/lab/loader">Loader</a>
+  <a href="/lab/respond">Respond</a>
+  <a href="/lab/scope">Scope</a>
+  <a href="/lab/scope-root">Scope root</a>
+  <a href="/lab/auth">Auth</a>
+  <a href="/lab/auth/private">Private</a>
+  <a href="/xapi/lab/echo">Echo</a>
+  <a href="/api/lab/echo">Echo JSON</a>
+  <a href="/api/lab/auto-json">Auto JSON</a>
+  <a href="/api/lab/store">Store</a>
+  <a href="/api/lab/auth-state">Auth state</a>
+</nav>
+
+<dl
+  id="lab-context"
+  class="grid gap-2 text-sm">
+  <dt>query</dt>
+  <dd data-lab="query"><%= labView.query %></dd>
+  <dt>header</dt>
+  <dd data-lab="header"><%= labView.header %></dd>
+  <dt>method</dt>
+  <dd data-lab="method"><%= labView.method %></dd>
+  <dt>cookie</dt>
+  <dd data-lab="cookie"><%= labView.cookieTheme %></dd>
+  <dt>url</dt>
+  <dd data-lab="url"><%= labView.urlItem %></dd>
+  <dt>stringify</dt>
+  <dd data-lab="stringify"><%= labView.stringified %></dd>
+  <dt>env</dt>
+  <dd data-lab="env"><%= labView.appEnv %></dd>
+  <dt>escaped</dt>
+  <dd data-lab="escaped"><%= labView.query %></dd>
+</dl>
+
+<%- include('lab-card.ejs', { title: 'Lab card', badge: 'nested' }) %>

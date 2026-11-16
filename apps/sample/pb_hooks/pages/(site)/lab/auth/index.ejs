@@ -1,0 +1,36 @@
+<script server>
+  meta('title', 'Auth Lab')
+
+  const authView = {
+    email: request.auth ? String(request.auth.get('email') || '') : '',
+  }
+
+  dbg('page/lab:auth:response', { signedIn: !!authView.email })
+</script>
+
+<h1 class="text-3xl font-semibold text-stone-950">Auth Lab</h1>
+
+<%- include('flash-alert.ejs') %>
+
+<p data-lab="auth-email"><%= authView.email || 'guest' %></p>
+
+<form
+  action="/xapi/lab/auth/sign-in"
+  method="post"
+  class="space-y-2">
+  <input
+    type="email"
+    name="email"
+    class="rounded border px-2 py-1" />
+  <input
+    type="password"
+    name="password"
+    class="rounded border px-2 py-1" />
+  <button type="submit">Sign in</button>
+</form>
+
+<form
+  action="/xapi/lab/auth/sign-out"
+  method="post">
+  <button type="submit">Sign out</button>
+</form>
