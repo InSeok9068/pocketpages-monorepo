@@ -28,6 +28,14 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Modern Web Guidance encryption examples contain algorithm names that match generic-api-key."
+targetRules = ["generic-api-key"]
+paths = [
+  '''^\.agents/skills/modern-web-guidance/guides/security/client-side-encryption\.md$''',
+  '''^\.claude/skills/modern-web-guidance/guides/security/client-side-encryption\.md$''',
+]
+
+[[allowlists]]
 description = "Seedlab Toss API docs contain example access_token fields."
 targetRules = ["generic-api-key"]
 paths = ['''^apps/seedlab/\.docs/tossapi\.json$''']
