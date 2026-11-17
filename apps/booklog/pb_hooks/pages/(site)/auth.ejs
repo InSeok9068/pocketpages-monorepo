@@ -41,14 +41,14 @@
             type="button"
             x-on:click="mode = 'sign-in'"
             x-bind:class="mode === 'sign-in' ? 'bg-[linear-gradient(180deg,#3d2d20,#22170f)] text-[#fff9f1] shadow-[0_12px_26px_rgba(49,34,20,0.24)]' : 'text-[#7d6247]'"
-            class="rounded-[1.15rem] border-none px-4 py-3 text-sm font-medium tracking-[-0.02em] ring-0 transition outline-none">
+            class="rounded-[1.15rem] border-none px-4 py-3 text-sm font-medium tracking-[-0.02em] ring-0 transition outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500">
             로그인
           </button>
           <button
             type="button"
             x-on:click="mode = 'sign-up'"
             x-bind:class="mode === 'sign-up' ? 'bg-[linear-gradient(180deg,#3d2d20,#22170f)] text-[#fff9f1] shadow-[0_12px_26px_rgba(49,34,20,0.24)]' : 'text-[#7d6247]'"
-            class="rounded-[1.15rem] border-none px-4 py-3 text-sm font-medium tracking-[-0.02em] ring-0 transition outline-none">
+            class="rounded-[1.15rem] border-none px-4 py-3 text-sm font-medium tracking-[-0.02em] ring-0 transition outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500">
             회원가입
           </button>
         </div>
@@ -67,6 +67,7 @@
             class="box-border block w-full min-w-0 rounded-[1.4rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] transition outline-none placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.42),0_14px_28px_rgba(157,121,72,0.12)]"
             type="email"
             name="email"
+            autocomplete="username"
             placeholder="you@example.com"
             required />
         </label>
@@ -77,12 +78,13 @@
             class="box-border block w-full min-w-0 rounded-[1.4rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] transition outline-none placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.42),0_14px_28px_rgba(157,121,72,0.12)]"
             type="password"
             name="password"
+            autocomplete="current-password"
             placeholder="비밀번호 입력"
             required />
         </label>
 
         <button
-          class="inline-flex w-full items-center justify-center rounded-[1.45rem] border-none bg-[linear-gradient(180deg,#3f2f22,#21160f)] px-4 py-4 text-sm font-semibold tracking-[0.02em] text-[#fff9f1] shadow-[0_18px_34px_rgba(53,36,20,0.18)] ring-0 transition outline-none hover:translate-y-[-1px]"
+          class="inline-flex w-full items-center justify-center rounded-[1.45rem] border-none bg-[linear-gradient(180deg,#3f2f22,#21160f)] px-4 py-4 text-sm font-semibold tracking-[0.02em] text-[#fff9f1] shadow-[0_18px_34px_rgba(53,36,20,0.18)] ring-0 transition outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500 hover:translate-y-[-1px]"
           type="submit">
           로그인
         </button>
@@ -99,6 +101,7 @@
             class="box-border block w-full min-w-0 rounded-[1.4rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] transition outline-none placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.42),0_14px_28px_rgba(157,121,72,0.12)]"
             type="email"
             name="email"
+            autocomplete="username"
             placeholder="you@example.com"
             required />
         </label>
@@ -109,6 +112,7 @@
             class="box-border block w-full min-w-0 rounded-[1.4rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] transition outline-none placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.42),0_14px_28px_rgba(157,121,72,0.12)]"
             type="password"
             name="password"
+            autocomplete="new-password"
             placeholder="8자 이상 비밀번호"
             minlength="8"
             required />
@@ -120,13 +124,14 @@
             class="box-border block w-full min-w-0 rounded-[1.4rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] transition outline-none placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.42),0_14px_28px_rgba(157,121,72,0.12)]"
             type="password"
             name="passwordConfirm"
+            autocomplete="new-password"
             placeholder="비밀번호 다시 입력"
             minlength="8"
             required />
         </label>
 
         <button
-          class="inline-flex w-full items-center justify-center rounded-[1.45rem] border-none bg-[linear-gradient(180deg,#cd8c3d,#9e6125)] px-4 py-4 text-sm font-semibold tracking-[0.02em] text-[#fffaf2] shadow-[0_18px_34px_rgba(165,103,38,0.18)] ring-0 transition outline-none hover:translate-y-[-1px]"
+          class="inline-flex w-full items-center justify-center rounded-[1.45rem] border-none bg-[linear-gradient(180deg,#cd8c3d,#9e6125)] px-4 py-4 text-sm font-semibold tracking-[0.02em] text-[#fffaf2] shadow-[0_18px_34px_rgba(165,103,38,0.18)] ring-0 transition outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500 hover:translate-y-[-1px]"
           type="submit">
           회원가입
         </button>

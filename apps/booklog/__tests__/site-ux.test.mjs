@@ -102,6 +102,22 @@ async function html(route) {
   return load(source)
 }
 
+test('인증 폼은 자동완성 용도를 구분하고 도서함 필터는 현재 링크를 표시한다', async () => {
+  const response = await fetch(service.baseUrl + '/auth')
+  assert.equal(response.status, 200)
+  const auth = load(await response.text())
+  assert.equal(auth('input[name="email"][autocomplete="username"]').length, 2)
+  assert.equal(auth('form[action="/xapi/auth/sign-in"] input[name="password"]').attr('autocomplete'), 'current-password')
+  assert.equal(auth('form[action="/xapi/auth/sign-up"] input[autocomplete="new-password"]').length, 2)
+  for (const status of ['all', 'queued', 'reading', 'finished']) {
+    const library = await html('/library?status=' + status)
+    const current = library('#library-filters a[aria-current="true"]')
+    assert.equal(current.length, 1)
+    assert.equal(new URL(current.attr('href'), service.baseUrl).searchParams.get('status') || 'all', status)
+    assert.equal(library('#library-filters [aria-pressed]').length, 0)
+  }
+})
+
 test('Lists and HTMX fragments link to the selected record and preserve list conditions after a save', async () => {
   for (const [route, from, hash] of [
     [
@@ -435,6 +451,18 @@ test('도서함 필터 화살표는 스크롤 영역 밖에 표시되고 끝까�
     const page = await context.newPage()
     page.setDefaultTimeout(10000)
     await page.goto(service.baseUrl + '/library')
+    await page.keyboard.press('Tab')
+    for (const selector of ['button[aria-label="메뉴 열기"]', 'input[name="q"]', 'form[action="/library"] button[type="submit"]', '#library-filters a', 'select[name="sort"]']) {
+      const control = page.locator(selector).first()
+      await control.focus()
+      assert.equal(await control.evaluate((element) => {
+        const style = globalThis.getComputedStyle(element)
+        return element.matches(':focus-visible') && style.outlineStyle === 'solid' && style.outlineWidth === '2px'
+      }), true, selector + ' has a visible keyboard focus indicator')
+    }
+    await page.locator('#library-filters').evaluate((list) => {
+      list.scrollLeft = 0
+    })
     const arrow = page.getByRole('button', { name: '오른쪽 필터 더 보기' })
     await arrow.waitFor({ state: 'visible' })
     const listBox = await page.locator('#library-filters').boundingBox()
