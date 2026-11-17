@@ -200,7 +200,11 @@ async function runSubtest(parent, name, body) {
         }
       }
       const service = new PocketPagesLanguageServiceManager().getServiceForFile(caller)
-      assert.equal(service.buildUpdatedIncludeRequestPath(caller, '../header.ejs', file('feature/header.ejs'), file('feature/title.ejs')), '../title.ejs')
+      assert.equal(service.buildUpdatedIncludeRequestPath(caller, './header.ejs', file('feature/_private/header.ejs'), file('feature/_private/title.ejs')), './title.ejs')
+      assert.equal(service.buildUpdatedIncludeRequestPath(caller, './header.ejs', file('feature/_private/header.ejs'), file('feature/title.ejs')), null)
+      assert.equal(service.buildUpdatedIncludeRequestPath(caller, '../header.ejs', file('feature/header.ejs'), file('feature/title.ejs')), null)
+      assert(!index.getIncludeCandidates(caller, '../').length)
+      assert(!index.getIncludeCandidates(caller, '').some((entry) => entry.value.split('/').includes('..')))
       assert.equal(service.buildUpdatedResolveRequestPath(caller, '/feature/_private/model', file('_private/feature/_private/model.js'), file('_private/feature/_private/renamed.js')), '/feature/_private/renamed')
       const missingText = "<script server>resolve('../only')</script><%- include('../only.ejs') %>"
       const diagnostics = service.getDiagnostics(caller, missingText)
@@ -841,6 +845,190 @@ declare const resolve: (path: string) => any;
       await server.notify('textDocument/didClose', { textDocument: { uri: server.uri(page) } })
       await server.open(page, finalText)
       assert.deepEqual(await observe(), edited)
+    })
+
+    function createSeededRandom(seed) {
+      let state = seed >>> 0
+      const next = () => {
+        state = (state + 0x6d2b79f5) >>> 0
+        let value = state
+        value = Math.imul(value ^ (value >>> 15), value | 1)
+        value ^= value + Math.imul(value ^ (value >>> 7), value | 61)
+        return ((value ^ (value >>> 14)) >>> 0) / 4294967296
+      }
+      return { next, int: (max) => Math.floor(next() * max), pick: (items) => items[Math.floor(next() * items.length)] }
+    }
+
+    function snapEditOffset(text, offset) {
+      const code = text.charCodeAt(offset)
+      const previous = text.charCodeAt(offset - 1)
+      if (code >= 0xdc00 && code <= 0xdfff && previous >= 0xd800 && previous <= 0xdbff) return offset - 1
+      if (text[offset] === '\n' && text[offset - 1] === '\r') return offset - 1
+      return offset
+    }
+
+    function createRandomEdit(random, text, eol, history, counter) {
+      const names = ['title', 'count', 'helper', 'heading', 'label', 'total', 'missingName']
+      const lineStarts = [0]
+      for (let index = 0; index < text.length; index += 1) if (text[index] === '\n') lineStarts.push(index + 1)
+      const kind = random.pick(['rename', 'rename', 'serverBlock', 'usage', 'member', 'delete', 'delete', 'garbage', 'garbage', 'undo'])
+      if (kind === 'rename') {
+        const matches = [...text.matchAll(/\b(title|count|helper|heading|label|total|missingName)\b/g)]
+        if (matches.length) {
+          const match = random.pick(matches)
+          return { kind, start: match.index, end: match.index + match[0].length, newText: random.pick(names) }
+        }
+      }
+      if (kind === 'serverBlock') {
+        const start = random.pick(lineStarts)
+        const name = random.pick(['title', 'count', 'heading', 'label', `v${counter}`])
+        return { kind, start, end: start, newText: `<script server>const ${name} = ${random.pick(['1', '"글😀"', 'helper.total', 'helper.formatTitle(1)'])}</script>${eol}` }
+      }
+      if (kind === 'usage') {
+        const start = random.pick(lineStarts)
+        return { kind, start, end: start, newText: `<%= ${random.pick(names)} %>${eol}` }
+      }
+      if (kind === 'member') {
+        const matches = [...text.matchAll(/helper\./g)]
+        if (matches.length) {
+          const start = random.pick(matches).index + 'helper.'.length
+          return { kind, start, end: start, newText: random.pick(['total.', 'formatTitle(1).', 'missing', 'total + ']) }
+        }
+      }
+      if (kind === 'delete' && text.length) {
+        const start = snapEditOffset(text, random.int(text.length))
+        const end = snapEditOffset(text, Math.min(text.length, start + 1 + random.int(12)))
+        return { kind, start, end: Math.max(start, end), newText: '' }
+      }
+      if (kind === 'undo' && history.length > 1) {
+        return { kind, start: 0, end: text.length, newText: random.pick(history.slice(0, -1)) }
+      }
+      const fragments = ['<%', '%>', '<%=', '"', "'", '(', ')', '{', '}', ';', '.', ' ', eol, '한', '😀', 'x', '</script>', '<script server>']
+      const start = snapEditOffset(text, random.int(text.length + 1))
+      return { kind: 'garbage', start, end: start, newText: random.pick(fragments) }
+    }
+
+    test('IPC differential random incremental edits match freshly opened documents', { timeout: 300000 }, async (t) => {
+      const seeds = (process.env.POCKETPAGES_DIFF_SEEDS || '1,2,3').split(',').map(Number)
+      const steps = Number(process.env.POCKETPAGES_DIFF_STEPS || 16)
+      const checkpointEvery = 4
+      const edited = await startServer(t)
+      const fresh = await startServer(t)
+      const helperText = 'module.exports = { formatTitle(value) { return String(value) }, total: 3 }'
+      let freshAppCount = 0
+
+      const createDifferentialApp = (server, name) => {
+        const app = createApp(server.fixtureRoot, name, 'posts')
+        writeFile(path.join(app.pagesRoot, '_private', 'helper.js'), helperText)
+        return { app, page: path.join(app.pagesRoot, 'index.ejs') }
+      }
+      const normalizeDiagnostics = (items, appRoot) => items
+        .map((item) => JSON.stringify({
+          range: item.range, code: item.code, severity: item.severity, source: item.source,
+          message: String(item.message).split(appRoot).join('<app>').split(URI.file(appRoot).toString()).join('<app>'),
+        }))
+        .sort()
+      const pullDiagnostics = async (server, page) => {
+        const report = await server.request('textDocument/diagnostic', { textDocument: { uri: server.uri(page) } })
+        return report.kind === 'full' ? report.items : null
+      }
+      const stableDiagnostics = async (server, page, appRoot) => {
+        const deadline = Date.now() + 10000
+        let previous = null
+        let stableSince = 0
+        while (Date.now() < deadline) {
+          const items = await pullDiagnostics(server, page)
+          if (items) {
+            const current = normalizeDiagnostics(items, appRoot)
+            if (!previous || JSON.stringify(previous) !== JSON.stringify(current)) stableSince = Date.now()
+            else if (Date.now() - stableSince >= 2000) return current
+            previous = current
+          }
+          await new Promise((resolve) => setTimeout(resolve, 150))
+        }
+        return previous
+      }
+      const completionOffsets = (text) => {
+        const offsets = []
+        for (const match of text.matchAll(/helper\.|<%=\s*([A-Za-z_]\w*)/g)) {
+          offsets.push(match[1] ? match.index + match[0].length - match[1].length + 1 : match.index + match[0].length)
+        }
+        return [...new Set(offsets)].slice(0, 4)
+      }
+
+      for (const seed of seeds) {
+        const random = createSeededRandom(seed)
+        const eol = random.next() < 0.5 ? '\r\n' : '\n'
+        const initial = [
+          '<script server>',
+          "  const helper = resolve('helper')",
+          '  const title = helper.formatTitle("글😀")',
+          '  const count = helper.total',
+          '</script>',
+          '<p>한글😀</p>',
+          '<section>',
+          '<%= title %>',
+          '<% if (count > 0) { %><b><%= count %></b><% } %>',
+          '</section>',
+          '',
+        ].join(eol)
+        const { app, page } = createDifferentialApp(edited, `diff-edited-${seed}`)
+        writeFile(page, initial)
+        await edited.open(page, initial)
+        let document = TextDocument.create(edited.uri(page), 'ejs', 1, initial)
+        let version = 1
+        const history = [initial]
+        const operations = []
+
+        const reproduction = (step, detail) => JSON.stringify({
+          seed, step, eol: JSON.stringify(eol), operations, text: document.getText(), detail,
+        }, null, 2)
+
+        const compareWithFreshOpen = async (step) => {
+          const text = document.getText()
+          freshAppCount += 1
+          const reference = createDifferentialApp(fresh, `diff-fresh-${seed}-${freshAppCount}`)
+          writeFile(reference.page, text)
+          await fresh.open(reference.page, text)
+          const expected = await stableDiagnostics(fresh, reference.page, reference.app.appRoot)
+          const deadline = Date.now() + 8000
+          let actual = null
+          while (Date.now() < deadline) {
+            const items = await pullDiagnostics(edited, page)
+            if (items) {
+              actual = normalizeDiagnostics(items, app.appRoot)
+              if (JSON.stringify(actual) === JSON.stringify(expected)) break
+            }
+            await new Promise((resolve) => setTimeout(resolve, 150))
+          }
+          assert.deepEqual(actual, expected, `Diagnostics diverged from a fresh open\n${reproduction(step, { kind: 'diagnostics' })}`)
+          for (const offset of completionOffsets(text)) {
+            const actualNames = (await edited.complete(page, text, offset)).slice().sort()
+            const expectedNames = (await fresh.complete(reference.page, text, offset)).slice().sort()
+            assert.deepEqual(actualNames, expectedNames,
+              `Completion diverged from a fresh open\n${reproduction(step, { kind: 'completion', offset })}`)
+          }
+          await fresh.notify('textDocument/didClose', { textDocument: { uri: fresh.uri(reference.page) } })
+        }
+
+        for (let step = 1; step <= steps; step += 1) {
+          const batchSize = random.next() < 0.25 ? 2 + random.int(2) : 1
+          const batch = []
+          let text = document.getText()
+          for (let index = 0; index < batchSize; index += 1) {
+            const edit = createRandomEdit(random, text, eol, history, step * 10 + index)
+            batch.push(edit)
+            text = text.slice(0, edit.start) + edit.newText + text.slice(edit.end)
+          }
+          operations.push({ step, version: version + 1, batch })
+          version += 1
+          document = await edited.edits(page, version, document, batch)
+          assert.equal(document.getText(), text)
+          history.push(text)
+          if (step % checkpointEvery === 0 || step === steps) await compareWithFreshOpen(step)
+        }
+        await edited.notify('textDocument/didClose', { textDocument: { uri: edited.uri(page) } })
+      }
     })
 
     test('IPC regression deleted dependencies are replaced by new contents', { timeout: 30000 }, async (t) => {
@@ -17037,12 +17225,9 @@ function loadPostRole() {
       `<%- include('../shared-panel.ejs', { banner: 'Saved' }) %>\n`,
       `<%- include('../shared-panel.ejs', { banner: 'Saved' }) %>\n`.indexOf('../shared-panel.ejs') + 3
     )
-    if (
-      !parentIncludeDefinition
-      || normalizeFilePath(parentIncludeDefinition) !== normalizeFilePath(fixture.routeSharedPanelFilePath)
-    ) {
+    if (parentIncludeDefinition) {
       throw new Error(
-        `Expected ../ include() to use the actual path beside _private. Got: ${parentIncludeDefinition}`
+        `Expected ../ include() to stay unresolved like the EJS runtime. Got: ${parentIncludeDefinition}`
       )
     }
 

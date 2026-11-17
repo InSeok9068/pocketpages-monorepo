@@ -12,7 +12,12 @@ const {
   getTemplateCodeBlockAtOffset,
 } = require("../language-core/ejs-template");
 const { extractServerBlocks: _extractServerBlocks, getServerBlockAtOffset } = require("../language-core/script-server");
-const { PocketPagesProjectIndex, POCKETPAGES_GLOBAL_NAMES, collectIncludeCallEntries } = require("./project-index");
+const {
+  PocketPagesProjectIndex,
+  POCKETPAGES_GLOBAL_NAMES,
+  collectIncludeCallEntries,
+  isRuntimeIncludeRequestPath,
+} = require("./project-index");
 const { createDocumentAnalysis, createSourceFileForText } = require("./document-analysis");
 const {
   collectResolveRequestPaths,
@@ -9388,16 +9393,27 @@ class ProjectLanguageService {
 
   buildUpdatedIncludeRequestPath(filePath, currentRequestPath, oldTargetFilePath, newTargetFilePath) {
     const normalizedCurrentRequestPath = String(currentRequestPath || "").trim();
-    const formatNextRequestPath = (nextRequestPath) =>
-      preserveIncludeRequestExtensionStyle(normalizedCurrentRequestPath, nextRequestPath);
+    if (!isRuntimeIncludeRequestPath(normalizedCurrentRequestPath)) {
+      return null;
+    }
+
+    const formatNextRequestPath = (nextRequestPath) => {
+      const formatted = preserveIncludeRequestExtensionStyle(normalizedCurrentRequestPath, nextRequestPath);
+      return isRuntimeIncludeRequestPath(formatted) ? formatted : null;
+    };
 
     if (normalizedCurrentRequestPath.startsWith("/")) {
       return formatNextRequestPath(`/${toPortablePath(path.relative(this.projectIndex.pagesRoot, newTargetFilePath))}`);
     }
 
     const matchedPrivateRoot = this.getMatchingIncludeRoot(filePath, normalizedCurrentRequestPath, oldTargetFilePath);
-    if (matchedPrivateRoot && (normalizedCurrentRequestPath.startsWith("./") || normalizedCurrentRequestPath.startsWith("../"))) {
-      return formatNextRequestPath(toRelativeSpecifier(path.relative(matchedPrivateRoot, newTargetFilePath), { leadingDot: true }));
+    if (matchedPrivateRoot && normalizedCurrentRequestPath.startsWith("./")) {
+      const relativeRequestPath = formatNextRequestPath(
+        toRelativeSpecifier(path.relative(matchedPrivateRoot, newTargetFilePath), { leadingDot: true })
+      );
+      if (relativeRequestPath) {
+        return relativeRequestPath;
+      }
     }
     if (matchedPrivateRoot && isSameOrChildPath(matchedPrivateRoot, newTargetFilePath)) {
       return formatNextRequestPath(toPortablePath(path.relative(matchedPrivateRoot, newTargetFilePath)));

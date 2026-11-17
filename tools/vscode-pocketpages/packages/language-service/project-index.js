@@ -341,6 +341,20 @@ function shouldKeepPathCompletionExtension(requestPath, extensions) {
   return !!partialExtension && extensions.some((extension) => extension.startsWith(partialExtension))
 }
 
+function isRuntimeIncludeRequestPath(requestPath) {
+  if (typeof requestPath !== 'string' || !requestPath) {
+    return false
+  }
+
+  const normalized = requestPath.replaceAll('\\', '/')
+  return !(
+    normalized.includes('\0')
+    || normalized.includes(':')
+    || normalized.startsWith('//')
+    || normalized.split('/').some((part) => part.trim() === '..')
+  )
+}
+
 function getIncludeRequestVariants(requestPath) {
   const normalizedRequestPath = String(requestPath || '').trim()
   const variants = []
@@ -3645,10 +3659,14 @@ class PocketPagesProjectIndex {
   getIncludeCandidates(filePath, requestPath = '') {
     const items = []
     const seen = new Set()
+    if (requestPath && !isRuntimeIncludeRequestPath(requestPath)) {
+      return items
+    }
+
     const requestOptions = getPathCompletionRequestOptions(requestPath, INCLUDE_EXTENSIONS)
 
     const addCandidate = (value, absolutePath) => {
-      if (!value || seen.has(value)) {
+      if (!value || seen.has(value) || !isRuntimeIncludeRequestPath(value)) {
         return
       }
 
@@ -3662,10 +3680,7 @@ class PocketPagesProjectIndex {
 
     const privateRoots = requestOptions.prefixKind === 'absolute' ? [this.pagesRoot] : this.getPrivateSearchRoots(filePath)
     for (const privateRoot of privateRoots) {
-      const files = requestPath.startsWith('../')
-        ? this.getPagesGraphState().allFiles.filter((entry) => INCLUDE_EXTENSIONS.includes(path.extname(entry.filePath)))
-        : this.getSearchRootFileState(privateRoot, INCLUDE_EXTENSIONS).entries
-      for (const entry of files) {
+      for (const entry of this.getSearchRootFileState(privateRoot, INCLUDE_EXTENSIONS).entries) {
         addCandidate(
           buildPathCompletionCandidateValue(path.relative(privateRoot, entry.filePath), INCLUDE_EXTENSIONS, {
             keepExtension: true,
@@ -3720,7 +3735,7 @@ class PocketPagesProjectIndex {
 
   getIncludeCandidatePaths(filePath, requestPath) {
     const normalizedRequestPath = String(requestPath || '').trim()
-    if (!normalizedRequestPath) {
+    if (!normalizedRequestPath || !isRuntimeIncludeRequestPath(normalizedRequestPath)) {
       return []
     }
 
@@ -4098,6 +4113,7 @@ module.exports = {
   POCKETPAGES_GLOBAL_NAMES,
   collectIncludeCallEntries,
   isAssetCandidateFile,
+  isRuntimeIncludeRequestPath,
   normalizePath,
   fileExists,
   quoteRegex,
