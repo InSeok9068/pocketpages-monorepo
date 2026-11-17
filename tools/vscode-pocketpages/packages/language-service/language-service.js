@@ -4661,6 +4661,7 @@ class ProjectLanguageService {
       `structure:${this.projectIndex.pagesStructureVersion}`,
       `ambient:${this.getAmbientSnapshotKey()}`,
       this.getIncludeLocalsRevisionIdentity(normalizedFilePath),
+      this.getTypeScriptDependencyIdentity(normalizedFilePath, documentText),
     ].join("|");
 
     if (options.includeProjectRuleDiagnostics !== false) {

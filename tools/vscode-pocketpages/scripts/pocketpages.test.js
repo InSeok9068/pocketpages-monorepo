@@ -1031,6 +1031,273 @@ declare const resolve: (path: string) => any;
       }
     })
 
+    function normalizeAppText(value, appRoot) {
+      const variants = [appRoot, appRoot.replaceAll('\\', '/'), URI.file(appRoot).toString(), encodeURI(appRoot.replaceAll('\\', '/'))]
+      let text = String(value)
+      for (const variant of variants) {
+        text = text.replace(new RegExp(variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '<app>')
+      }
+      return text
+    }
+
+    function normalizeLocations(result, appRoot) {
+      const toKey = (uri, range) => {
+        const relative = path.relative(appRoot, URI.parse(uri).fsPath).replaceAll('\\', '/')
+        return JSON.stringify({ file: relative, range })
+      }
+      const items = result ? (Array.isArray(result) ? result : [result]) : []
+      return items.map((item) => item.targetUri
+        ? toKey(item.targetUri, item.targetSelectionRange || item.targetRange)
+        : toKey(item.uri, item.range)).sort()
+    }
+
+    function createRandomFileEdit(random, file, text, history, eol) {
+      const names = ['books', 'book', 'label', 'summary', 'title', 'findBook', 'formatLabel', 'format', 'pages', 'missingName']
+      const kind = random.pick(['rename', 'rename', 'member', 'delete', 'garbage', 'garbage', 'undo', ...(file.ejs ? ['usage'] : [])])
+      if (kind === 'rename') {
+        const matches = [...text.matchAll(/\b(books|book|label|summary|title|findBook|formatLabel|format|pages|missingName)\b/g)]
+        if (matches.length) {
+          const match = random.pick(matches)
+          return { kind, start: match.index, end: match.index + match[0].length, newText: random.pick(names) }
+        }
+      }
+      if (kind === 'member') {
+        const matches = [...text.matchAll(/\b[A-Za-z_]\w*\./g)]
+        if (matches.length) {
+          const match = random.pick(matches)
+          const start = match.index + match[0].length
+          return { kind, start, end: start, newText: random.pick(['title.', 'pages + ', 'missing', 'toUpperCase().', 'id.']) }
+        }
+      }
+      if (kind === 'usage') {
+        const lineStarts = [0, ...[...text.matchAll(/\n/g)].map((match) => match.index + 1)]
+        const start = random.pick(lineStarts)
+        return { kind, start, end: start, newText: `<%= ${random.pick(names)}${random.pick(['', '.title', '.pages'])} %>${eol}` }
+      }
+      if (kind === 'delete' && text.length) {
+        const start = snapEditOffset(text, random.int(text.length))
+        const end = snapEditOffset(text, Math.min(text.length, start + 1 + random.int(12)))
+        return { kind, start, end: Math.max(start, end), newText: '' }
+      }
+      if (kind === 'undo' && history.length > 1) {
+        return { kind, start: 0, end: text.length, newText: random.pick(history.slice(0, -1)) }
+      }
+      const fragments = file.ejs
+        ? ['<%', '%>', '<%=', '"', '(', ')', '{', '}', ';', '.', ' ', eol, '한', '😀', '</script>', '<script server>']
+        : ['"', "'", '(', ')', '{', '}', ';', '.', ',', ' ', eol, '한', '😀', 'return ', 'module.exports = 1;']
+      const start = snapEditOffset(text, random.int(text.length + 1))
+      return { kind: 'garbage', start, end: start, newText: random.pick(fragments) }
+    }
+
+    test('IPC differential multi-file _private edits match freshly opened documents', { timeout: 600000 }, async (t) => {
+      const seeds = (process.env.POCKETPAGES_DIFF_MULTI_SEEDS || '1,2').split(',').map(Number)
+      const steps = Number(process.env.POCKETPAGES_DIFF_MULTI_STEPS || 16)
+      const checkpointEvery = 4
+      const edited = await startServer(t)
+      const fresh = await startServer(t)
+      const formatVariants = [
+        'module.exports = { label(value) { return String(value) } }',
+        'module.exports = { label(value) { return value.length } }',
+        'module.exports = { caption(value) { return String(value) } }',
+        'module.exports = { label(value) { return String(value) ',
+      ]
+      let freshAppCount = 0
+
+      const createMultiFileApp = (server, name, texts) => {
+        const app = createApp(server.fixtureRoot, name, 'books')
+        const files = {
+          page: { filePath: path.join(app.pagesRoot, 'index.ejs'), ejs: true },
+          partial: { filePath: path.join(app.pagesRoot, '_private', 'books', 'card.ejs'), ejs: true },
+          service: { filePath: path.join(app.pagesRoot, '_private', 'books', 'book-service.js'), ejs: false },
+        }
+        const formatPath = path.join(app.pagesRoot, '_private', 'books', 'format.js')
+        for (const [key, file] of Object.entries(files)) writeFile(file.filePath, texts[key])
+        writeFile(formatPath, texts.format)
+        return { app, files, formatPath }
+      }
+      const pullDiagnostics = async (server, filePath) => {
+        const report = await server.request('textDocument/diagnostic', { textDocument: { uri: server.uri(filePath) } })
+        return report.kind === 'full' ? report.items : null
+      }
+      const normalizeDiagnostics = (items, appRoot) => items
+        .map((item) => JSON.stringify({
+          range: item.range, code: item.code, severity: item.severity, source: item.source,
+          message: normalizeAppText(item.message, appRoot),
+        }))
+        .sort()
+      const stableDiagnostics = async (server, filePath, appRoot) => {
+        const deadline = Date.now() + 12000
+        let previous = null
+        let stableSince = 0
+        while (Date.now() < deadline) {
+          const items = await pullDiagnostics(server, filePath)
+          if (items) {
+            const current = normalizeDiagnostics(items, appRoot)
+            if (!previous || JSON.stringify(previous) !== JSON.stringify(current)) stableSince = Date.now()
+            else if (Date.now() - stableSince >= 2000) return current
+            previous = current
+          }
+          await new Promise((resolve) => setTimeout(resolve, 150))
+        }
+        return previous
+      }
+      const convergedDiagnostics = async (server, filePath, appRoot, expected) => {
+        const deadline = Date.now() + 10000
+        let actual = null
+        while (Date.now() < deadline) {
+          const items = await pullDiagnostics(server, filePath)
+          if (items) {
+            actual = normalizeDiagnostics(items, appRoot)
+            if (JSON.stringify(actual) === JSON.stringify(expected)) return actual
+          }
+          await new Promise((resolve) => setTimeout(resolve, 150))
+        }
+        return actual
+      }
+      const probeOffsets = (text) => {
+        const completion = [...text.matchAll(/\b[A-Za-z_]\w*\./g)].map((match) => match.index + match[0].length)
+        const symbols = [...text.matchAll(/\b(books|book|label|summary|title|findBook|formatLabel|format)\b/g)].map((match) => match.index + 1)
+        return { completion: [...new Set(completion)].slice(0, 3), symbols: [...new Set(symbols)].slice(0, 3) }
+      }
+      const observeFeatures = async (server, files, texts, appRoot) => {
+        const observed = {}
+        for (const [key, file] of Object.entries(files)) {
+          const text = texts[key]
+          const offsets = probeOffsets(text)
+          const completions = []
+          for (const offset of offsets.completion) {
+            completions.push({ offset, names: (await server.complete(file.filePath, text, offset)).slice().sort() })
+          }
+          const symbols = []
+          for (const offset of offsets.symbols) {
+            const hover = await server.feature('hover', file.filePath, text, offset)
+            const definition = await server.feature('definition', file.filePath, text, offset)
+            symbols.push({
+              offset,
+              hover: hover ? normalizeAppText(JSON.stringify(hover.contents), appRoot) : null,
+              definition: normalizeLocations(definition, appRoot),
+            })
+          }
+          observed[key] = { completions, symbols }
+        }
+        return observed
+      }
+
+      for (const seed of seeds) {
+        const random = createSeededRandom(seed)
+        const eol = random.next() < 0.5 ? '\r\n' : '\n'
+        const texts = {
+          page: [
+            '<script server>',
+            "  const books = resolve('books/book-service')",
+            '  const book = books.findBook("1")',
+            '  const label = books.formatLabel(book)',
+            '</script>',
+            '<h1><%= label %></h1>',
+            "<%- include('books/card.ejs', { book, label }) %>",
+            '',
+          ].join(eol),
+          partial: [
+            '<script server>',
+            '  const summary = book.title + label',
+            '</script>',
+            '<article><%= book.title %> <%= summary %> 한글😀</article>',
+            '',
+          ].join(eol),
+          service: [
+            "const format = require('./format')",
+            'module.exports = {',
+            '  findBook(id) { return { id, title: "책😀", pages: 3 } },',
+            '  formatLabel(book) { return format.label(book.title) },',
+            '}',
+            '',
+          ].join(eol),
+          format: formatVariants[0],
+        }
+        const { app, files, formatPath } = createMultiFileApp(edited, `diff-multi-edited-${seed}`, texts)
+        const documents = {}
+        const versions = {}
+        const histories = {}
+        for (const [key, file] of Object.entries(files)) {
+          await edited.open(file.filePath, texts[key])
+          documents[key] = TextDocument.create(edited.uri(file.filePath), file.ejs ? 'ejs' : 'javascript', 1, texts[key])
+          versions[key] = 1
+          histories[key] = [texts[key]]
+        }
+        const operations = []
+        const currentTexts = () => ({
+          page: documents.page.getText(), partial: documents.partial.getText(), service: documents.service.getText(), format: texts.format,
+        })
+        const reproduction = (step, detail) => JSON.stringify({
+          seed, step, eol: JSON.stringify(eol), operations, texts: currentTexts(), detail,
+        }, null, 2)
+
+        if (seed === seeds[0]) {
+          for (const file of Object.values(files)) {
+            await edited.diagnostics(file.filePath, (items) => items.length === 0)
+          }
+          const serviceNames = await edited.complete(files.page.filePath, texts.page, texts.page.indexOf('books.findBook') + 'books.'.length)
+          assert.ok(serviceNames.includes('findBook') && serviceNames.includes('formatLabel'), JSON.stringify(serviceNames))
+          const bookNames = await edited.complete(files.partial.filePath, texts.partial, texts.partial.indexOf('book.title') + 'book.'.length)
+          assert.ok(bookNames.includes('title') && bookNames.includes('pages'), JSON.stringify(bookNames))
+          const formatNames = await edited.complete(files.service.filePath, texts.service, texts.service.indexOf('format.label') + 'format.'.length)
+          assert.ok(formatNames.includes('label'), JSON.stringify(formatNames))
+        }
+
+        const compareWithFreshOpen = async (step) => {
+          const snapshot = currentTexts()
+          freshAppCount += 1
+          const reference = createMultiFileApp(fresh, `diff-multi-fresh-${seed}-${freshAppCount}`, snapshot)
+          for (const [key, file] of Object.entries(reference.files)) await fresh.open(file.filePath, snapshot[key])
+          for (const key of Object.keys(files)) {
+            const expected = await stableDiagnostics(fresh, reference.files[key].filePath, reference.app.appRoot)
+            const actual = await convergedDiagnostics(edited, files[key].filePath, app.appRoot, expected)
+            assert.deepEqual(actual, expected,
+              `Diagnostics diverged from a fresh open\n${reproduction(step, { kind: 'diagnostics', file: key })}`)
+          }
+          const expectedFeatures = await observeFeatures(fresh, reference.files, snapshot, reference.app.appRoot)
+          const actualFeatures = await observeFeatures(edited, files, snapshot, app.appRoot)
+          for (const key of Object.keys(files)) {
+            assert.deepEqual(actualFeatures[key], expectedFeatures[key],
+              `Features diverged from a fresh open\n${reproduction(step, { kind: 'features', file: key })}`)
+          }
+          for (const file of Object.values(reference.files)) {
+            await fresh.notify('textDocument/didClose', { textDocument: { uri: fresh.uri(file.filePath) } })
+          }
+        }
+
+        for (let step = 1; step <= steps; step += 1) {
+          const roll = random.next()
+          if (roll < 0.12) {
+            const nextFormat = random.pick(formatVariants.filter((variant) => variant !== texts.format))
+            texts.format = nextFormat
+            writeFile(formatPath, nextFormat)
+            await edited.watch(formatPath)
+            operations.push({ step, file: 'format', kind: 'disk', variant: formatVariants.indexOf(nextFormat) })
+          } else {
+            const key = roll < 0.5 ? 'page' : roll < 0.8 ? 'partial' : 'service'
+            const batchSize = random.next() < 0.25 ? 2 : 1
+            const batch = []
+            let text = documents[key].getText()
+            for (let index = 0; index < batchSize; index += 1) {
+              const edit = createRandomFileEdit(random, files[key], text, histories[key], eol)
+              batch.push(edit)
+              text = text.slice(0, edit.start) + edit.newText + text.slice(edit.end)
+            }
+            versions[key] += 1
+            operations.push({ step, file: key, version: versions[key], batch })
+            documents[key] = await edited.edits(files[key].filePath, versions[key], documents[key], batch)
+            assert.equal(documents[key].getText(), text)
+            histories[key].push(text)
+          }
+          if (step % checkpointEvery === 0 || step === steps) await compareWithFreshOpen(step)
+        }
+        for (const file of Object.values(files)) {
+          await edited.notify('textDocument/didClose', { textDocument: { uri: edited.uri(file.filePath) } })
+        }
+      }
+    })
+
     test('IPC regression deleted dependencies are replaced by new contents', { timeout: 30000 }, async (t) => {
       const server = await startServer(t)
       const app = createApp(server.fixtureRoot, 'dependency-recreation', 'posts')
@@ -11232,6 +11499,85 @@ module.exports.__diagnosticsLaneProbe = 1
     } finally {
       writeFile(fixture.boardServiceFilePath, originalBoardServiceText)
       dependencyLaneService.invalidateManagedFile(fixture.boardServiceFilePath, { type: 'change' })
+    }
+
+    const dependencyRegionCore = new PocketPagesLanguageCore()
+    const dependencyRegionText = `<script server>
+const boardService = resolve('board-service')
+boardService.__regionReuseProbe.toUpperCase()
+</script>
+<script server>
+const dependencyRegionOther = 'first'
+</script>
+`
+    const dependencyRegionChangedText = dependencyRegionText.replace("'first'", "'second'")
+    const dependencyRegionUri = URI.file(fixture.boardsFilePath).toString()
+    dependencyRegionCore.openDocument({
+      uri: dependencyRegionUri,
+      languageId: 'ejs',
+      version: 1,
+      text: dependencyRegionText,
+    })
+    const dependencyRegionService = dependencyRegionCore.getDocumentContextByUri(dependencyRegionUri).service
+    const collectDependencyRegionPass = (text, previous) => {
+      const metadata = dependencyRegionService.getDiagnosticsLaneMetadata(fixture.boardsFilePath, text)
+      const resultIds = dependencyRegionService.getDiagnosticsLaneResultIds(
+        fixture.boardsFilePath,
+        text,
+        { laneMetadata: metadata }
+      )
+      const laneDiagnostics = {}
+      const profile = {}
+      dependencyRegionService.getDiagnostics(fixture.boardsFilePath, text, {
+        currentLaneResultIds: resultIds,
+        currentLaneMetadata: metadata,
+        ...(previous
+          ? {
+              previousLaneResultIds: previous.resultIds,
+              previousLaneMetadata: previous.metadata,
+              previousLaneDiagnostics: previous.laneDiagnostics,
+            }
+          : {}),
+        laneDiagnosticsOut: laneDiagnostics,
+        profile,
+      })
+      const probeErrors = laneDiagnostics.server.filter((entry) => String(entry.message).includes('toUpperCase'))
+      return { metadata, resultIds, laneDiagnostics, probeErrors, profile }
+    }
+    const originalDependencyRegionServiceText = fs.readFileSync(fixture.boardServiceFilePath, 'utf8')
+    try {
+      writeFile(fixture.boardServiceFilePath, `${originalDependencyRegionServiceText}\nmodule.exports.__regionReuseProbe = 'text'\n`)
+      dependencyRegionService.invalidateManagedFile(fixture.boardServiceFilePath, { type: 'change' })
+      const stringPass = collectDependencyRegionPass(dependencyRegionText, null)
+      writeFile(fixture.boardServiceFilePath, `${originalDependencyRegionServiceText}\nmodule.exports.__regionReuseProbe = 1\n`)
+      dependencyRegionService.invalidateManagedFile(fixture.boardServiceFilePath, { type: 'change' })
+      dependencyRegionCore.updateDocument({
+        uri: dependencyRegionUri,
+        languageId: 'ejs',
+        version: 2,
+        text: dependencyRegionChangedText,
+      })
+      const numberPass = collectDependencyRegionPass(dependencyRegionChangedText, stringPass)
+      const result = {
+        stringErrors: stringPass.probeErrors.map((entry) => entry.message),
+        numberErrors: numberPass.probeErrors.map((entry) => entry.message),
+        serverIdentityChanged: stringPass.metadata.server.dependencyIdentity !== numberPass.metadata.server.dependencyIdentity,
+        templateIdentityChanged: stringPass.metadata.template.dependencyIdentity !== numberPass.metadata.template.dependencyIdentity,
+        reusedRegions: numberPass.profile.reusedDiagnosticRegions || [],
+      }
+      if (
+        result.stringErrors.length !== 0
+        || result.numberErrors.length !== 1
+        || !result.serverIdentityChanged
+        || !result.templateIdentityChanged
+      ) {
+        throw new Error(
+          `Expected resolved module changes to bypass region-level diagnostics reuse. Got: ${JSON.stringify(result)}`
+        )
+      }
+    } finally {
+      writeFile(fixture.boardServiceFilePath, originalDependencyRegionServiceText)
+      dependencyRegionService.invalidateManagedFile(fixture.boardServiceFilePath, { type: 'change' })
     }
 
     const regionRemapCore = new PocketPagesLanguageCore()
