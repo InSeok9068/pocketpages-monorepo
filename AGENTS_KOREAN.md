@@ -143,6 +143,9 @@
 
 ## 9. Frontend
 
+- HTML·CSS·브라우저 JavaScript의 UI 구현·동작 수정 시 `modern-web-guidance` 스킬을 참고한다.
+- 기존 SSR·PRG·HTMX·Alpine·UnoCSS 규칙을 우선하며, 요청하지 않은 일괄 현대화나 의존성 추가는 하지 않는다.
+- 서버 JSVM 코드·백엔드 로직·단순 문구 및 경로 변경에는 이 스킬을 적용하지 않는다.
 - Alpine은 UI helper로만 사용한다
 - business logic이나 complex state를 넣지 않는다
 - toggle, modal, tab, 짧은 local UI state에 사용한다

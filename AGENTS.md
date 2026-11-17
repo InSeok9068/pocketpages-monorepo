@@ -143,6 +143,9 @@
 
 ## 9. Frontend
 
+- Consult the `modern-web-guidance` skill when implementing or changing UI behavior in HTML, CSS, or browser JavaScript.
+- Prioritize existing SSR, PRG, HTMX, Alpine, and UnoCSS rules; do not perform unrequested bulk modernization or add dependencies.
+- Do not apply this skill to server JSVM code, backend logic, or simple text or path changes.
 - Alpine is UI helper only
 - no business logic or complex state
 - use for toggle, modal, tab, and short local UI state

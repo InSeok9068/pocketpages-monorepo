@@ -184,6 +184,20 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
 
 ---
 
+## modern-web-guidance 설치/업데이트
+
+프로젝트 루트에서 실행합니다. 설치 시 `modern-web-guidance` 스킬과 `Project` 범위를 선택합니다.
+
+```bash
+# 설치
+npx modern-web-guidance@latest install --choose
+
+# 업데이트
+npx modern-web-guidance@latest update
+```
+
+---
+
 ## 웹 서버
 
 - 웹 서버: Caddy

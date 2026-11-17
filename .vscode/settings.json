@@ -21,6 +21,8 @@
     ".cache/**": true,
     ".backup/**": true,
     ".githooks/**": true,
+    ".agents/**": true,
+    ".claude/**": true,
     // "tools/**": true,
     // "scripts/**": true,
     // 개발중인 서비스만 주석
