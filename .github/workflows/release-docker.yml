@@ -94,22 +94,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve latest PocketBase version
+      - name: Read pinned PocketBase version
         id: pb
         shell: bash
         run: |
           set -euo pipefail
-          CURL_RETRY=(--retry 5 --retry-delay 5 --retry-max-time 120 --retry-all-errors --retry-connrefused)
-          LATEST_JSON="$(curl -fsSL "${CURL_RETRY[@]}" --get \
-            'https://ganigeorgiev.com/api/collections/releases/records' \
-            --data-urlencode 'perPage=1' \
-            --data-urlencode 'skipTotal=1' \
-            --data-urlencode 'sort=-semver' \
-            --data-urlencode 'filter=channel.name="default" && channel.repository.name="pocketbase" && channel.repository.project.name="pocketbase"')"
-          PB_VERSION="$(printf '%s' "$LATEST_JSON" | jq -er '.items[0].tag | select(type == "string") | ltrimstr("v")')"
-
-          if [[ ! "$PB_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Failed to resolve PocketBase version"
+          if ! PB_VERSION="$(LC_ALL=C awk '
+            NR == 1 { sub(/\r$/, ""); version = $0 }
+            END { if (NR != 1 || version !~ /^[0-9]+[.][0-9]+[.][0-9]+$/) exit 1; print version }
+          ' .pb.version)"; then
+            echo "Invalid .pb.version: expected a single x.y.z version" >&2
             exit 1
           fi
 
@@ -125,8 +119,6 @@ jobs:
           push: true
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
-          build-args: |
-            PB_VERSION=${{ steps.pb.outputs.version }}
           tags: |
             ${{ steps.svc.outputs.image }}:${{ github.sha }}
             ${{ steps.svc.outputs.image }}:release

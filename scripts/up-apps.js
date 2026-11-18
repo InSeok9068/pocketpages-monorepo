@@ -8,6 +8,7 @@ const { spawnSync } = require('child_process')
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
 const ROOT_PACKAGE_JSON = path.join(ROOT_DIR, 'package.json')
+const UTILS_DIR = path.join(ROOT_DIR, 'packages', 'utils')
 const SUPPORTED_NPM_COMMANDS = new Set(['up', 'install', 'ci', 'audit'])
 
 /**
@@ -53,8 +54,8 @@ function collectAppDirs() {
 }
 
 /**
- * 루트와 앱을 포함한 전체 npm 작업 대상 디렉터리를 찾습니다.
- * @returns {string[]} 루트와 apps 아래 package.json이 있는 디렉터리 목록입니다.
+ * 루트, 공용 유틸 패키지, 앱 중 npm 작업 대상을 찾습니다.
+ * @returns {string[]} npm 작업 대상 디렉터리 목록입니다.
  */
 function collectPackageDirs() {
   const packageDirs = []
@@ -63,18 +64,24 @@ function collectPackageDirs() {
     packageDirs.push(ROOT_DIR)
   }
 
+  if (fs.existsSync(path.join(UTILS_DIR, 'package.json'))) {
+    packageDirs.push(UTILS_DIR)
+  }
+
   return packageDirs.concat(collectAppDirs())
 }
 
 /**
  * 화면 출력용 대상 이름을 만듭니다.
  * @param {string} targetDir npm 작업 대상 절대 경로입니다.
- * @returns {string} 루트면 root, 앱이면 디렉터리 이름입니다.
+ * @returns {string} 루트, 공용 패키지 또는 앱 이름입니다.
  */
 function toTargetName(targetDir) {
   if (targetDir === ROOT_DIR) {
     return 'root'
   }
+
+  if (targetDir === UTILS_DIR) return 'packages/utils'
 
   return path.basename(targetDir)
 }
@@ -164,14 +171,16 @@ function main() {
 
   const packageDirs = collectPackageDirs()
   const hasRoot = packageDirs.includes(ROOT_DIR)
-  const appCount = packageDirs.filter((targetDir) => targetDir !== ROOT_DIR).length
-  const actionLabel = npmCommand === 'install'
-    ? 'Installing'
-    : npmCommand === 'ci'
-      ? 'Installing from lockfiles'
-      : npmCommand === 'audit'
-        ? 'Auditing'
-        : 'Updating'
+  const hasUtils = packageDirs.includes(UTILS_DIR)
+  const appCount = packageDirs.length - Number(hasRoot) - Number(hasUtils)
+  const actionLabel =
+    npmCommand === 'install'
+      ? 'Installing'
+      : npmCommand === 'ci'
+        ? 'Installing from lockfiles'
+        : npmCommand === 'audit'
+          ? 'Auditing'
+          : 'Updating'
   const continueOnFailure = npmCommand === 'audit'
 
   if (packageDirs.length === 0) {
@@ -179,11 +188,8 @@ function main() {
     process.exit(1)
   }
 
-  if (hasRoot) {
-    console.log(`${actionLabel} root and ${appCount} app(s) from ${APPS_DIR}`)
-  } else {
-    console.log(`${actionLabel} ${appCount} app(s) from ${APPS_DIR}`)
-  }
+  const targets = [hasRoot && 'root', hasUtils && 'packages/utils', `${appCount} app(s) from ${APPS_DIR}`]
+  console.log(`${actionLabel} ${targets.filter(Boolean).join(' and ')}`)
 
   let hasFailure = false
 

@@ -43,7 +43,7 @@ Usage:
 Commands:
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
-  update    `npm` runs npm up in root and app package.json dirs; `pocketbase` runs pocketbase update in app dirs
+  update    `npm` runs npm up in root and app dirs; `pocketbase` syncs installed app binaries to .pb.version
   audit     Run npm audit in root and app package.json dirs; --fix runs npm audit fix --force in each dir
   install   `npm` runs npm install in root and app package.json dirs
   ci        `npm` runs npm ci in root and app package.json dirs
@@ -90,7 +90,7 @@ Examples:
   ./task.sh install npm -- --package-lock-only
   ./task.sh ci npm
   ./task.sh update pocketbase
-  ./task.sh update pocketbase -- --backup
+
   ./task.sh audit
   ./task.sh audit --fix
   ./task.sh audit -- --omit=dev

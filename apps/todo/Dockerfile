@@ -35,11 +35,16 @@ RUN bash ./task.sh css todo
 FROM alpine:3.24 AS pocketbase
 
 ARG TARGETARCH
-ARG PB_VERSION
 
 RUN apk add --no-cache ca-certificates curl unzip
+COPY .pb.version /tmp/.pb.version
 RUN set -eu; \
-  if [ -z "${PB_VERSION}" ]; then echo "PB_VERSION build argument is required"; exit 1; fi; \
+  if ! PB_VERSION="$(LC_ALL=C awk ' \
+    NR == 1 { sub(/\r$/, ""); version = $0 } \
+    END { if (NR != 1 || version !~ /^[0-9]+[.][0-9]+[.][0-9]+$/) exit 1; print version } \
+  ' /tmp/.pb.version)"; then \
+    echo "Invalid .pb.version: expected a single x.y.z version" >&2; exit 1; \
+  fi; \
   case "${TARGETARCH}" in \
     amd64|arm64) PB_ARCH="${TARGETARCH}" ;; \
     *) echo "Unsupported TARGETARCH: $TARGETARCH"; exit 1 ;; \

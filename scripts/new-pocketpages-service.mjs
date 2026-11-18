@@ -2,11 +2,15 @@
 /* global console */
 import { checkbox, confirm, input, select } from '@inquirer/prompts'
 import { existsSync } from 'node:fs'
-import { copyFile, mkdir, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import pocketbaseBinary from './pocketbase-binary.js'
+
+const { binaryName, readPinnedVersion, preparePocketBase } = pocketbaseBinary
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(scriptDir, '..')
@@ -40,7 +44,7 @@ Options:
   --auth / --no-auth            Include or skip password auth scaffold
   --features <list>             Comma list: htmx,alpine,unocss,datastar,realtime,none
   --install / --skip-install    Run or skip npm install in the new service
-  --copy-binaries               Copy pbw/pocketbase binaries from an existing service when found
+  --copy-binaries               Install PocketBase from .pb.version and copy pbw when available
   --skip-binaries               Skip binary copy
   --dry-run                     Print the creation plan without writing files
   -h, --help                    Show this help
@@ -859,11 +863,16 @@ RUN npm ci --no-audit --no-fund \\
 ${cssSection}FROM alpine:3.24 AS pocketbase
 
 ARG TARGETARCH
-ARG PB_VERSION
 
 RUN apk add --no-cache ca-certificates curl unzip
+COPY .pb.version /tmp/.pb.version
 RUN set -eu; \\
-  if [ -z "\${PB_VERSION}" ]; then echo "PB_VERSION build argument is required"; exit 1; fi; \\
+  if ! PB_VERSION="$(LC_ALL=C awk ' \\
+    NR == 1 { sub(/\\r$/, ""); version = $0 } \\
+    END { if (NR != 1 || version !~ /^[0-9]+[.][0-9]+[.][0-9]+$/) exit 1; print version } \\
+  ' /tmp/.pb.version)"; then \\
+    echo "Invalid .pb.version: expected a single x.y.z version" >&2; exit 1; \\
+  fi; \\
   case "\${TARGETARCH}" in \\
     amd64|arm64) PB_ARCH="\${TARGETARCH}" ;; \\
     *) echo "Unsupported TARGETARCH: $TARGETARCH"; exit 1 ;; \\
@@ -1305,8 +1314,9 @@ function buildPlan(options) {
   }
 
   if (options.copyBinaries) {
-    const binaryCopies = buildBinaryCopies(serviceDir)
-    copies.push(...binaryCopies)
+    const wrapper = process.platform === 'win32' ? 'pbw.exe' : 'pbw'
+    const source = path.join(downloadDir, wrapper)
+    if (existsSync(source)) copies.push({ from: source, to: path.join(serviceDir, wrapper) })
   }
 
   return {
@@ -1318,27 +1328,9 @@ function buildPlan(options) {
       content,
     })),
     copies,
+    pocketbaseVersion: options.copyBinaries ? readPinnedVersion() : null,
     postSteps: buildPostSteps(options, serviceDir),
   }
-}
-
-function buildBinaryCopies(serviceDir) {
-  const candidates = [
-    ['pbw.exe', 'pocketbase.exe'],
-    ['pbw', 'pocketbase'],
-  ]
-
-  for (const names of candidates) {
-    const sources = names.map((name) => path.join(downloadDir, name))
-    if (sources.every((source) => existsSync(source))) {
-      return names.map((name) => ({
-        from: path.join(downloadDir, name),
-        to: path.join(serviceDir, name),
-      }))
-    }
-  }
-
-  return []
 }
 
 function buildPostSteps(options, serviceDir) {
@@ -1370,6 +1362,7 @@ function printPlan(plan, options) {
   for (const item of plan.copies) {
     console.log(`  + ${path.relative(rootDir, item.to).replace(/\\/g, '/')}`)
   }
+  if (plan.pocketbaseVersion) console.log(`- PocketBase: ${plan.pocketbaseVersion} → ${binaryName}`)
   console.log(`- 후속 작업: ${plan.postSteps.length ? plan.postSteps.map((step) => step.label).join(', ') : 'none'}`)
 }
 
@@ -1444,7 +1437,18 @@ async function main() {
     return
   }
 
-  await writePlan(plan)
+  if (plan.pocketbaseVersion) {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'pocketbase-scaffold-'))
+    try {
+      const source = preparePocketBase(plan.pocketbaseVersion, tempDir)
+      plan.copies.push({ from: source, to: path.join(plan.serviceDir, binaryName) })
+      await writePlan(plan)
+    } finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  } else {
+    await writePlan(plan)
+  }
   runPostSteps(plan)
 
   console.log('')
