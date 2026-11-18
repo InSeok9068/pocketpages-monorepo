@@ -14,7 +14,7 @@
 
 ## 1. Stack & Structure
 
-- Stack: PocketBase (JSVM), PocketPages (SSR, file routing), EJS, HTMX, Alpine.js, UnoCSS presetWind4 (Tailwind CSS v4-compatible utilities)
+- Stack: PocketBase (JSVM), PocketPages (SSR, file routing), EJS, HTMX (2.x), Alpine.js, UnoCSS presetWind4 (Tailwind CSS v4-compatible utilities)
 - Service root: `apps/<service>/*`
 - `pb_hooks/pages` = routing root
 - `apps/<service>/pb_hooks/pages/+config.js` = service plugin/config entry
