@@ -2,10 +2,17 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f7f2e6" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="theme-color"
+      content="#f7f2e6" />
     <title>북로그 오프라인</title>
-    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link
+      rel="icon"
+      href="/assets/favicon.svg"
+      type="image/svg+xml" />
     <style>
       :root {
         color-scheme: light;
@@ -24,7 +31,13 @@
         height: 100%;
         background: var(--paper);
         color: var(--ink);
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Apple SD Gothic Neo',
+          'Malgun Gothic',
+          sans-serif;
       }
       body {
         display: flex;
@@ -144,19 +157,48 @@
     </style>
   </head>
   <body>
-    <main id="offline-shelf" class="shelf">
+    <main
+      id="offline-shelf"
+      class="shelf">
       <h1>오프라인 서재</h1>
       <p class="shelf-note">
         인터넷에 연결되지 않아 이 기기에 저장된 책만 보여 줍니다. 여기서 읽은 위치는 이 기기에만 저장됩니다.
       </p>
-      <ul id="offline-book-list" class="book-list"></ul>
-      <p id="offline-message" class="message" role="status" aria-live="polite">저장된 책을 찾는 중입니다.</p>
-      <a class="online-link" href="/">인터넷에 다시 연결되면 북로그 열기</a>
+      <ul
+        id="offline-book-list"
+        class="book-list"></ul>
+      <p
+        id="offline-message"
+        class="message"
+        role="status"
+        aria-live="polite">
+        저장된 책을 찾는 중입니다.
+      </p>
+      <a
+        class="online-link"
+        href="/">
+        인터넷에 다시 연결되면 북로그 열기
+      </a>
     </main>
 
-    <section id="offline-reader" class="reader" hidden aria-label="오프라인 책 읽기">
-      <button id="offline-back" class="reader-back" type="button">목록</button>
-      <p id="offline-loading" class="reader-loading" role="status" hidden>책을 여는 중입니다.</p>
+    <section
+      id="offline-reader"
+      class="reader"
+      hidden
+      aria-label="오프라인 책 읽기">
+      <button
+        id="offline-back"
+        class="reader-back"
+        type="button">
+        목록
+      </button>
+      <p
+        id="offline-loading"
+        class="reader-loading"
+        role="status"
+        hidden>
+        책을 여는 중입니다.
+      </p>
       <div id="epub-reader"></div>
     </section>
 
