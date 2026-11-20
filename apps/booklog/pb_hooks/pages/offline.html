@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f2e6" />
+    <title>북로그 오프라인</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #f7f2e6;
+        --ink: #33281f;
+        --muted: #7a6a5b;
+        --line: rgba(120, 93, 63, 0.16);
+        --accent: #8e5521;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+      }
+      button,
+      a {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      .shelf {
+        width: 100%;
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: calc(env(safe-area-inset-top) + 1.5rem) calc(env(safe-area-inset-right) + 1rem)
+          calc(env(safe-area-inset-bottom) + 2rem) calc(env(safe-area-inset-left) + 1rem);
+      }
+      .shelf h1 {
+        margin: 0;
+        font-size: 1.35rem;
+      }
+      .shelf-note {
+        margin: 0.5rem 0 1.25rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+        line-height: 1.6;
+      }
+      .book-list {
+        display: grid;
+        gap: 0.6rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .book-button {
+        display: grid;
+        gap: 0.25rem;
+        width: 100%;
+        padding: 0.9rem 1rem;
+        border: 1px solid var(--line);
+        border-radius: 1rem;
+        background: rgba(255, 255, 255, 0.7);
+        text-align: left;
+      }
+      .book-title {
+        font-weight: 600;
+        line-height: 1.4;
+      }
+      .book-meta {
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+      .message {
+        margin: 1rem 0 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+        line-height: 1.6;
+      }
+      .online-link {
+        display: inline-block;
+        margin-top: 1.5rem;
+        color: var(--accent);
+        font-size: 0.9rem;
+      }
+      .reader {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+      }
+      #epub-reader {
+        height: 100vh;
+        height: 100svh;
+        height: 100dvh;
+        overflow-y: auto;
+        scrollbar-width: none;
+      }
+      #epub-reader::-webkit-scrollbar,
+      #epub-reader .epub-container::-webkit-scrollbar {
+        display: none;
+      }
+      #epub-reader .epub-container {
+        scrollbar-width: none;
+      }
+      .reader-back {
+        position: fixed;
+        top: calc(env(safe-area-inset-top) + 0.75rem);
+        left: calc(env(safe-area-inset-left) + 0.75rem);
+        z-index: 20;
+        min-height: 2.5rem;
+        padding: 0 1rem;
+        border: 0;
+        border-radius: 999px;
+        background: rgba(24, 19, 16, 0.72);
+        color: #ffffff;
+        font-size: 0.9rem;
+      }
+      .reader-loading {
+        position: fixed;
+        top: 1.25rem;
+        left: 50%;
+        z-index: 30;
+        max-width: calc(100vw - 6rem);
+        padding: 0.75rem 1.25rem;
+        border-radius: 999px;
+        background: rgba(24, 19, 16, 0.82);
+        color: #ffffff;
+        font-size: 0.875rem;
+        transform: translateX(-50%);
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="offline-shelf" class="shelf">
+      <h1>오프라인 서재</h1>
+      <p class="shelf-note">
+        인터넷에 연결되지 않아 이 기기에 저장된 책만 보여 줍니다. 여기서 읽은 위치는 이 기기에만 저장됩니다.
+      </p>
+      <ul id="offline-book-list" class="book-list"></ul>
+      <p id="offline-message" class="message" role="status" aria-live="polite">저장된 책을 찾는 중입니다.</p>
+      <a class="online-link" href="/">인터넷에 다시 연결되면 북로그 열기</a>
+    </main>
+
+    <section id="offline-reader" class="reader" hidden aria-label="오프라인 책 읽기">
+      <button id="offline-back" class="reader-back" type="button">목록</button>
+      <p id="offline-loading" class="reader-loading" role="status" hidden>책을 여는 중입니다.</p>
+      <div id="epub-reader"></div>
+    </section>
+
+    <script src="/assets/vendor/jszip-3.10.1.min.js"></script>
+    <script src="/assets/vendor/epubjs-0.3.93.min.js"></script>
+    <script src="/assets/booklog-offline.js"></script>
+  </body>
+</html>

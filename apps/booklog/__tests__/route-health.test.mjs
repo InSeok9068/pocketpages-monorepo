@@ -336,3 +336,20 @@ test('Only administrators receive the audio diagnostic control and manual copy f
   await expectPage('/books/fullbook0000001/read', 'rich', { lacks: controls })
   await expectPage('/books/fullbook0000001/read', 'admin', { contains: controls })
 })
+
+test('The offline shelf and every file the offline worker keeps are served at their plain paths without sign-in', async () => {
+  for (const route of [
+    '/offline.html',
+    '/assets/booklog-offline.js',
+    '/assets/booklog-offline-worker.js',
+    '/assets/booklog-offline-register.js',
+    '/assets/vendor/jszip-3.10.1.min.js',
+    '/assets/vendor/epubjs-0.3.93.min.js',
+    '/assets/favicon.svg',
+  ]) {
+    const response = await fetch(service.baseUrl + route, { redirect: 'manual' })
+    assert.equal(response.status, 200, route)
+    const body = await response.text()
+    if (route === '/offline.html') assert.ok(body.includes('오프라인 서재'), 'the offline page is sent as is')
+  }
+})
