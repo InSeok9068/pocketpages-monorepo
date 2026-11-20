@@ -92,7 +92,7 @@ async function openReadAloudPanel(page) {
 test('Reader without generated AI audio offers only the local audiobook', () => {
   const body = renderReader(false)
   expect(body).toContain("readAloudEngine: 'local'")
-  expect(body).toContain('AI 오디오북 · 생성된 음성 없음')
+  expect(body).toContain('AI 음성 · 생성된 음성 없음')
   expect(body).not.toContain('reader-cloud-audio')
   expect(body).not.toContain('AI 오디오북 생성')
   const available = renderReader(true)
@@ -242,21 +242,21 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
   await expect(page.getByText('1 / 1 구간')).toBeVisible()
   await page.getByRole('button', { name: '듣는 곳으로 이동' }).click()
-  await expect(page.getByRole('heading', { name: '읽어주기' })).toBeHidden()
+  await expect(page.getByRole('heading', { name: '책 듣기' })).toBeHidden()
   await expect(
     page.getByRole('button', { name: '듣는 곳으로 이동' }),
     'the mini player offers the same move'
   ).toBeEnabled()
   await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
-  const miniPause = page.getByRole('button', { name: 'AI 오디오북 일시 정지' })
+  const miniPause = page.getByRole('button', { name: 'AI 음성 일시 정지' })
   await expect(miniPause).toBeVisible()
-  await expect(page.getByRole('button', { name: 'AI 오디오북 조작 열기' })).toContainText('첫 번째 챕터')
+  await expect(page.getByRole('button', { name: 'AI 음성 조작 열기' })).toContainText('첫 번째 챕터')
   await miniPause.click()
   await expect.poll(() => player.evaluate((audio) => audio.paused)).toBe(true)
-  await expect(page.getByRole('button', { name: 'AI 오디오북 재생' })).toBeVisible()
-  await page.getByRole('button', { name: 'AI 오디오북 조작 열기' }).click()
+  await expect(page.getByRole('button', { name: 'AI 음성 재생' })).toBeVisible()
+  await page.getByRole('button', { name: 'AI 음성 조작 열기' }).click()
   await expect(page.getByRole('button', { name: '듣는 곳으로 이동' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'AI 오디오북 재생' })).toBeHidden()
+  await expect(page.getByRole('button', { name: 'AI 음성 재생' })).toBeHidden()
   expect(errors).toEqual([])
 })
 

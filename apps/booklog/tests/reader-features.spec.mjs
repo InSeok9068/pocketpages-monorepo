@@ -341,13 +341,13 @@ test('Searching the whole book lists matches and opens the chosen one', async ({
 
 test('Opening the device voice panel puts the keyboard focus on the voice choice', async ({ page }) => {
   await openReader(page)
-  await openMenuItem(page, '읽어주기')
-  await expect(page.getByRole('heading', { name: '읽어주기' })).toBeVisible()
+  await openMenuItem(page, '책 듣기')
+  await expect(page.getByRole('heading', { name: '책 듣기' })).toBeVisible()
   const voice = page.locator('#reader-read-aloud-voice')
   test.skip(!(await voice.count()), 'This browser has no speech synthesis.')
 
   await expect(voice).toBeFocused()
-  await page.getByRole('button', { name: '읽어주기 닫기' }).click()
+  await page.getByRole('button', { name: '책 듣기 닫기' }).click()
   await expect(voice).toBeHidden()
 })
 
@@ -554,7 +554,7 @@ test('Center panels close when the dimmed area outside them is tapped, but not a
     { open: () => openMenuItem(page, '목차'), heading: '목차' },
     { open: () => openMenuItem(page, '책갈피'), heading: '책갈피' },
     { open: () => openMenuItem(page, '문구'), heading: '문구' },
-    { open: () => openMenuItem(page, '읽어주기'), heading: '읽어주기' },
+    { open: () => openMenuItem(page, '책 듣기'), heading: '책 듣기' },
     {
       open: async () => {
         await page.getByRole('button', { name: '메뉴 열기', exact: true }).click()

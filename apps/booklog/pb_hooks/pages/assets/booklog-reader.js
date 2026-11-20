@@ -1131,7 +1131,8 @@ window.booklogReaderLogic = (function () {
             id: target.id,
             length: text.length,
           })
-          return renditionInstance.display(target.section.href + '#' + target.id)
+          prepareManualNavigation()
+          return displayAt(target.section.href + '#' + target.id)
         }
 
         component.noteLabel = label.replace(/^[[(]+|[\])]+$/g, '')
@@ -1603,12 +1604,33 @@ window.booklogReaderLogic = (function () {
       })
   }
 
-  function speakQueueItem(component, token) {
+  // Chrome 온라인 음성은 긴 발화를 15초쯤에서 끝 신호 없이 끊어, 문장 단위로 최대 180자씩 나눠 읽습니다.
+  function splitReadAloudText(text) {
+    var pieces = []
+    var rest = normalizeText(text)
+    var cut = 0
+
+    while (rest.length > 180) {
+      cut = Math.max(rest.lastIndexOf('. ', 180), rest.lastIndexOf('? ', 180), rest.lastIndexOf('! ', 180))
+      if (cut < 40) cut = rest.lastIndexOf(' ', 180)
+      if (cut < 1) cut = 180
+      pieces.push(rest.slice(0, cut + 1).trim())
+      rest = rest.slice(cut + 1).trim()
+    }
+
+    if (rest) pieces.push(rest)
+
+    return pieces
+  }
+
+  function speakQueueItem(component, token, pieceIndex) {
     var synth = getSpeechSynthesisInstance()
     var queueItem = speechQueue[speechQueueIndex]
     var voice = findSelectedVoice(component)
     var utterance = null
     var rate = Number(component && component.readAloudRate ? component.readAloudRate : 1)
+    var pieces = queueItem ? splitReadAloudText(queueItem.text) : []
+    var currentPiece = pieceIndex || 0
 
     if (!component || !synth) {
       return
@@ -1626,7 +1648,13 @@ window.booklogReaderLogic = (function () {
       return
     }
 
-    utterance = new window.SpeechSynthesisUtterance(queueItem.text)
+    if (!pieces.length) {
+      speechQueueIndex += 1
+      speakQueueItem(component, token)
+      return
+    }
+
+    utterance = new window.SpeechSynthesisUtterance(pieces[currentPiece])
     utterance.lang = voice && voice.lang ? String(voice.lang) : 'ko-KR'
     utterance.rate = isFinite(rate) ? Math.max(0.8, Math.min(1.6, rate)) : 1
 
@@ -1643,20 +1671,27 @@ window.booklogReaderLogic = (function () {
       speechCurrentComponent = component
       component.readAloudBusy = false
       component.readAloudPlaying = true
-      activateReadAloudHighlight(queueItem)
+      if (currentPiece === 0) activateReadAloudHighlight(queueItem)
       component.readAloudMessage = '현재 챕터를 읽는 중입니다.'
     }
 
     utterance.onend = function () {
+      var nextPiece = currentPiece + 1
+
       if (token !== speechActiveToken) {
         return
       }
 
       speechCurrentUtterance = null
-      speechQueueIndex += 1
+
+      if (nextPiece >= pieces.length) {
+        speechQueueIndex += 1
+        nextPiece = 0
+      }
+
       clearSpeechRestartTimer()
       speechRestartTimerId = setTimeout(function () {
-        speakQueueItem(component, token)
+        speakQueueItem(component, token, nextPiece)
       }, 40)
     }
 
@@ -1669,7 +1704,7 @@ window.booklogReaderLogic = (function () {
         message: event && event.error ? String(event.error) : 'speech error',
       })
       stopSpeechPlayback(component, { keepMessage: true })
-      component.readAloudMessage = '읽어주기 재생에 실패했습니다.'
+      component.readAloudMessage = '책 듣기 재생에 실패했습니다.'
     }
 
     synth.speak(utterance)
@@ -3355,7 +3390,7 @@ window.booklogReaderLogic = (function () {
     var fallbackTimerId = 0
 
     if (!hasSameOriginReferrer()) {
-      window.location.href = bookDetailPath
+      window.location.replace(bookDetailPath)
       return
     }
 
@@ -6113,7 +6148,7 @@ window.booklogReaderLogic = (function () {
 
     if (!component || !synth) {
       if (component) {
-        component.readAloudMessage = '이 브라우저는 읽어주기를 지원하지 않습니다.'
+        component.readAloudMessage = '이 브라우저는 책 듣기 기능을 지원하지 않습니다.'
       }
       return
     }
@@ -6340,7 +6375,7 @@ window.booklogReaderLogic = (function () {
     })
 
     if (component) {
-      component.readAloudMessage = '읽어주기를 멈췄습니다.'
+      component.readAloudMessage = '책 듣기를 멈췄습니다.'
     }
   }
 
