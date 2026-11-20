@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-bookworm-slim AS deps
+FROM node:26-bookworm-slim AS deps
 
 WORKDIR /app/apps/booklog
 
@@ -16,7 +16,7 @@ RUN npm ci --no-audit --no-fund \
     && npm prune --omit=dev --no-audit --no-fund
 
 
-FROM node:24-bookworm-slim AS css
+FROM node:26-bookworm-slim AS css
 
 WORKDIR /app
 

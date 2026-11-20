@@ -824,7 +824,7 @@ export {}
 function buildDockerfile(options) {
   const service = options.service
   const cssStage = hasFeature(options, 'unocss')
-    ? `FROM node:24-bookworm-slim AS css
+    ? `FROM node:26-bookworm-slim AS css
 
 WORKDIR /app
 
@@ -846,7 +846,7 @@ RUN bash ./task.sh css ${service}`
 
   return `# syntax=docker/dockerfile:1
 
-FROM node:24-bookworm-slim AS deps
+FROM node:26-bookworm-slim AS deps
 
 WORKDIR /app/apps/${service}
 

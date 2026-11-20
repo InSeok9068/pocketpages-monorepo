@@ -5,7 +5,7 @@
     "format": "prettier --write --cache --cache-location .cache/prettier/.prettier-cache \"apps/*/pb_hooks/**/*\" \"packages/**/*.js\" \"packages/**/*.mjs\" \"packages/**/*.d.ts\"",
     "test:pocketpages-compat": "node --test --test-concurrency=1 \"apps/sample/__tests__/*.test.mjs\"",
     "test:pocketpages-patches": "node --test scripts/pocketpages-patches.test.mjs scripts/pocketpages-ejs-cache.test.mjs scripts/pocketpages-include-paths.test.mjs",
-    "test:booklog:webkit":"playwright test --config=apps/booklog/playwright.config.mjs --project=webkit"
+    "test:booklog:webkit": "playwright test --config=apps/booklog/playwright.config.mjs --project=webkit"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -13,7 +13,7 @@
     "@inquirer/prompts": "^8.5.2",
     "@playwright/test": "^1.63.0",
     "@pocketpages/test-support": "file:packages/test-support",
-    "@types/node": "^24.13.2",
+    "@types/node": "^26.6.6",
     "@unocss/cli": "66.13.0",
     "@unocss/preset-icons": "66.13.0",
     "@unocss/preset-wind4": "66.13.0",
