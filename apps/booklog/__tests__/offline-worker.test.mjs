@@ -46,6 +46,8 @@ function createWorker(options = {}) {
   const context = {
     URL,
     Promise,
+    setTimeout,
+    clearTimeout,
     Request: class {
       constructor(url, init) {
         this.url = url
@@ -80,6 +82,7 @@ function createWorker(options = {}) {
     },
   }
   vm.runInNewContext(workerSource, context)
+  if (options.homeWaitMs !== undefined) context.BOOKLOG_HOME_WAIT_MS = options.homeWaitMs
   return { listeners, stores, pageFetches, fileFetches, state }
 }
 
@@ -172,6 +175,31 @@ test('A page visit that fails on the network shows the offline shelf', async () 
   assert.deepEqual(worker.fileFetches, [], 'nothing is downloaded while offline')
 })
 
+test('Home prefers a prompt server response but serves the saved shelf if the server stalls', async () => {
+  const options = { homeWaitMs: 0, caches: { 'booklog-offline-v1': ALL_FILES } }
+  const fast = createWorker(options)
+  const slow = createWorker(options)
+  assert.equal((await dispatch(fast, 'fetch', { request: navigation('/') })).response, 'network:' + origin + '/')
+  const { response } = await dispatch(slow, 'fetch', {
+    request: navigation('/'),
+    preloadResponse: new Promise(() => {}),
+  })
+  assert.equal(response, 'old')
+  assert.deepEqual(slow.fileFetches, [])
+})
+
+test('Slow home without a cached shelf and other slow routes still use the server response', async () => {
+  const cases = [
+    [createWorker({ homeWaitMs: 0 }), '/'],
+    [createWorker({ homeWaitMs: 0, caches: { 'booklog-offline-v1': ALL_FILES } }), '/library'],
+  ]
+  for (const [worker, path] of cases) {
+    const preloadResponse = new Promise((resolve) => setTimeout(() => resolve('preloaded:' + path), 10))
+    const { response } = await dispatch(worker, 'fetch', { request: navigation(path), preloadResponse })
+    assert.equal(response, 'preloaded:' + path)
+  }
+})
+
 test('Without a saved offline shelf, a failed visit stays the browser network error', async () => {
   const worker = createWorker({ offline: true })
   const { response } = await dispatch(worker, 'fetch', { request: navigation('/library') })
@@ -191,16 +219,15 @@ test('The PocketBase admin uses the preloaded page but never shows the offline s
   await assert.rejects(dispatch(offline, 'fetch', { request: navigation('/_/') }), /Failed to fetch/)
 })
 
-test('Offline shelf assets use the network when available and fall back only to the offline cache', async () => {
-  const online = createWorker({ caches: { 'booklog-offline-v1': ALL_FILES } })
-  const offline = createWorker({ offline: true, caches: { 'booklog-offline-v1': ALL_FILES } })
-  const missing = createWorker({ offline: true, caches: { 'other-cache': ALL_FILES } })
+test('Offline shelf assets use the offline cache first and fetch only on a miss', async () => {
+  const cached = createWorker({ offline: true, caches: { 'booklog-offline-v1': ALL_FILES } })
+  const missing = createWorker({ caches: { 'other-cache': ALL_FILES } })
   for (const path of ALL_FILES.slice(1)) {
     const request = { url: origin + path, mode: 'no-cors', method: 'GET' }
-    assert.equal((await dispatch(online, 'fetch', { request })).response, 'network:' + request.url)
-    assert.equal((await dispatch(offline, 'fetch', { request })).response, 'old')
-    assert.equal((await dispatch(missing, 'fetch', { request })).response, 'response-error')
+    assert.equal((await dispatch(cached, 'fetch', { request })).response, 'old')
+    assert.equal((await dispatch(missing, 'fetch', { request })).response, 'network:' + request.url)
   }
+  assert.deepEqual(cached.pageFetches, [])
 })
 
 test('Unrelated files, versioned assets, form posts and other sites are left to the browser', async () => {

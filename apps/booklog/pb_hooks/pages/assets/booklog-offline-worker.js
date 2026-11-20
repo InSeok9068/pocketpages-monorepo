@@ -1,6 +1,7 @@
-// 푸시 서비스 워커에 함께 실리며, 네트워크 오류 때 오프라인 서재와 필요한 파일을 제공합니다.
+// 푸시 서비스 워커에 함께 실리며, 연결이 끊기거나 홈 응답이 지연될 때 오프라인 서재를 제공합니다.
 var BOOKLOG_OFFLINE_CACHE = 'booklog-offline-v1'
 var BOOKLOG_OFFLINE_PAGE = '/offline.html'
+var BOOKLOG_HOME_WAIT_MS = 2500
 var BOOKLOG_OFFLINE_SHELL = [BOOKLOG_OFFLINE_PAGE, '/assets/booklog-offline.js']
 var BOOKLOG_OFFLINE_FILES = BOOKLOG_OFFLINE_SHELL.concat([
   '/assets/vendor/jszip-3.10.1.min.js',
@@ -40,6 +41,25 @@ function refreshBooklogOfflineShell() {
 function serveBooklogOfflinePage() {
   return caches.match(BOOKLOG_OFFLINE_PAGE, { cacheName: BOOKLOG_OFFLINE_CACHE }).then(function (cached) {
     return cached || Response.error()
+  })
+}
+
+function raceBooklogHomeResponse(onlineResponse) {
+  var timerId = 0
+  var offlineResponse = new Promise(function (resolve) {
+    timerId = setTimeout(function () {
+      caches
+        .match(BOOKLOG_OFFLINE_PAGE, { cacheName: BOOKLOG_OFFLINE_CACHE })
+        .then(function (cached) {
+          // 준비된 오프라인 화면이 없으면 느리더라도 서버 응답을 기다립니다.
+          if (cached) resolve({ response: cached, offline: true })
+        })
+        .catch(function () {})
+    }, BOOKLOG_HOME_WAIT_MS)
+  })
+
+  return Promise.race([onlineResponse, offlineResponse]).finally(function () {
+    clearTimeout(timerId)
   })
 }
 
@@ -83,28 +103,37 @@ self.addEventListener('fetch', function (event) {
       return
 
     event.respondWith(
-      fetch(request).catch(function () {
-        return caches.match(url.pathname, { cacheName: BOOKLOG_OFFLINE_CACHE }).then(function (cached) {
-          return cached || Response.error()
+      caches
+        .match(url.pathname, { cacheName: BOOKLOG_OFFLINE_CACHE })
+        .catch(function () {
+          return null
         })
-      })
+        .then(function (cached) {
+          return cached || fetch(request)
+        })
     )
     return
   }
 
   // 미리 보낸 페이지 요청을 쓰지 않으면 같은 페이지를 두 번 받게 되어, 관리자 화면도 같은 응답을 그대로 넘깁니다.
+  var onlineResponse = Promise.resolve(event.preloadResponse)
+    .then(function (preloaded) {
+      return preloaded || fetch(request)
+    })
+    .then(function (response) {
+      return { response: response, offline: false }
+    })
+  var result = url.pathname === '/' && !url.search ? raceBooklogHomeResponse(onlineResponse) : onlineResponse
+
   event.respondWith(
-    Promise.resolve(event.preloadResponse)
-      .then(function (preloaded) {
-        return preloaded || fetch(request)
-      })
-      .then(function (response) {
-        if (!adminPage && !booklogOfflineShellRefreshed) {
+    result
+      .then(function (result) {
+        if (!result.offline && !adminPage && !booklogOfflineShellRefreshed) {
           booklogOfflineShellRefreshed = true
           event.waitUntil(refreshBooklogOfflineShell())
         }
 
-        return response
+        return result.response
       })
       .catch(function (error) {
         if (adminPage) throw error

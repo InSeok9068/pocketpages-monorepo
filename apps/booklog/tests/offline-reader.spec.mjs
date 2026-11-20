@@ -69,8 +69,14 @@ const offlineTest = test.extend({
       ['/assets/vendor/epubjs-0.3.93.min.js', 'text/javascript'],
       ['/assets/favicon.svg', 'image/svg+xml'],
     ])
+    let stalled = false
     const server = createServer((request, response) => {
       response.setHeader('Cache-Control', 'no-store')
+      if (request.url === '/stall') {
+        stalled = true
+        return response.writeHead(204).end()
+      }
+      if (stalled) return
       if (request.url === '/') {
         response.setHeader('Content-Type', 'text/html')
         response.end('<!doctype html><title>Booklog</title>')
@@ -89,7 +95,10 @@ const offlineTest = test.extend({
       await page.goto(origin)
       await use(origin)
     } finally {
-      await new Promise((resolve) => server.close(resolve))
+      await new Promise((resolve) => {
+        server.close(resolve)
+        server.closeAllConnections()
+      })
     }
   },
 })
@@ -151,6 +160,21 @@ test('A device without saved books explains how to keep one, and leaves no empty
     'booklog-reader-cache'
   )
 })
+
+offlineTest(
+  'A stalled home request does not keep the offline shelf and its scripts waiting',
+  async ({ page, workerOrigin }) => {
+    await page.evaluate(async () => {
+      await window.navigator.serviceWorker.register('/worker.js')
+      await window.navigator.serviceWorker.ready
+    })
+    await storeBook(page, buildBook())
+    await page.request.get(workerOrigin + '/stall')
+
+    await page.reload({ timeout: 6_000 })
+    await expect(page.getByRole('button', { name: /지하철에서 읽는 책/ })).toBeVisible()
+  }
+)
 
 offlineTest(
   'A saved book reads offline as one continuous scroll and reopens where reading stopped',
