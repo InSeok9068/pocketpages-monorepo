@@ -1,4 +1,4 @@
-// 푸시 서비스 워커에 함께 실리며, 페이지 이동이 네트워크 오류로 실패할 때만 오프라인 서재를 보여 줍니다.
+// 푸시 서비스 워커에 함께 실리며, 네트워크 오류 때 오프라인 서재와 필요한 파일을 제공합니다.
 var BOOKLOG_OFFLINE_CACHE = 'booklog-offline-v1'
 var BOOKLOG_OFFLINE_PAGE = '/offline.html'
 var BOOKLOG_OFFLINE_SHELL = [BOOKLOG_OFFLINE_PAGE, '/assets/booklog-offline.js']
@@ -75,7 +75,22 @@ self.addEventListener('fetch', function (event) {
   var url = new URL(request.url)
   var adminPage = url.pathname.indexOf('/_/') === 0
 
-  if (request.mode !== 'navigate' || request.method !== 'GET' || url.origin !== self.location.origin) return
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return
+
+  if (request.mode !== 'navigate') {
+    // 오프라인 HTML이 참조하는 파일만 대상으로 삼고 버전 쿼리가 붙은 온라인 자산은 건드리지 않습니다.
+    if (url.search || url.pathname === BOOKLOG_OFFLINE_PAGE || BOOKLOG_OFFLINE_FILES.indexOf(url.pathname) === -1)
+      return
+
+    event.respondWith(
+      fetch(request).catch(function () {
+        return caches.match(url.pathname, { cacheName: BOOKLOG_OFFLINE_CACHE }).then(function (cached) {
+          return cached || Response.error()
+        })
+      })
+    )
+    return
+  }
 
   // 미리 보낸 페이지 요청을 쓰지 않으면 같은 페이지를 두 번 받게 되어, 관리자 화면도 같은 응답을 그대로 넘깁니다.
   event.respondWith(

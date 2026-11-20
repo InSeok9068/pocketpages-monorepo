@@ -3,11 +3,19 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import vm from 'node:vm'
 
-const workerSource = readFileSync(new URL('../pb_hooks/pages/assets/booklog-offline-worker.js', import.meta.url), 'utf8')
+const workerSource = readFileSync(
+  new URL('../pb_hooks/pages/assets/booklog-offline-worker.js', import.meta.url),
+  'utf8'
+)
 const pushWorkerSource = readFileSync(new URL('../pb_public/OneSignalSDKWorker.js', import.meta.url), 'utf8')
 const origin = 'https://booklog.test'
 const SHELL = ['/offline.html', '/assets/booklog-offline.js']
-const ALL_FILES = [...SHELL, '/assets/vendor/jszip-3.10.1.min.js', '/assets/vendor/epubjs-0.3.93.min.js', '/assets/favicon.svg']
+const ALL_FILES = [
+  ...SHELL,
+  '/assets/vendor/jszip-3.10.1.min.js',
+  '/assets/vendor/epubjs-0.3.93.min.js',
+  '/assets/favicon.svg',
+]
 
 function createWorker(options = {}) {
   const listeners = {}
@@ -101,7 +109,10 @@ test('Installing downloads every offline shelf file fresh once', async () => {
   const worker = createWorker()
   await dispatch(worker, 'install')
   assert.deepEqual([...worker.stores.get('booklog-offline-v1').keys()], ALL_FILES)
-  assert.deepEqual(worker.fileFetches, ALL_FILES.map((file) => file + ' reload'))
+  assert.deepEqual(
+    worker.fileFetches,
+    ALL_FILES.map((file) => file + ' reload')
+  )
 })
 
 test('Installing while offline still installs the worker, so push keeps working', async () => {
@@ -136,13 +147,19 @@ test('After a page loads, the offline shelf is only revalidated, once per worker
   const worker = createWorker({ caches: { 'booklog-offline-v1': ALL_FILES } })
   await dispatch(worker, 'fetch', { request: navigation('/library') })
   await dispatch(worker, 'fetch', { request: navigation('/reviews') })
-  assert.deepEqual(worker.fileFetches, SHELL.map((file) => file + ' no-cache'))
+  assert.deepEqual(
+    worker.fileFetches,
+    SHELL.map((file) => file + ' no-cache')
+  )
 })
 
 test('A file missing from the offline shelf is fetched again after a page loads', async () => {
   const worker = createWorker({ caches: { 'booklog-offline-v1': SHELL } })
   await dispatch(worker, 'fetch', { request: navigation('/library') })
-  assert.deepEqual(worker.fileFetches.slice(SHELL.length), ALL_FILES.slice(SHELL.length).map((file) => file + ' default'))
+  assert.deepEqual(
+    worker.fileFetches.slice(SHELL.length),
+    ALL_FILES.slice(SHELL.length).map((file) => file + ' default')
+  )
 })
 
 test('A page visit that fails on the network shows the offline shelf', async () => {
@@ -174,10 +191,23 @@ test('The PocketBase admin uses the preloaded page but never shows the offline s
   await assert.rejects(dispatch(offline, 'fetch', { request: navigation('/_/') }), /Failed to fetch/)
 })
 
-test('Files, form posts and other sites are left to the browser', async () => {
+test('Offline shelf assets use the network when available and fall back only to the offline cache', async () => {
+  const online = createWorker({ caches: { 'booklog-offline-v1': ALL_FILES } })
+  const offline = createWorker({ offline: true, caches: { 'booklog-offline-v1': ALL_FILES } })
+  const missing = createWorker({ offline: true, caches: { 'other-cache': ALL_FILES } })
+  for (const path of ALL_FILES.slice(1)) {
+    const request = { url: origin + path, mode: 'no-cors', method: 'GET' }
+    assert.equal((await dispatch(online, 'fetch', { request })).response, 'network:' + request.url)
+    assert.equal((await dispatch(offline, 'fetch', { request })).response, 'old')
+    assert.equal((await dispatch(missing, 'fetch', { request })).response, 'response-error')
+  }
+})
+
+test('Unrelated files, versioned assets, form posts and other sites are left to the browser', async () => {
   const worker = createWorker()
   for (const request of [
     { url: origin + '/assets/style.css', mode: 'no-cors', method: 'GET' },
+    { url: origin + '/assets/vendor/epubjs-0.3.93.min.js?v=new', mode: 'no-cors', method: 'GET' },
     navigation('/xapi/epub/upload', 'POST'),
     { url: 'https://cdn.onesignal.com/page.js', mode: 'navigate', method: 'GET' },
   ]) {
@@ -203,5 +233,8 @@ test('The push worker still loads when the offline script cannot be fetched', ()
     },
   }
   assert.doesNotThrow(() => vm.runInNewContext(pushWorkerSource, context))
-  assert.deepEqual(imported, ['https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js', '/assets/booklog-offline-worker.js'])
+  assert.deepEqual(imported, [
+    'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js',
+    '/assets/booklog-offline-worker.js',
+  ])
 })

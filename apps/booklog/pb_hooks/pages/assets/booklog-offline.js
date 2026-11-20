@@ -7,18 +7,22 @@ window.booklogOfflineReader = (function () {
   var TITLE_KEY_PREFIX = 'booklog-offline:title:'
   var SETTINGS_KEY_PREFIX = 'booklog:reader-settings:'
   var POSITION_SAVE_DELAY_MS = 500
+  var PROGRESS_LOCATION_BREAK = 1600
+  var PROGRESS_LOCATIONS_CACHE_VERSION = 'epubjs-0.3.93:' + PROGRESS_LOCATION_BREAK
   var shelf = document.getElementById('offline-shelf')
   var list = document.getElementById('offline-book-list')
   var message = document.getElementById('offline-message')
   var reader = document.getElementById('offline-reader')
   var loadingNotice = document.getElementById('offline-loading')
   var backButton = document.getElementById('offline-back')
+  var progressBar = document.getElementById('offline-progress')
+  var progressFill = progressBar.firstElementChild
   var bookInstance = null
   var renditionInstance = null
   var currentLocation = null
   var readerContainer = null
   var isRestoringPosition = false
-  var activeComponent = { loading: true }
+  var activeComponent = { loading: true, progressLocationsStatus: 'pending' }
   var openKey = ''
   var lastLocator = ''
   var positionSaveTimerId = 0
@@ -32,10 +36,6 @@ window.booklogOfflineReader = (function () {
   function markReadingSessionActivity() {}
 
   function scheduleFinishPromptIfNeeded() {}
-
-  function getProgressPercentFromLocator() {
-    return ''
-  }
 
   // ---- 옮겨 온 리더 스크롤 (booklog-reader.js) ----
   var autoPagingTarget = null
@@ -2022,6 +2022,87 @@ window.booklogOfflineReader = (function () {
     positionSaveTimerId = window.setTimeout(savePosition, POSITION_SAVE_DELAY_MS)
   }
 
+  function getProgressPercentFromLocator(locator) {
+    var progressPercent = ''
+    var progressRatio = null
+
+    if (!activeComponent || activeComponent.progressLocationsStatus !== 'ready') {
+      return ''
+    }
+
+    try {
+      if (
+        locator
+        && bookInstance
+        && bookInstance.locations
+        && typeof bookInstance.locations.percentageFromCfi === 'function'
+      ) {
+        progressRatio = bookInstance.locations.percentageFromCfi(locator)
+
+        if (progressRatio === null || progressRatio === undefined || !isFinite(progressRatio)) {
+          return ''
+        }
+
+        progressPercent = String(Math.max(0, Math.min(100, Math.round(progressRatio * 100))))
+      }
+    } catch (exception) {
+      progressPercent = ''
+    }
+
+    return progressPercent
+  }
+
+  function updateOfflineProgress() {
+    var start = currentLocation && currentLocation.start
+    var percent = getProgressPercentFromLocator(start && start.cfi)
+
+    progressBar.hidden = percent === ''
+    progressFill.style.width = (percent || '0') + '%'
+    if (percent === '') {
+      progressBar.removeAttribute('aria-valuenow')
+    } else {
+      progressBar.setAttribute('aria-valuenow', percent)
+    }
+  }
+
+  function prepareOfflineProgress(entry, book) {
+    var locations = book.locations
+    var cached = null
+
+    if (entry.progressLocationsVersion === PROGRESS_LOCATIONS_CACHE_VERSION) {
+      try {
+        cached = JSON.parse(entry.progressLocations)
+        if (
+          Array.isArray(cached)
+          && cached.length > 0
+          && cached.every(function (locator) {
+            return typeof locator === 'string' && /^epubcfi\(.+\)$/.test(locator) && !!book.spine.get(locator)
+          })
+        ) {
+          locations.load(cached)
+          activeComponent.progressLocationsStatus = 'ready'
+          updateOfflineProgress()
+          return
+        }
+      } catch (_error) {
+        /* 캐시를 읽지 못하면 EPUB에서 위치를 계산합니다. */
+      }
+    }
+
+    Promise.resolve()
+      .then(function () {
+        if (book === bookInstance) return locations.generate(PROGRESS_LOCATION_BREAK)
+      })
+      .then(function (generated) {
+        if (book !== bookInstance) return
+        activeComponent.progressLocationsStatus = generated && generated.length > 0 ? 'ready' : 'failed'
+        updateOfflineProgress()
+      })
+      .catch(function () {
+        if (book === bookInstance) activeComponent.progressLocationsStatus = 'failed'
+      })
+  }
+
   function updateOfflineLocation(location) {
     var target = autoPagingTarget || resolveAutoPagingTarget()
 
@@ -2033,6 +2114,7 @@ window.booklogOfflineReader = (function () {
       lastContainerScrollTop = target.scrollTop || 0
     }
 
+    updateOfflineProgress()
     schedulePositionSave()
   }
 
@@ -2053,6 +2135,7 @@ window.booklogOfflineReader = (function () {
     reader.hidden = false
     setLoading(true)
     syncReaderPageTheme(settings.theme)
+    progressBar.dataset.theme = settings.theme
     window.history.pushState({ booklogOfflineBook: entry.cacheKey }, '')
 
     readerContainer = document.getElementById('epub-reader')
@@ -2103,6 +2186,8 @@ window.booklogOfflineReader = (function () {
     })
 
     renditionInstance.on('relocated', function (location) {
+      if (startedRendition !== renditionInstance) return
+
       var target = syncAutoPagingTarget()
 
       if (target) bindAutoPaging(activeComponent, target)
@@ -2147,6 +2232,7 @@ window.booklogOfflineReader = (function () {
         if (startedRendition !== renditionInstance) return
         setLoading(false)
         lastLocator = readVisibleLocator()
+        prepareOfflineProgress(entry, bookInstance)
       })
       .catch(function () {
         if (startedRendition !== renditionInstance) return
@@ -2172,6 +2258,8 @@ window.booklogOfflineReader = (function () {
     renditionInstance = null
     bookInstance = null
     currentLocation = null
+    activeComponent.progressLocationsStatus = 'pending'
+    updateOfflineProgress()
     readingAnchor = null
     autoPagingTarget = null
     isRestoringPosition = false

@@ -1,4 +1,7 @@
 /* global window, document, indexedDB, getComputedStyle */
+import { once } from 'node:events'
+import { readFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
@@ -27,7 +30,9 @@ function buildBook() {
     'OPS/book.opf': strToU8(
       '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">offline-book</dc:identifier><dc:title>지하철에서 읽는 책</dc:title><dc:creator>오프라인 저자</dc:creator><dc:language>ko</dc:language></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>'
         + chapters
-          .map((number) => '<item id="c' + number + '" href="c' + number + '.xhtml" media-type="application/xhtml+xml"/>')
+          .map(
+            (number) => '<item id="c' + number + '" href="c' + number + '.xhtml" media-type="application/xhtml+xml"/>'
+          )
           .join('')
         + '</manifest><spine>'
         + chapters.map((number) => '<itemref idref="c' + number + '"/>').join('')
@@ -55,20 +60,58 @@ async function serveOffline(page) {
   )
 }
 
+const offlineTest = test.extend({
+  workerOrigin: async ({ page }, use) => {
+    const files = new Map([
+      ['/offline.html', 'text/html'],
+      ['/assets/booklog-offline.js', 'text/javascript'],
+      ['/assets/vendor/jszip-3.10.1.min.js', 'text/javascript'],
+      ['/assets/vendor/epubjs-0.3.93.min.js', 'text/javascript'],
+      ['/assets/favicon.svg', 'image/svg+xml'],
+    ])
+    const server = createServer((request, response) => {
+      response.setHeader('Cache-Control', 'no-store')
+      if (request.url === '/') {
+        response.setHeader('Content-Type', 'text/html')
+        response.end('<!doctype html><title>Booklog</title>')
+      } else if (request.url === '/worker.js' || files.has(request.url)) {
+        const path = request.url === '/worker.js' ? '/assets/booklog-offline-worker.js' : request.url
+        response.setHeader('Content-Type', files.get(path) || 'text/javascript')
+        response.end(readFileSync(new URL(path.slice(1), pagesRoot)))
+      } else {
+        response.writeHead(404).end()
+      }
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    try {
+      const origin = 'http://127.0.0.1:' + server.address().port
+      await page.goto(origin)
+      await use(origin)
+    } finally {
+      await new Promise((resolve) => server.close(resolve))
+    }
+  },
+})
+
 async function storeBook(page, bytes) {
   await page.evaluate(
     ({ key, data }) =>
       new Promise((resolve, reject) => {
         const request = indexedDB.open('booklog-reader-cache', 2)
         request.onupgradeneeded = () => {
-          request.result.createObjectStore('epubBuffers', { keyPath: 'cacheKey' }).createIndex('lastOpenedAt', 'lastOpenedAt')
+          request.result
+            .createObjectStore('epubBuffers', { keyPath: 'cacheKey' })
+            .createIndex('lastOpenedAt', 'lastOpenedAt')
         }
         request.onerror = () => reject(request.error)
         request.onsuccess = () => {
           const db = request.result
           const buffer = new Uint8Array(data).buffer
           const transaction = db.transaction('epubBuffers', 'readwrite')
-          transaction.objectStore('epubBuffers').put({ cacheKey: key, buffer, byteLength: buffer.byteLength, lastOpenedAt: Date.now() })
+          transaction
+            .objectStore('epubBuffers')
+            .put({ cacheKey: key, buffer, byteLength: buffer.byteLength, lastOpenedAt: Date.now() })
           transaction.oncomplete = () => {
             db.close()
             resolve()
@@ -82,7 +125,8 @@ async function storeBook(page, bytes) {
 function scroller(page) {
   return page.evaluateHandle(() =>
     [...document.querySelectorAll('#epub-reader, #epub-reader .epub-container')].find(
-      (element) => element.scrollHeight > element.clientHeight + 10 && /auto|scroll/.test(getComputedStyle(element).overflowY)
+      (element) =>
+        element.scrollHeight > element.clientHeight + 10 && /auto|scroll/.test(getComputedStyle(element).overflowY)
     )
   )
 }
@@ -108,41 +152,58 @@ test('A device without saved books explains how to keep one, and leaves no empty
   )
 })
 
-test('A saved book reads offline as one continuous scroll and reopens where reading stopped', async ({ page }) => {
-  await serveOffline(page)
-  await page.goto('/offline.html')
-  await storeBook(page, buildBook())
-  await page.evaluate(() =>
-    window.localStorage.setItem('booklog:reader-settings:reader1', JSON.stringify({ theme: 'night', fontSizePercent: 120 }))
-  )
-  await page.reload()
-
-  const book = page.getByRole('button', { name: /지하철에서 읽는 책/ })
-  await expect(book).toContainText('오프라인 저자 · 처음부터 읽기')
-  await book.click()
-  await expect(page.locator('#offline-loading')).toBeHidden({ timeout: 15_000 })
-  await expect.poll(() => chapterAtTop(page)).toBe('1장')
-  expect(
-    await page.frameLocator('#epub-reader iframe').first().locator('body').evaluate((body) => getComputedStyle(body).backgroundColor),
-    'the theme chosen in the online reader is used'
-  ).toBe('rgb(22, 22, 22)')
-
-  const target = await scroller(page)
-  for (let step = 0; step < 80 && (await chapterAtTop(page)) !== '2장'; step += 1) {
-    await target.evaluate((element) => element.scrollBy(0, 300))
-    await page.waitForTimeout(60)
-  }
-  expect(await chapterAtTop(page), 'scrolling past the first chapter flows into the next one').toBe('2장')
-  await expect
-    .poll(() =>
-      page.evaluate((key) => JSON.parse(window.localStorage.getItem('booklog-offline:position:' + key) || '{}').locator || '', CACHE_KEY)
+offlineTest(
+  'A saved book reads offline as one continuous scroll and reopens where reading stopped',
+  async ({ page, context, workerOrigin }) => {
+    await page.evaluate(async () => {
+      await window.navigator.serviceWorker.register('/worker.js')
+      await window.navigator.serviceWorker.ready
+    })
+    await storeBook(page, buildBook())
+    await page.evaluate(() =>
+      window.localStorage.setItem(
+        'booklog:reader-settings:reader1',
+        JSON.stringify({ theme: 'night', fontSizePercent: 120 })
+      )
     )
-    .toMatch(/^epubcfi\(\/6\/4!/)
+    await context.setOffline(true)
+    await page.goto(workerOrigin + '/library')
 
-  await page.getByRole('button', { name: '목록' }).click()
-  await expect(page.getByRole('heading', { name: '오프라인 서재' })).toBeVisible()
-  await expect(book).toContainText('이어 읽기')
-  await book.click()
-  await expect(page.locator('#offline-loading')).toBeHidden({ timeout: 15_000 })
-  await expect.poll(() => chapterAtTop(page), { message: 'reopening returns to the second chapter' }).toBe('2장')
-})
+    const book = page.getByRole('button', { name: /지하철에서 읽는 책/ })
+    await expect(book).toContainText('오프라인 저자 · 처음부터 읽기')
+    await book.click()
+    await expect(page.locator('#offline-loading')).toBeHidden({ timeout: 15_000 })
+    await expect.poll(() => chapterAtTop(page)).toBe('1장')
+    expect(
+      await page
+        .frameLocator('#epub-reader iframe')
+        .first()
+        .locator('body')
+        .evaluate((body) => getComputedStyle(body).backgroundColor),
+      'the theme chosen in the online reader is used'
+    ).toBe('rgb(22, 22, 22)')
+
+    const target = await scroller(page)
+    for (let step = 0; step < 80 && (await chapterAtTop(page)) !== '2장'; step += 1) {
+      await target.evaluate((element) => element.scrollBy(0, 300))
+      await page.waitForTimeout(60)
+    }
+    expect(await chapterAtTop(page), 'scrolling past the first chapter flows into the next one').toBe('2장')
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (key) => JSON.parse(window.localStorage.getItem('booklog-offline:position:' + key) || '{}').locator || '',
+          CACHE_KEY
+        )
+      )
+      .toMatch(/^epubcfi\(\/6\/4!/)
+
+    await expect(page.getByRole('progressbar', { name: '읽기 진행률' })).toHaveAttribute('aria-valuenow', /^[1-9]\d*$/)
+    await page.getByRole('button', { name: '오프라인 서재 목록으로 돌아가기' }).click()
+    await expect(page.getByRole('heading', { name: '오프라인 서재' })).toBeVisible()
+    await expect(book).toContainText('이어 읽기')
+    await book.click()
+    await expect(page.locator('#offline-loading')).toBeHidden({ timeout: 15_000 })
+    await expect.poll(() => chapterAtTop(page), { message: 'reopening returns to the second chapter' }).toBe('2장')
+  }
+)

@@ -129,16 +129,42 @@
       }
       .reader-back {
         position: fixed;
-        top: calc(env(safe-area-inset-top) + 0.75rem);
-        left: calc(env(safe-area-inset-left) + 0.75rem);
+        right: calc(env(safe-area-inset-right) + 0.75rem);
+        bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
         z-index: 20;
-        min-height: 2.5rem;
-        padding: 0 1rem;
+        display: grid;
+        width: 2.75rem;
+        height: 2.75rem;
+        padding: 0;
+        place-items: center;
         border: 0;
         border-radius: 999px;
         background: rgba(24, 19, 16, 0.72);
         color: #ffffff;
-        font-size: 0.9rem;
+      }
+      .reader-progress {
+        position: fixed;
+        inset: auto 0 0;
+        z-index: 10;
+        height: 4px;
+        background: rgba(28, 25, 23, 0.1);
+        pointer-events: none;
+      }
+      .reader-progress-fill {
+        width: 0;
+        height: 100%;
+        background: rgba(120, 93, 63, 0.28);
+      }
+      .reader-progress[data-theme='night'] {
+        background: rgba(255, 255, 255, 0.18);
+      }
+      .reader-progress[data-theme='night'] .reader-progress-fill {
+        background: rgba(232, 225, 214, 0.58);
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .reader-progress-fill {
+          transition: width 300ms;
+        }
       }
       .reader-loading {
         position: fixed;
@@ -189,8 +215,19 @@
       <button
         id="offline-back"
         class="reader-back"
-        type="button">
-        목록
+        type="button"
+        aria-label="오프라인 서재 목록으로 돌아가기">
+        <svg
+          aria-hidden="true"
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round">
+          <path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
+        </svg>
       </button>
       <p
         id="offline-loading"
@@ -200,6 +237,14 @@
         책을 여는 중입니다.
       </p>
       <div id="epub-reader"></div>
+      <div
+        id="offline-progress"
+        class="reader-progress"
+        role="progressbar"
+        aria-label="읽기 진행률"
+        hidden>
+        <div class="reader-progress-fill"></div>
+      </div>
     </section>
 
     <script src="/assets/vendor/jszip-3.10.1.min.js"></script>
