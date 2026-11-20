@@ -34,6 +34,8 @@ function createEpubBookMetadataService(dependencies) {
   const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50
   const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50
   const ZIP_MAX_EOCD_SEARCH_BYTES = 22 + 65535
+  const DRM_MARKER_ENTRY_PATHS = ['meta-inf/rights.xml', 'meta-inf/sinf.xml', 'meta-inf/license.lcpl']
+  const FONT_OBFUSCATION_ALGORITHMS = ['http://www.idpf.org/2008/embedding', 'http://ns.adobe.com/pdf/enc#RC']
   const xmlParser = new XMLParser({
     ignoreAttributes: false,
     attributesGroupName: '@attrs',
@@ -103,6 +105,43 @@ function createEpubBookMetadataService(dependencies) {
     }
 
     return decodeArchiveBytes(archiveEntries[entryPath])
+  }
+
+  /**
+   * 표준 DRM 표시로 EPUB이 암호화됐는지 확인합니다. 글꼴 난독화만 있는 파일은 정상으로 봅니다.
+   * @param {Record<string, Uint8Array>} archiveEntries 압축을 푼 텍스트 항목
+   * @param {string[]} entryNames 압축 안의 전체 파일 경로
+   * @returns {{ isProtected: boolean, reason: string }} DRM 여부와 근거
+   */
+  function detectEpubDrm(archiveEntries, entryNames) {
+    const names = Array.isArray(entryNames) ? entryNames : []
+    const markerName = names.find(function (name) {
+      return DRM_MARKER_ENTRY_PATHS.indexOf(String(name || '').toLowerCase()) >= 0
+    })
+
+    if (markerName) {
+      return { isProtected: true, reason: markerName }
+    }
+
+    const encryptionPath = names.find(function (name) {
+      return String(name || '').toLowerCase() === 'meta-inf/encryption.xml'
+    })
+    const encryptionDocument = parseXmlDocument(readArchiveText(archiveEntries, encryptionPath))
+    const encryptedItems = getXmlValues(getXmlChild(encryptionDocument, 'encryption'), 'EncryptedData')
+    const protectedItem = encryptedItems.find(function (item) {
+      const algorithm = getXmlAttribute(getXmlChild(item, 'EncryptionMethod'), 'Algorithm')
+
+      return !!algorithm && FONT_OBFUSCATION_ALGORITHMS.indexOf(algorithm) < 0
+    })
+
+    if (protectedItem) {
+      return {
+        isProtected: true,
+        reason: getXmlAttribute(getXmlChild(protectedItem, 'EncryptionMethod'), 'Algorithm'),
+      }
+    }
+
+    return { isProtected: false, reason: '' }
   }
 
   function shouldExtractEpubTextEntry(entryPath) {
@@ -2043,6 +2082,7 @@ function createEpubBookMetadataService(dependencies) {
     dirname: dirname,
     joinPath: joinPath,
     readArchiveText: readArchiveText,
+    detectEpubDrm: detectEpubDrm,
     readUploadedFileBytes: readUploadedFileBytes,
     readUploadedEpubArchiveSnapshot: readUploadedEpubArchiveSnapshot,
     parseXmlDocument: parseXmlDocument,

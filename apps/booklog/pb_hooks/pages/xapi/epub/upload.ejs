@@ -15,6 +15,7 @@
     MAX_EPUB_BYTES,
     normalizePreview,
     readArchiveText,
+    detectEpubDrm,
     readUploadedFileBytes,
     readUploadedEpubArchiveSnapshot,
     parseXmlDocument,
@@ -492,6 +493,17 @@
       stageMs: archiveReadDoneAt - archiveReadStartedAt,
       elapsedMs: archiveReadDoneAt - uploadStartedAt,
     })
+    const drmCheck = detectEpubDrm(archiveEntries, entryNames)
+
+    if (drmCheck.isProtected) {
+      warn('xapi/epub/upload:drm-protected', {
+        userId: userId,
+        originalName: originalFileName,
+        reason: drmCheck.reason,
+      })
+      throw createUserError('DRM이 걸린 EPUB은 열 수 없습니다. DRM이 없는 파일을 올려 주세요.')
+    }
+
     const fileLookupStartedAt = Date.now()
     const fileLookup = resolveExistingBookFileLookup({
       archiveSnapshot: archiveSnapshot,

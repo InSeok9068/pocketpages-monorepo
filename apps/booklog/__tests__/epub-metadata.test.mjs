@@ -292,3 +292,48 @@ test('Page counts read body files whose manifest paths are percent-encoded, as w
   assert.equal(encoded.textCharCount, plain.textCharCount, 'both body files are read')
   assert.equal(encoded.estimatedPageCount, plain.estimatedPageCount)
 })
+
+test('Standard DRM markers are detected, while font obfuscation alone is a normal EPUB', () => {
+  const { service } = createService()
+  const { strToU8 } = require('fflate')
+  const encryption = (items) =>
+    strToU8(
+      '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#">'
+        + items
+          .map(
+            (item) =>
+              '<enc:EncryptedData><enc:EncryptionMethod Algorithm="'
+              + item.algorithm
+              + '"/><enc:CipherData><enc:CipherReference URI="'
+              + item.uri
+              + '"/></enc:CipherData></enc:EncryptedData>'
+          )
+          .join('')
+        + '</encryption>'
+    )
+  const check = (entries) => ({ ...service.detectEpubDrm(entries, Object.keys(entries)) })
+
+  assert.deepEqual(check({ 'OPS/c1.xhtml': strToU8('<html/>') }), { isProtected: false, reason: '' })
+  assert.equal(
+    check({
+      'META-INF/encryption.xml': encryption([
+        { algorithm: 'http://www.idpf.org/2008/embedding', uri: 'OPS/fonts/a.otf' },
+        { algorithm: 'http://ns.adobe.com/pdf/enc#RC', uri: 'OPS/fonts/b.ttf' },
+      ]),
+    }).isProtected,
+    false,
+    'font obfuscation from IDPF or Adobe is not DRM'
+  )
+  assert.deepEqual(
+    check({
+      'META-INF/encryption.xml': encryption([
+        { algorithm: 'http://www.idpf.org/2008/embedding', uri: 'OPS/fonts/a.otf' },
+        { algorithm: 'http://www.w3.org/2001/04/xmlenc#aes256-cbc', uri: 'OPS/c1.xhtml' },
+      ]),
+    }),
+    { isProtected: true, reason: 'http://www.w3.org/2001/04/xmlenc#aes256-cbc' }
+  )
+  assert.equal(check({ 'META-INF/rights.xml': strToU8('<rights/>') }).reason, 'META-INF/rights.xml', 'Adobe ADEPT')
+  assert.equal(check({ 'META-INF/license.lcpl': strToU8('{}') }).reason, 'META-INF/license.lcpl', 'Readium LCP')
+  assert.equal(check({ 'META-INF/sinf.xml': strToU8('<sinf/>') }).reason, 'META-INF/sinf.xml', 'Apple FairPlay')
+})

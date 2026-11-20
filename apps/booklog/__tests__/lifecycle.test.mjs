@@ -270,3 +270,30 @@ test('Taking the book off the shelf clears every personal record but keeps the s
   const position = await send('/api/books/load-progress', { bookId: book.bookId })
   assert.notEqual(position.status, 200)
 })
+
+test('A DRM-protected EPUB is turned away at upload instead of landing on the shelf unreadable', async () => {
+  assert.ok(cookie, 'runs after the reader signed in')
+  const drmTitle = 'DRM이 걸린 책'
+  const bytes = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OPS/book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+    ),
+    'META-INF/encryption.xml': strToU8(
+      '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#"><enc:EncryptedData><enc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes256-cbc"/><enc:CipherData><enc:CipherReference URI="OPS/c1.xhtml"/></enc:CipherData></enc:EncryptedData></encryption>'
+    ),
+    'OPS/book.opf': strToU8(
+      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">drm-book</dc:identifier><dc:title>'
+        + drmTitle
+        + '</dc:title><dc:language>ko</dc:language></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>'
+    ),
+    'OPS/c1.xhtml': strToU8('encrypted-bytes'),
+  })
+  const form = new FormData()
+  form.set('epubFile', new Blob([bytes], { type: 'application/epub+zip' }), 'drm-book.epub')
+  const upload = await send('/xapi/epub/upload', form)
+
+  assert.equal(upload.status, 303)
+  assert.match(flash(upload), /DRM이 걸린 EPUB은 열 수 없습니다/)
+  assert.ok(!(await page('/library')).text().includes(drmTitle), 'the protected book is not added')
+})
