@@ -54,6 +54,7 @@ const epubAudioHtmlToText = compileHtmlToText({
     { selector: 'nav', format: 'skip' },
     { selector: '[hidden]', format: 'skip' },
     { selector: '[aria-hidden="true"]', format: 'skip' },
+    { selector: 'hr', format: 'block' },
     { selector: 'blockquote', format: 'block' },
     { selector: 'ul', format: 'block' },
     { selector: 'ol', format: 'block' },
@@ -621,8 +622,10 @@ function withoutTrailingNoteHeading(text, noteStart) {
 }
 
 function htmlToAudioText(html) {
+  // 장면 구분 기호만 빼고 빈 문단은 남깁니다.
+  const narrativeHtml = html.replace(/<p\s+class=(?:"center"|'center')\s*>\s*[∞*]\s*<\/p\s*>/gi, '<p>&nbsp;</p>')
   return (
-    epubAudioHtmlToText(html)
+    epubAudioHtmlToText(narrativeHtml)
       .replace(/\r/g, '')
       .replace(/\u00a0/g, ' ')
       .replace(/\u00ad/g, '')

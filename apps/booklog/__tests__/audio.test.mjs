@@ -1285,6 +1285,20 @@ test('Narration joins letter-spaced Latin titles and drops decorative bullets on
   )
 })
 
+test('Narration replaces standalone centered scene markers with blank paragraphs', () => {
+  const start = '<p>첫 장면.</p>'
+  const middle = '<p>둘째 장면.</p>'
+  const end = '<p class="center">∞는 무한대를 뜻합니다.</p><p>*단, 설명은 남깁니다.</p><p>2 * 3</p><p>∞</p><p>*</p>'
+  const chunks = audioChunksForHtml(start + '<p class="center">∞</p>' + middle + "<p class='center'> * </p>" + end)
+  assert.equal(chunks.join(''), audioChunksForHtml(start + '<p>&nbsp;</p>' + middle + '<p>&nbsp;</p>' + end).join(''))
+  assert.match(chunks.join(''), /∞는 무한대를 뜻합니다\.\n+\*단, 설명은 남깁니다\.\n+2 \* 3\n+∞\n+\*$/)
+})
+
+test('Narration keeps horizontal rules as boundaries without generating dashes', () => {
+  const chunks = audioChunksForHtml('<p>첫 장면.</p><hr class="divider" /><p>둘째 장면 — 본문.</p>')
+  assert.match(chunks.join(''), /^첫 장면\.\n{2,}둘째 장면 — 본문\.$/)
+})
+
 test('Narration omits navigation and hidden text without introducing list or quotation markers', () => {
   const chunks = audioChunksForHtml(
     '<nav>목차</nav><p hidden>숨긴 글</p><p aria-hidden="true">장식</p>'
