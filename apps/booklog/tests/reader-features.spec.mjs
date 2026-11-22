@@ -43,7 +43,7 @@ function chapterBody(chapter) {
       chapter === 3 && index === 19
         ? ' 여기에 ' + SEARCH_WORD + '가 숨어 있습니다.'
         : chapter === 2 && index === 4
-          ? ' 본문에 적힌 &lt;img src=x onerror=&quot;window.__searchXss=1&quot;&gt; 표식입니다.'
+          ? ' 본문에 적힌 &lt;img src=x onerror=&quot;window.__searchXss=1&quot;&gt; 표식입니다. example &amp; sample 표기도 있습니다.'
           : ''
     return (
       '<p>'
@@ -58,7 +58,8 @@ function chapterBody(chapter) {
   return '<h1>' + chapter + '장</h1>' + paragraphs
 }
 
-function buildBook(chapterCount) {
+// navItems를 넘기면 id 없는 목차처럼 실제 EPUB에서 보이는 목차 구조를 시험할 수 있습니다.
+function buildBook(chapterCount, navItems) {
   const chapters = Array.from({ length: chapterCount }, (_, index) => index + 1)
   return zipSync({
     'mimetype': strToU8('application/epub+zip'),
@@ -76,7 +77,7 @@ function buildBook(chapterCount) {
     ),
     'nav.xhtml': xhtml(
       '<nav epub:type="toc"><ol>'
-        + chapters.map((n) => '<li><a href="c' + n + '.xhtml">' + n + '장</a></li>').join('')
+        + (navItems || chapters.map((n) => '<li><a href="c' + n + '.xhtml">' + n + '장</a></li>').join(''))
         + '</ol></nav>'
     ),
     ...Object.fromEntries(chapters.map((n) => ['c' + n + '.xhtml', xhtml(chapterBody(n))])),
@@ -661,6 +662,49 @@ test('A book opened once is read from the device cache next time instead of down
 
   await expectChapter(page, 1)
   expect(state.epubDownloads, 'the second opening uses the stored copy').toBe(1)
+})
+
+test('Search highlights matches that contain quotes or ampersands without breaking the text', async ({ page }) => {
+  await openReader(page)
+  await openMenuItem(page, '검색')
+  const input = page.locator('#reader-search-input')
+
+  // 따옴표가 든 검색어도 결과 안에서 강조됩니다.
+  await input.fill('onerror="window')
+  await input.press('Enter')
+  const quoted = page.getByRole('button', { name: /onerror="window/ })
+  await expect(quoted).toBeVisible()
+  await expect(quoted.locator('mark')).toHaveText(['onerror="window'])
+
+  // 검색어가 &amp; 같은 표기의 일부와 겹쳐도 본문의 & 가 그대로 보이고, 본문 낱말만 강조됩니다.
+  await input.fill('amp')
+  await input.press('Enter')
+  // 한 문단에 두 번 나오면 epub.js가 일치마다 결과를 따로 만들어, 같은 문단 결과가 둘 나옵니다.
+  const amp = page.getByRole('button', { name: /example & sample/ }).first()
+  await expect(page.getByText('2개의 결과를 찾았습니다.')).toBeVisible()
+  await expect(amp).toBeVisible()
+  await expect(amp).not.toContainText('&amp;')
+  await expect(amp.locator('mark')).toHaveText(['amp', 'amp'])
+})
+
+test('A table of contents without ids that points twice to the same chapter shows every entry and one current place', async ({
+  page,
+}) => {
+  const navItems =
+    '<li><a href="c1.xhtml">들어가며</a></li><li><a href="c1.xhtml">1장</a></li>'
+    + '<li><a href="c2.xhtml">2장</a></li><li><a href="c3.xhtml">3장</a></li>'
+  await openReader(page, buildBook(3, navItems))
+  await openMenuItem(page, '목차')
+  const buttons = page.locator('#reader-toc-scroll button')
+  const current = page.locator('#reader-toc-scroll button[aria-current="true"]')
+
+  await expect(buttons).toHaveText([/들어가며/, /1장/, /2장/, /3장/])
+  await expect(current).toHaveCount(1)
+
+  await buttons.filter({ hasText: /^\s*2장\s*$/ }).click()
+  await expectChapter(page, 2)
+  await openMenuItem(page, '목차')
+  await expect(current).toHaveText([/2장/])
 })
 
 test('Markup-like text found by search is shown as plain text and never runs', async ({ page }) => {

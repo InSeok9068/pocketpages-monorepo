@@ -1928,7 +1928,7 @@
             <div class="space-y-1">
               <template
                 x-for="item in tocItems"
-                :key="item.id || item.href || item.label">
+                :key="item.key">
                 <div class="space-y-1">
                   <button
                     type="button"
@@ -1943,7 +1943,7 @@
                     <div class="ml-4 border-l border-[rgba(118,87,52,0.12)] pl-3">
                       <template
                         x-for="child in item.subitems"
-                        :key="child.id || child.href || child.label">
+                        :key="child.key">
                         <button
                           type="button"
                           x-on:click="goToTocItem(child)"

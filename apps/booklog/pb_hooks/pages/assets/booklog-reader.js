@@ -1753,23 +1753,26 @@ window.booklogReaderLogic = (function () {
     return ''
   }
 
-  function buildTocTree(items, depth) {
+  function buildTocTree(items, depth, parentKey) {
     var currentDepth = typeof depth === 'number' ? depth : 1
+    var keyPrefix = parentKey ? parentKey + '.' : ''
 
-    return (items || []).map(function (item) {
+    return (items || []).map(function (item, index) {
       var hrefParts = parseHrefParts(item && item.href ? item.href : '')
       var itemId = item && item.id ? String(item.id) : ''
       var itemHref = hrefParts.href
+      // epub.js는 id가 없는 목차에 href를 id로 넣어 같은 파일을 가리키는 항목끼리 겹치므로, 목차 안 위치로 구분합니다.
+      var key = keyPrefix + index
 
       return {
         id: itemId,
-        key: itemId || itemHref || normalizeText(item && item.label ? item.label : ''),
+        key: key,
         href: itemHref,
         bind: hrefParts.bind,
         fragment: hrefParts.fragment,
         cfi: '',
         label: normalizeText(item && item.label ? item.label : '') || '제목 없음',
-        subitems: currentDepth < 2 ? buildTocTree(item && item.subitems ? item.subitems : [], currentDepth + 1) : [],
+        subitems: currentDepth < 2 ? buildTocTree(item && item.subitems ? item.subitems : [], currentDepth + 1, key) : [],
       }
     })
   }
@@ -4771,19 +4774,26 @@ window.booklogReaderLogic = (function () {
   function buildHighlightedTextHtml(value, query) {
     var text = normalizeText(value)
     var normalizedQuery = normalizeText(query)
-    var escapedText = escapeHtml(text)
-    var matcher = null
+    var html = ''
+    var last = 0
 
     if (!normalizedQuery) {
-      return escapedText
+      return escapeHtml(text)
     }
 
-    matcher = new RegExp('(' + escapeRegExp(normalizedQuery) + ')', 'gi')
+    // 원문에서 일치 위치를 찾은 뒤 조각마다 이스케이프해야, 따옴표·& 가 든 검색어도 강조되고 &amp; 같은 표기가 깨지지 않습니다.
+    // 캡처 그룹이 있으면 두 번째 인자가 일치 위치가 아니게 되므로 묶지 않습니다.
+    text.replace(new RegExp(escapeRegExp(normalizedQuery), 'gi'), function (match, offset) {
+      html +=
+        escapeHtml(text.slice(last, offset))
+        + '<mark class="bg-transparent font-semibold text-stone-900 underline decoration-[#b68454] decoration-[2px] underline-offset-[0.22em]">'
+        + escapeHtml(match)
+        + '</mark>'
+      last = offset + match.length
+      return match
+    })
 
-    return escapedText.replace(
-      matcher,
-      '<mark class="bg-transparent font-semibold text-stone-900 underline decoration-[#b68454] decoration-[2px] underline-offset-[0.22em]">$1</mark>'
-    )
+    return html + escapeHtml(text.slice(last))
   }
 
   function canUseReaderCache() {
