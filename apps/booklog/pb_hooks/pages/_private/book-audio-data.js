@@ -361,7 +361,7 @@ function findChunkPositionByText(app, fileId, configHash, sectionIndex, anchorTe
   const texts = chunks.map(function (chunk) {
     return String(chunk.get('input_text')).replace(/[\s\u00ad]+/g, '')
   })
-  // \uc5ec\ub7ec \ubb38\ub2e8\uc744 \uc774\uc740 \uae30\uc900 \ubb38\uc7a5\uc740 \uad6c\uac04 \uacbd\uacc4\uc5d0 \uac78\uce60 \uc218 \uc788\uc5b4, \uccab \ubb38\ub2e8 \ucabd \uc55e\ubd80\ubd84\uc73c\ub85c \uc904\uc5ec \uac00\uba70 \ucc3e\uc2b5\ub2c8\ub2e4.
+  // 여러 문단을 이은 기준 문장은 구간 경계에 걸칠 수 있어, 첫 문단 쪽 앞부분으로 줄여 가며 찾습니다.
   for (const length of [anchor.length, 40, 20, 10]) {
     if (length > anchor.length) continue
     const prefix = anchor.slice(0, length)
