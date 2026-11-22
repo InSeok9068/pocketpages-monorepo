@@ -1772,7 +1772,8 @@ window.booklogReaderLogic = (function () {
         fragment: hrefParts.fragment,
         cfi: '',
         label: normalizeText(item && item.label ? item.label : '') || '제목 없음',
-        subitems: currentDepth < 2 ? buildTocTree(item && item.subitems ? item.subitems : [], currentDepth + 1, key) : [],
+        subitems:
+          currentDepth < 2 ? buildTocTree(item && item.subitems ? item.subitems : [], currentDepth + 1, key) : [],
       }
     })
   }
