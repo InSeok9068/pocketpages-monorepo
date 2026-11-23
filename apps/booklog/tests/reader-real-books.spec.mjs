@@ -7,6 +7,8 @@ import { expect, test } from '@playwright/test'
 import {
   badRequest,
   bookmarkFromForm,
+  fulfillReaderApiDefault,
+  listBookmarksPayload,
   listHighlightsPayload,
   loadProgressPayload,
   positionFromForm,
@@ -107,7 +109,7 @@ async function mockReader(page, book) {
           state.saves += 1
           return route.fulfill({ json: saveProgressPayload() })
         }
-        if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+        if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: listBookmarksPayload([]) })
         if (url.pathname === '/api/books/save-bookmark') {
           const bookmark = bookmarkFromForm('bookmark0000001', form)
           return route.fulfill({ json: { ok: true, message: '책갈피를 저장했습니다.', bookmark } })
@@ -118,7 +120,7 @@ async function mockReader(page, book) {
         if (url.pathname === '/api/books/save-reading-session') {
           return route.fulfill({ json: readingSessionPayload(form) })
         }
-        return route.fulfill({ json: { ok: true, id: 'session00000001' } })
+        return fulfillReaderApiDefault(route)
       }
       return route.fulfill({
         contentType: 'text/html',

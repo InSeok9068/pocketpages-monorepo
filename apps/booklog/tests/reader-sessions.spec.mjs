@@ -6,13 +6,15 @@ import { expect, test } from '@playwright/test'
 import {
   badRequest,
   bookmarkFromForm,
+  fulfillReaderApiDefault,
   highlightFromForm,
+  listBookmarksPayload,
   listHighlightsPayload,
   loadProgressPayload,
   positionFromForm,
   progressConflict,
-  readForm,
   readerApiInputError,
+  readForm,
   readingSessionPayload,
   saveProgressPayload,
 } from './fake-booklog-api.mjs'
@@ -150,7 +152,7 @@ async function mockServer(context, pages) {
           return route.fulfill({ json: saveProgressPayload() })
         }
         if (url.pathname === '/api/books/list-bookmarks') {
-          return route.fulfill({ json: { ok: true, bookmarks: state.bookmarks } })
+          return route.fulfill({ json: listBookmarksPayload(state.bookmarks) })
         }
         if (url.pathname === '/api/books/save-bookmark') {
           const bookmark = bookmarkFromForm('bookmark' + (state.bookmarks.length + 1), form)
@@ -168,7 +170,7 @@ async function mockServer(context, pages) {
         if (url.pathname === '/api/books/save-reading-session') {
           return route.fulfill({ json: readingSessionPayload(form) })
         }
-        return route.fulfill({ json: { ok: true } })
+        return fulfillReaderApiDefault(route)
       }
       return route.fulfill({
         contentType: 'text/html',

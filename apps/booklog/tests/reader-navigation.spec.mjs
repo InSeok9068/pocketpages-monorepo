@@ -7,12 +7,14 @@ import {
   audioPositionInputError,
   audioProgressPayload,
   badRequest,
+  fulfillReaderApiDefault,
+  listBookmarksPayload,
   listHighlightsPayload,
   loadProgressPayload,
   positionFromForm,
   progressConflict,
-  readForm,
   readerApiInputError,
+  readForm,
   readingSessionPayload,
   saveProgressPayload,
 } from './fake-booklog-api.mjs'
@@ -113,14 +115,14 @@ async function mockSite(page, options) {
           stored = positionFromForm(form)
           return route.fulfill({ json: saveProgressPayload() })
         }
-        if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+        if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: listBookmarksPayload([]) })
         if (url.pathname === '/api/books/list-highlights') {
           return route.fulfill({ json: listHighlightsPayload([], form) })
         }
         if (url.pathname === '/api/books/save-reading-session') {
           return route.fulfill({ json: readingSessionPayload(form) })
         }
-        return route.fulfill({ json: { ok: true, id: 'session00000001' } })
+        return fulfillReaderApiDefault(route)
       }
       if (url.pathname === '/books/book') {
         requests.detail += 1

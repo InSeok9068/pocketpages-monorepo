@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
+import { fulfillReaderApiDefault } from './fake-booklog-api.mjs'
 
 const require = createRequire(new URL('../package.json', import.meta.url))
 const { render } = require('pocketbase-ejs')
@@ -209,8 +210,7 @@ async function openReader(page, options = {}) {
             ? { ok: true, hasSavedPosition: false, href: '', locator: '' }
             : { ok: true, hasSavedPosition: true, href: 'chapter-5.xhtml', locator: 'epubcfi(/6/12!/4/22/1:0)' },
         })
-      if (url.pathname.startsWith('/api/'))
-        return route.fulfill({ json: { ok: true, id: 'session00000001', bookmarks: [], highlights: [] } })
+      if (url.pathname.startsWith('/api/')) return fulfillReaderApiDefault(route)
       return route.fulfill({
         contentType: 'text/html',
         body:

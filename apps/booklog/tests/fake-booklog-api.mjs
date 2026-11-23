@@ -1,4 +1,4 @@
-/* global Request */
+/* global Request, URL, FormData */
 // 리더 E2E의 가짜 서버가 pb_hooks/pages/api/books/*의 응답 모양과 입력 검증을 그대로 따르게 하는 도우미입니다.
 
 export const CONFIG_HASH = '7d'.repeat(32)
@@ -19,6 +19,10 @@ function text(form, key) {
 function numberText(value) {
   const raw = String(value ?? '').trim()
   return raw && !isNaN(Number(raw)) ? String(Number(raw)) : ''
+}
+
+function storedNumberText(value) {
+  return numberText(value) || '0'
 }
 
 /**
@@ -62,8 +66,8 @@ export function loadProgressPayload(position) {
     locator,
     href,
     chapterLabel: String(position?.chapterLabel || ''),
-    pageNumber: numberText(position?.pageNumber),
-    progressPercent: numberText(position?.progressPercent),
+    pageNumber: storedNumberText(position?.pageNumber),
+    progressPercent: storedNumberText(position?.progressPercent),
   }
 }
 
@@ -125,6 +129,22 @@ export function bookmarkFromForm(id, form) {
   }
 }
 
+/**
+ * list-bookmarks 응답을 만듭니다. 저장된 숫자 필드는 PocketBase처럼 비어 있으면 0입니다.
+ * @param {object[]} bookmarks 저장된 책갈피 항목
+ * @returns {object} 응답 본문
+ */
+export function listBookmarksPayload(bookmarks) {
+  return {
+    ok: true,
+    bookmarks: bookmarks.map((item) => ({
+      ...item,
+      progressPercent: storedNumberText(item.progressPercent),
+      pageNumber: storedNumberText(item.pageNumber),
+    })),
+  }
+}
+
 export function highlightFromForm(id, form) {
   return {
     id,
@@ -153,7 +173,10 @@ export function listHighlightsPayload(highlights, form) {
         .map((item) => ({ locator: item.locator })),
     }
   }
-  return { ok: true, highlights }
+  return {
+    ok: true,
+    highlights: highlights.map((item) => ({ ...item, pageNumber: storedNumberText(item.pageNumber) })),
+  }
 }
 
 export function readingSessionPayload(form) {
@@ -236,4 +259,26 @@ export function audioPositionInputError(url) {
     return '읽던 위치 정보를 확인해 주세요.'
   }
   return ''
+}
+
+/**
+ * 테스트가 따로 다루지 않은 리더 요청에 실제 API의 기본 응답을 돌려줍니다. 실제로 없는 경로는 404입니다.
+ * @param {import('@playwright/test').Route} route 가로챈 요청
+ * @returns {Promise<void>}
+ */
+export async function fulfillReaderApiDefault(route) {
+  const request = route.request()
+  const path = new URL(request.url()).pathname
+  const form = request.method() === 'POST' ? await readForm(route) : new FormData()
+  if (path === '/api/books/load-progress') return route.fulfill({ json: loadProgressPayload(null) })
+  if (path === '/api/books/save-progress') return route.fulfill({ json: saveProgressPayload() })
+  if (path === '/api/books/save-reading-session') return route.fulfill({ json: readingSessionPayload(form) })
+  if (path === '/api/books/list-bookmarks') return route.fulfill({ json: listBookmarksPayload([]) })
+  if (path === '/api/books/list-highlights') return route.fulfill({ json: listHighlightsPayload([], form) })
+  if (path === '/api/books/audio-progress') {
+    if (request.method() === 'POST') return route.fulfill({ json: { ok: true } })
+    return route.fulfill({ json: audioProgressPayload(null, []) })
+  }
+  if (path === '/xapi/books/update-status') return route.fulfill({ status: 200, body: '' })
+  return route.fulfill({ status: 404, json: { ok: false, message: '가짜 서버에 없는 경로입니다: ' + path } })
 }

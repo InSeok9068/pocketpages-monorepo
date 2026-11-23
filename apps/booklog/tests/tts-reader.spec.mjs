@@ -9,6 +9,8 @@ import {
   audioProgressInputError,
   audioProgressPayload,
   badRequest,
+  fulfillReaderApiDefault,
+  listBookmarksPayload,
   listHighlightsPayload,
   readForm,
 } from './fake-booklog-api.mjs'
@@ -163,11 +165,11 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
         }
         return route.fulfill({ json: audioProgressPayload(savedProgress, [10]) })
       }
-      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: listBookmarksPayload([]) })
       if (url.pathname === '/api/books/list-highlights') {
         return route.fulfill({ json: listHighlightsPayload([], await readForm(route)) })
       }
-      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, id: 'session00000001' } })
+      if (url.pathname.startsWith('/api/')) return fulfillReaderApiDefault(route)
       return route.fulfill({ contentType: 'text/html', body: readerHtml(body) })
     }
   )
@@ -333,11 +335,11 @@ test('Seeking while paused keeps the audiobook paused, and device voice resumes 
         }
         return route.fulfill({ json: audioProgressPayload(null, [20, 10]) })
       }
-      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: listBookmarksPayload([]) })
       if (url.pathname === '/api/books/list-highlights') {
         return route.fulfill({ json: listHighlightsPayload([], await readForm(route)) })
       }
-      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, id: 'session00000001' } })
+      if (url.pathname.startsWith('/api/')) return fulfillReaderApiDefault(route)
       return route.fulfill({ contentType: 'text/html', body: readerHtml(body) })
     }
   )
@@ -446,11 +448,11 @@ test('A playback speed change applies to the voice playing now and stays for the
         }
         return route.fulfill({ json: audioProgressPayload(null, chunk.timeline) })
       }
-      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: listBookmarksPayload([]) })
       if (url.pathname === '/api/books/list-highlights') {
         return route.fulfill({ json: listHighlightsPayload([], await readForm(route)) })
       }
-      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, id: 'session00000001' } })
+      if (url.pathname.startsWith('/api/')) return fulfillReaderApiDefault(route)
       return route.fulfill({ contentType: 'text/html', body: readerHtml(body) })
     }
   )
@@ -520,11 +522,11 @@ test('Moving to another chapter keeps a paused audiobook paused and a playing on
         }
         return route.fulfill({ json: audioProgressPayload(null, [10]) })
       }
-      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: listBookmarksPayload([]) })
       if (url.pathname === '/api/books/list-highlights') {
         return route.fulfill({ json: listHighlightsPayload([], await readForm(route)) })
       }
-      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, id: 'session00000001' } })
+      if (url.pathname.startsWith('/api/')) return fulfillReaderApiDefault(route)
       return route.fulfill({ contentType: 'text/html', body: readerHtml(body) })
     }
   )
@@ -564,7 +566,7 @@ test('Moving to another chapter keeps a paused audiobook paused and a playing on
 test('Listening follow pauses while the reader scrolls and resumes only near the spoken paragraph', async ({
   page,
 }) => {
-  test.setTimeout(120_000)
+  test.setTimeout(180_000)
   const paragraphs = Array.from(
     { length: 60 },
     (_value, index) =>
@@ -600,11 +602,11 @@ test('Listening follow pauses while the reader scrolls and resumes only near the
       }
       if (url.pathname === '/test.epub')
         return route.fulfill({ body: Buffer.from(longBook), contentType: 'application/epub+zip' })
-      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: { ok: true, bookmarks: [] } })
+      if (url.pathname === '/api/books/list-bookmarks') return route.fulfill({ json: listBookmarksPayload([]) })
       if (url.pathname === '/api/books/list-highlights') {
         return route.fulfill({ json: listHighlightsPayload([], await readForm(route)) })
       }
-      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, id: 'session00000001' } })
+      if (url.pathname.startsWith('/api/')) return fulfillReaderApiDefault(route)
       return route.fulfill({ contentType: 'text/html', body: readerHtml(body) })
     }
   )
@@ -680,9 +682,9 @@ test('Listening follow pauses while the reader scrolls and resumes only near the
   await page.waitForTimeout(3000)
   expect(Math.abs((await spoken()).top - nudgedTop), 'the highlight moves without pulling the screen').toBeLessThan(3)
   await expect
-    .poll(async () => Math.abs((await spoken()).top - followTop), { timeout: 15_000 })
+    .poll(async () => Math.abs((await spoken()).top - followTop), { timeout: 35_000 })
     .toBeLessThan(40)
-  expect(Date.now() - nudgedAt, 'following waits until ten seconds after the last scroll').toBeGreaterThan(9000)
+  expect(Date.now() - nudgedAt, 'following waits until thirty seconds after the last scroll').toBeGreaterThan(29_000)
 
   await page.waitForTimeout(1700)
   await scrollReader(2500)
@@ -690,7 +692,7 @@ test('Listening follow pauses while the reader scrolls and resumes only near the
   await speak(32)
   await expect.poll(async () => (await spoken())?.index).toBe(32)
   const farTop = (await spoken()).top
-  await page.waitForTimeout(12_000)
+  await page.waitForTimeout(32_000)
   expect(Math.abs((await spoken()).top - farTop), 'a reader who left the paragraph keeps their place').toBeLessThan(3)
 
   await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).goToListeningPosition())
