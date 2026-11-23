@@ -62,6 +62,12 @@ const cases = [
     params: ['weekly:user:2026-11-02'],
     index: 'idx_push_send_logs_dedupe_key',
   },
+  {
+    name: '재생성 요청 구간 조회는 요청된 구간만 담은 부분 인덱스를 사용한다',
+    sql: 'SELECT `book_audio_chunks`.* FROM `book_audio_chunks` WHERE `book_audio_chunks`.`regenerate_requested` = 1 LIMIT 100',
+    params: [],
+    index: 'idx_book_audio_chunks_regenerate',
+  },
 ]
 
 for (const entry of cases) {

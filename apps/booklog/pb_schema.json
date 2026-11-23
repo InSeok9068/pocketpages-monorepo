@@ -765,7 +765,8 @@
     "indexes": [
       "CREATE UNIQUE INDEX idx_book_audio_chunks_file_section_chunk_config_text ON book_audio_chunks (file_id, section_index, chunk_index, split_path, config_hash, text_hash)",
       "CREATE INDEX idx_book_audio_chunks_file_config_section_chunk ON book_audio_chunks (file_id, config_hash, section_index, chunk_index, split_path)",
-      "CREATE INDEX idx_book_audio_chunks_status_started ON book_audio_chunks (status, generation_started_at)"
+      "CREATE INDEX idx_book_audio_chunks_status_started ON book_audio_chunks (status, generation_started_at)",
+      "CREATE INDEX idx_book_audio_chunks_regenerate ON book_audio_chunks (regenerate_requested) WHERE regenerate_requested = 1"
     ],
     "system": false
   },
