@@ -10,3 +10,13 @@ trim_trailing_whitespace = true
 
 [*.md]
 trim_trailing_whitespace = false
+
+[*.patch]
+trim_trailing_whitespace = false
+insert_final_newline = unset
+
+[**/vendor/**]
+indent_style = unset
+indent_size = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
