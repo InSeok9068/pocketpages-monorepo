@@ -2,6 +2,7 @@
   "name": "pocketpages-monorepo",
   "packageManager": "npm@11.19.0",
   "scripts": {
+    "prepare": "node -e \"try{require('child_process').execFileSync('git',['config','core.hooksPath','.githooks'],{stdio:'ignore'})}catch{}\"",
     "format": "prettier --write --cache --cache-location .cache/prettier/.prettier-cache \"apps/*/pb_hooks/**/*\" \"packages/**/*.js\" \"packages/**/*.mjs\" \"packages/**/*.d.ts\"",
     "test:pocketpages-compat": "node --test --test-concurrency=1 \"apps/sample/__tests__/*.test.mjs\"",
     "test:pocketpages-patches": "node --test scripts/pocketpages-patches.test.mjs scripts/pocketpages-ejs-cache.test.mjs scripts/pocketpages-include-paths.test.mjs",
