@@ -1144,6 +1144,7 @@ test('Cover links, tables of contents, notes, references, and English rights pag
     'ref.xhtml': '<html><body><p>참고 문헌</p><p>저자, 책 제목, 2020</p></body></html>',
     'pictures.xhtml': '<html><body><p>PICTURE ACKNOWLEDGEMENTS</p><p>[1] Agency</p></body></html>',
     'decorated.xhtml': '<html><body><p>/ 참고문헌 /</p><p>• Allais, M. 1979.</p></body></html>',
+    'sources.xhtml': '<html><body><p>출처</p><p>• Abouchakra, Rabih. Future Prospects. 2016.</p></body></html>',
     'bookinfo.xhtml':
       '<html><body><p>이 전자책은 대한민국 저작권법의 보호를 받는 저작물입니다. 허락 없이 가공할 수 없습니다.</p></body></html>',
     'start2.xhtml':
@@ -1166,6 +1167,7 @@ test('Cover links, tables of contents, notes, references, and English rights pag
         .join('')
       + '</body></html>',
     'thanks.xhtml': '<html><body><p>감사의 글</p><p>도와준 모든 분께 감사드립니다.</p></body></html>',
+    'rumor.xhtml': '<html><body><p>출처를 알 수 없는 소문이 돌았다.</p><p>마을 사람들은 불안해했다.</p></body></html>',
   }
   const sections = audioSectionsForFiles({ ...skipped, ...kept })
   const names = Object.keys({ ...skipped, ...kept })
