@@ -13,6 +13,10 @@ const { runStatEpoch } = require('../tools/vscode-pocketpages/packages/language-
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
 const DIAGNOSTIC_EXTENSIONS = new Set(['.ejs', '.js', '.cjs', '.mjs'])
+const DIAG_CODE_DIRS = [
+  path.join(ROOT_DIR, 'tools', 'vscode-pocketpages', 'packages', 'language-core'),
+  path.join(ROOT_DIR, 'tools', 'vscode-pocketpages', 'packages', 'language-service'),
+]
 const ISSUE_CATEGORY_ORDER = new Map([
   [ts.DiagnosticCategory.Error, 0],
   [ts.DiagnosticCategory.Warning, 1],
@@ -38,8 +42,57 @@ function toDisplayPath(filePath) {
   return resolved
 }
 
+function collectDiagCodeFiles() {
+  const files = [
+    __filename,
+    path.join(__dirname, 'diag-pocketpages-daemon.js'),
+    require.resolve('typescript/package.json', { paths: DIAG_CODE_DIRS }),
+  ]
+  const queue = [...DIAG_CODE_DIRS]
+
+  while (queue.length > 0) {
+    const currentDir = queue.pop()
+    let entries = []
+    try {
+      entries = fs.readdirSync(currentDir, { withFileTypes: true })
+    } catch (_error) {
+      continue
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name)
+      if (entry.isDirectory()) {
+        queue.push(fullPath)
+      } else if (entry.isFile() && /\.(c?js|json)$/.test(entry.name)) {
+        files.push(fullPath)
+      }
+    }
+  }
+
+  return files.sort((left, right) => left.localeCompare(right))
+}
+
+function createDiagCodeVersion() {
+  const hash = crypto.createHash('sha1')
+
+  for (const filePath of collectDiagCodeFiles()) {
+    try {
+      const stat = fs.statSync(filePath)
+      hash.update(`${path.relative(ROOT_DIR, filePath)}\0${stat.size}\0${stat.mtimeMs}\n`)
+    } catch (_error) {
+      hash.update(`${path.relative(ROOT_DIR, filePath)}\0missing\n`)
+    }
+  }
+
+  return hash.digest('hex').slice(0, 12)
+}
+
 function getDiagIpcPath() {
-  const hash = crypto.createHash('sha1').update(`${ROOT_DIR}:stream-v2`).digest('hex').slice(0, 12)
+  const hash = crypto
+    .createHash('sha1')
+    .update(`${ROOT_DIR}:stream-v2:${createDiagCodeVersion()}`)
+    .digest('hex')
+    .slice(0, 12)
 
   if (process.platform === 'win32') {
     return `\\\\.\\pipe\\pocketpages-diag-${hash}`

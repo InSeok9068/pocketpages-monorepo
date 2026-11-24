@@ -93,17 +93,11 @@ const {
 
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
-const LINT_CACHE_VERSION = 1
+const LINT_CACHE_VERSION = 2
 const LINT_CACHE_DIR = path.join(ROOT_DIR, '.cache', 'pocketpages-lint')
-const LINT_DEPENDENCY_FILES = [
-  __filename,
-  require.resolve('../tools/vscode-pocketpages/packages/language-core/ejs-template'),
-  require.resolve('../tools/vscode-pocketpages/packages/language-core/custom-context'),
-  require.resolve('../tools/vscode-pocketpages/packages/language-core/script-server'),
-  require.resolve('../tools/vscode-pocketpages/packages/language-service/flow-analysis'),
-  require.resolve('../tools/vscode-pocketpages/packages/language-service/hook-handler-scope-analysis'),
-  require.resolve('../tools/vscode-pocketpages/packages/language-service/project-index'),
-  require.resolve('../tools/vscode-pocketpages/packages/language-service/language-service'),
+const LINT_DEPENDENCY_DIRS = [
+  path.join(ROOT_DIR, 'tools', 'vscode-pocketpages', 'packages', 'language-core'),
+  path.join(ROOT_DIR, 'tools', 'vscode-pocketpages', 'packages', 'language-service'),
 ]
 
 const ALLOWED_SPECIAL_FILES = new Set(['+config.js', '+layout.ejs', '+load.js', '+middleware.js', '+get.js', '+post.js', '+put.js', '+patch.js', '+delete.js'])
@@ -359,9 +353,14 @@ function getLintCacheFile(serviceDir) {
   return path.join(LINT_CACHE_DIR, `${serviceName}.json`)
 }
 
+function collectLintDependencyFiles() {
+  const toolFiles = LINT_DEPENDENCY_DIRS.flatMap((dirPath) => walkFiles(dirPath)).filter((filePath) => /\.(c?js|json)$/.test(filePath))
+  return [__filename, require.resolve('typescript/package.json', { paths: LINT_DEPENDENCY_DIRS }), ...toolFiles]
+}
+
 function collectLintCacheFiles(serviceDir) {
   const hooksRoot = path.join(serviceDir, 'pb_hooks')
-  const candidates = [...walkFiles(hooksRoot), path.join(serviceDir, 'pb_schema.json'), path.join(serviceDir, 'package.json'), ...LINT_DEPENDENCY_FILES]
+  const candidates = [...walkFiles(hooksRoot), path.join(serviceDir, 'pb_schema.json'), path.join(serviceDir, 'package.json'), ...collectLintDependencyFiles()]
 
   return unique(candidates.map((filePath) => path.resolve(filePath))).filter((filePath) => {
     try {
