@@ -113,6 +113,29 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   let savedProgress = null
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
+  await page.addInitScript(() => {
+    window.wakeLockLog = []
+    Object.defineProperty(navigator, 'wakeLock', {
+      configurable: true,
+      value: {
+        request(type) {
+          const sentinel = new EventTarget()
+          sentinel.released = false
+          sentinel.release = () => {
+            if (!sentinel.released) {
+              sentinel.released = true
+              window.wakeLockLog.push('release')
+              sentinel.dispatchEvent(new Event('release'))
+            }
+            return Promise.resolve()
+          }
+          window.wakeLockLog.push('request:' + type)
+          return Promise.resolve(sentinel)
+        },
+      },
+    })
+  })
+  const lastWakeLock = () => page.evaluate(() => window.wakeLockLog.at(-1) || '')
   const body = renderReader(true)
   await page.route(
     (url) => url.protocol === 'http:' || url.protocol === 'https:',
@@ -187,6 +210,7 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
     state: navigator.mediaSession.playbackState,
   }))
   expect(media).toEqual({ artist: '낭독 <테스트>', state: 'playing' })
+  await expect.poll(lastWakeLock, 'listening keeps the screen awake').toBe('request:screen')
   const sleep = page.getByRole('button', { name: /^잠자기 타이머/ })
   await expect(sleep).toHaveText('타이머')
   await sleep.click()
@@ -196,6 +220,7 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   })
   await page.getByRole('button', { name: '정지', exact: true }).click()
   await expect(start).toContainText('부터')
+  await expect.poll(lastWakeLock, 'stopping lets the screen sleep').toBe('release')
   await start.click()
   await expect.poll(() => player.evaluate((audio) => audio.currentTime)).toBeGreaterThanOrEqual(4.9)
   expect(lookups.every((lookup) => lookup === 'GET:0:0')).toBe(true)
@@ -253,8 +278,10 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   const miniPause = page.getByRole('button', { name: 'AI 음성 일시 정지' })
   await expect(miniPause).toBeVisible()
   await expect(page.getByRole('button', { name: 'AI 음성 조작 열기' })).toContainText('첫 번째 챕터')
+  await expect.poll(lastWakeLock).toBe('request:screen')
   await miniPause.click()
   await expect.poll(() => player.evaluate((audio) => audio.paused)).toBe(true)
+  await expect.poll(lastWakeLock, 'pausing lets the screen sleep').toBe('release')
   await expect(page.getByRole('button', { name: 'AI 음성 재생' })).toBeVisible()
   await page.getByRole('button', { name: 'AI 음성 조작 열기' }).click()
   await expect(page.getByRole('button', { name: '듣는 곳으로 이동' })).toBeVisible()

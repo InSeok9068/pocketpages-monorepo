@@ -125,6 +125,8 @@ window.booklogReaderLogic = (function () {
   var activeReadAloudHighlight = null
   var listeningFollow = { key: '', node: null, openedSection: -1, deferred: false }
   var activeComponent = null
+  var screenWakeLock = null
+  var screenWakeLockPending = false
   var activeSelectionContents = null
   var selectionSyncTimerId = 0
   var selectedHighlightPollingTimerId = 0
@@ -2507,6 +2509,49 @@ window.booklogReaderLogic = (function () {
 
     // 기기 음성은 화면이 잠기면 iOS가 끝났다는 신호 없이 멈출 수 있어, 화면이 켜져 있을 때만 듣는 시간으로 셉니다.
     return isDocumentVisible() && !!(component.cloudAudioActive || component.readAloudPlaying)
+  }
+
+  function shouldKeepScreenAwake(component) {
+    return isDocumentVisible() && !!(component && (component.cloudAudioActive || component.readAloudPlaying))
+  }
+
+  function syncScreenWakeLock(component) {
+    var wakeLock = window.navigator && window.navigator.wakeLock
+    if (!wakeLock || typeof wakeLock.request !== 'function') return
+    if (!shouldKeepScreenAwake(component)) {
+      var held = screenWakeLock
+      screenWakeLock = null
+      if (held) held.release().catch(function () {})
+      return
+    }
+    if (screenWakeLock || screenWakeLockPending) return
+    screenWakeLockPending = true
+    wakeLock
+      .request('screen')
+      .then(function (sentinel) {
+        screenWakeLockPending = false
+        if (!shouldKeepScreenAwake(component)) {
+          sentinel.release().catch(function () {})
+          return
+        }
+        screenWakeLock = sentinel
+        sentinel.addEventListener('release', function () {
+          if (screenWakeLock === sentinel) screenWakeLock = null
+        })
+      })
+      .catch(function (exception) {
+        screenWakeLockPending = false
+        traceReader('wake-lock-rejected', { name: exception && exception.name })
+      })
+  }
+
+  function bindScreenWakeLock(component) {
+    var sync = function () {
+      syncScreenWakeLock(component)
+    }
+    component.$watch('cloudAudioActive', sync)
+    component.$watch('readAloudPlaying', sync)
+    document.addEventListener('visibilitychange', sync)
   }
 
   function markReadingSessionActivity(component) {
@@ -6044,6 +6089,7 @@ window.booklogReaderLogic = (function () {
     window.addEventListener('popstate', handlePopState)
     window.addEventListener('pageshow', handlePageShow)
     bindReadingSessionActivityTracking(component)
+    bindScreenWakeLock(component)
 
     window.addEventListener('beforeunload', function () {
       sendReadingSessionBeacon(activeComponent)
