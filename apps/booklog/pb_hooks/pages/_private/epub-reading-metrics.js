@@ -633,6 +633,8 @@ function htmlToAudioText(html) {
       .replace(/[A-Za-z](?:[\u318d\u00b7\u2022][A-Za-z])+/g, function (word) {
         return word.replace(/[\u318d\u00b7\u2022]/g, '')
       })
+      // \u300c\u2605\u2606\u2605\u300d\u00b7\u300c* * *\u300d\ucc98\ub7fc \uc7a5\uc2dd \uae30\ud638\ub9cc \uc788\ub294 \ubb38\ub2e8\uc740 \uc7a5\uba74 \uad6c\ubd84\uc73c\ub85c \ubcf4\uace0 \ube48 \ubb38\ub2e8\uc73c\ub85c \ubc14\uafc9\ub2c8\ub2e4.
+      .replace(/^[ \t]*[*\uff0a\u2605\u2606\u25c6\u25c7\u25cf\u25cb](?:[ \t]*[*\uff0a\u2605\u2606\u25c6\u25c7\u25cf\u25cb])*[ \t]*$/gm, '')
       .replace(
         /^[ \t]*[\u25a1\u25a0\u25c7\u25c6\u25cb\u25cf\u25b6\u25b7\u25ba\u25aa\u25ab\u2610\u2611\u2713\u2714]+[ \t]*/gm,
         ''

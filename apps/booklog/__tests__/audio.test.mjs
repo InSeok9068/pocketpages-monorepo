@@ -1293,7 +1293,17 @@ test('Narration replaces standalone centered scene markers with blank paragraphs
   const end = '<p class="center">∞는 무한대를 뜻합니다.</p><p>*단, 설명은 남깁니다.</p><p>2 * 3</p><p>∞</p><p>*</p>'
   const chunks = audioChunksForHtml(start + '<p class="center">∞</p>' + middle + "<p class='center'> * </p>" + end)
   assert.equal(chunks.join(''), audioChunksForHtml(start + '<p>&nbsp;</p>' + middle + '<p>&nbsp;</p>' + end).join(''))
-  assert.match(chunks.join(''), /∞는 무한대를 뜻합니다\.\n+\*단, 설명은 남깁니다\.\n+2 \* 3\n+∞\n+\*$/)
+  assert.match(chunks.join(''), /∞는 무한대를 뜻합니다\.\n+\*단, 설명은 남깁니다\.\n+2 \* 3\n+∞$/)
+})
+
+test('Narration drops paragraphs made only of decorative scene symbols but keeps other symbol lines', () => {
+  const markers = ['★☆★', '☆★', '* * *', '**********', '＊', '◆ ◇', '● ○ ●']
+  const kept = ['……', '=', '#', '•', '★ 별점 다섯 개', '2 * 3']
+  const chunks = audioChunksForHtml(
+    '<p>첫 장면.</p>' + markers.map((marker) => '<p>' + marker + '</p>').join('') + '<p>둘째 장면.</p>'
+      + kept.map((line) => '<p>' + line + '</p>').join('')
+  )
+  assert.match(chunks.join(''), /^첫 장면\.\n{2,}둘째 장면\.\n+……\n+=\n+#\n+•\n+★ 별점 다섯 개\n+2 \* 3$/)
 })
 
 test('Narration keeps horizontal rules as boundaries without generating dashes', () => {
