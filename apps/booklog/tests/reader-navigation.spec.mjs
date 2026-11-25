@@ -209,6 +209,54 @@ test('Browser back after reloading the reader still returns to the book detail p
   expect(await page.evaluate(() => window.history.length), 'returned with history.back, not a new entry').toBe(4)
 })
 
+test('Browser back closes the open menu or panel first and leaves the reader only after that', async ({ page }) => {
+  const requests = await mockSite(page)
+  await page.goto('/books/book')
+  await page.getByRole('link', { name: '읽기' }).click()
+  await waitForReader(page)
+  const menu = page.getByRole('heading', { name: '메뉴' })
+  const tocOpen = () => page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).tocOpen)
+
+  await page.getByRole('button', { name: '메뉴 열기' }).click()
+  await expect(menu).toBeVisible()
+  await page.goBack()
+  await expect(menu).toBeHidden()
+  await expect(page).toHaveURL(/\/books\/book\/read$/)
+
+  await page.getByRole('button', { name: '메뉴 열기' }).click()
+  await page.getByRole('button', { name: '목차' }).click()
+  await expect.poll(tocOpen).toBe(true)
+  await page.goBack()
+  await expect.poll(tocOpen).toBe(false)
+  await expect(page).toHaveURL(/\/books\/book\/read$/)
+  expect(requests.detail).toBe(1)
+  expect(await page.evaluate(() => window.history.length), 'closing a panel does not stack entries').toBe(4)
+
+  const savesBeforeBack = requests.saveProgress
+  await page.goBack()
+  await expect(page).toHaveURL(/\/books\/book$/)
+  await expect(page.getByRole('heading', { name: '책 상세' })).toBeVisible()
+  expect(requests.saveProgress).toBeGreaterThan(savesBeforeBack)
+})
+
+test('Browser back keeps the reader open while another device position is waiting for a choice', async ({ page }) => {
+  await mockSite(page, { savedHref: 'chapter.xhtml', conflict: true })
+  await page.goto('/books/book')
+  await page.getByRole('link', { name: '읽기' }).click()
+  await waitForReader(page)
+  await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).saveCurrentPosition())
+  await expect(page.getByText('다른 기기에서 읽은 위치가 있어요.')).toBeVisible()
+
+  await page.goBack()
+  await expect(page).toHaveURL(/\/books\/book\/read$/)
+  await expect(page.getByText('다른 기기에서 읽은 위치가 있어요.')).toBeVisible()
+
+  await page.getByRole('button', { name: '여기서 계속 읽기' }).click()
+  await expect(page.getByText('다른 기기에서 읽은 위치가 있어요.')).toBeHidden()
+  await page.goBack()
+  await expect(page).toHaveURL(/\/books\/book$/)
+})
+
 test('A saved position missing from this file does not block saving the new position', async ({ page }) => {
   const requests = await mockSite(page, { savedHref: 'chapter-from-another-file.xhtml' })
   await page.goto('/books/book/read')

@@ -3473,6 +3473,31 @@ window.booklogReaderLogic = (function () {
     }
   }
 
+  function closeTopOverlayForHistoryBack(component) {
+    var overlay = [
+      ['positionConflictOpen', null],
+      ['finishPromptOpen', 'closeFinishPrompt'],
+      ['highlightOpen', 'closeHighlight'],
+      ['selectedHighlightOpen', 'clearSelectedHighlight'],
+      ['noteOpen', 'closeNote'],
+      ['searchOpen', 'closeSearch'],
+      ['tocOpen', 'closeToc'],
+      ['readAloudOpen', 'closeReadAloud'],
+      ['readingSettingsOpen', 'closeReadingSettings'],
+      ['bookmarksOpen', 'closeBookmarks'],
+      ['highlightsOpen', 'closeHighlights'],
+      ['controlsVisible', null],
+    ].filter(function (entry) {
+      return !!component[entry[0]]
+    })[0]
+
+    if (!overlay) return false
+    traceReader('history-back-closed-overlay', { overlay: overlay[0] })
+    if (overlay[0] === 'controlsVisible') component.controlsVisible = false
+    else if (overlay[1]) component[overlay[1]]()
+    return true
+  }
+
   function handlePopState() {
     if (skipNextPopState) {
       skipNextPopState = false
@@ -3480,6 +3505,11 @@ window.booklogReaderLogic = (function () {
     }
 
     if (!activeComponent || isHandlingHistoryBack || isLeavingPage) {
+      return
+    }
+
+    if (closeTopOverlayForHistoryBack(activeComponent)) {
+      window.history.pushState({ readerSaveGuard: true }, '', window.location.href)
       return
     }
 
