@@ -474,7 +474,7 @@
     },
   }"
   x-init="window.booklogReaderLogic.init($data)"
-  x-bind:class="readerTheme === 'sepia' ? 'bg-[#f7f2e6]' : readerTheme === 'night' ? 'bg-[#161616]' : 'bg-white'"
+  x-bind:class="readerTheme === 'sepia' ? 'bg-[#f7f2e6]' : readerTheme === 'night' ? 'dark bg-[#161616]' : 'bg-white'"
   class="ios-safe-screen relative min-h-screen bg-white">
   <div
     x-cloak
@@ -584,23 +584,23 @@
     class="fixed inset-x-0 bottom-0 z-30 px-3"
     style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem)">
     <div
-      class="mx-auto flex max-h-[calc(100dvh-5rem)] max-w-xl flex-col gap-3 overflow-y-auto rounded-[1.55rem] border border-stone-200/80 bg-[rgba(255,255,255,0.95)] p-3 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md">
+      class="mx-auto flex max-h-[calc(100dvh-5rem)] max-w-xl flex-col gap-3 overflow-y-auto rounded-[1.55rem] border border-stone-200/80 bg-[rgba(255,255,255,0.95)] p-3 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md dark:border-white/10 dark:bg-[rgba(34,30,26,0.96)]">
       <div class="flex items-center justify-between gap-3 px-1">
-        <h2 class="text-base font-semibold text-stone-950">메뉴</h2>
+        <h2 class="text-base font-semibold text-stone-950 dark:text-stone-100">메뉴</h2>
         <div class="flex shrink-0 items-center gap-1">
           <% if (showAudioDetail) { %>
           <details class="relative">
             <summary
               title="스크롤 진단"
               aria-label="스크롤 진단"
-              class="inline-flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full text-stone-400 hover:bg-stone-100">
+              class="inline-flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full text-stone-400 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-white/15">
               <span
                 class="i-lucide-bug h-4 w-4"
                 aria-hidden="true"></span>
             </summary>
             <div
-              class="absolute top-full right-0 z-10 w-60 space-y-2 rounded-lg border border-solid border-stone-200 bg-white p-3 shadow-lg">
-              <p class="m-0 text-xs leading-5 text-stone-500">
+              class="absolute top-full right-0 z-10 w-60 space-y-2 rounded-lg border border-solid border-stone-200 bg-white p-3 shadow-lg dark:border-white/10 dark:bg-[#221e1a]">
+              <p class="m-0 text-xs leading-5 text-stone-500 dark:text-stone-400">
                 화면 깜빡임·위치 튐을 확인할 때만 켜세요. 켜 두면 리더를 다시 열어도 24시간 동안 이어서 기록합니다.
               </p>
               <div class="flex flex-wrap gap-2">
@@ -609,20 +609,20 @@
                   type="button"
                   aria-pressed="false"
                   x-on:click="window.booklogReaderDiagnostics.toggle()"
-                  class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700">
+                  class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700 dark:bg-white/10 dark:text-stone-300">
                   기록 시작
                 </button>
                 <button
                   id="reader-scroll-diagnostics-copy"
                   type="button"
                   x-on:click="window.booklogReaderDiagnostics.copy($el)"
-                  class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700 disabled:opacity-50">
+                  class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700 disabled:opacity-50 dark:bg-white/10 dark:text-stone-300">
                   기록 복사
                 </button>
                 <button
                   type="button"
                   x-on:click="window.booklogReaderDiagnostics.clear()"
-                  class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700">
+                  class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700 dark:bg-white/10 dark:text-stone-300">
                   기록 삭제
                 </button>
               </div>
@@ -632,7 +632,7 @@
           <button
             type="button"
             x-on:click="controlsVisible = false"
-            class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-300"
             aria-label="메뉴 닫기">
             <span
               class="i-lucide-x h-4 w-4"
@@ -645,80 +645,81 @@
         id="reader-scroll-diagnostics-status"
         role="status"
         hidden
-        class="m-0 px-1 text-xs text-stone-500"></p>
+        class="m-0 px-1 text-xs text-stone-500 dark:text-stone-400"></p>
       <textarea
         id="reader-scroll-diagnostics-text"
         aria-label="직접 복사할 스크롤 진단 기록"
         readonly
         hidden
         rows="5"
-        class="box-border w-full rounded-lg border border-solid border-stone-200 bg-stone-50 p-2 font-mono text-xs text-stone-700"></textarea>
+        class="box-border w-full rounded-lg border border-solid border-stone-200 bg-stone-50 p-2 font-mono text-xs text-stone-700 dark:border-white/10 dark:bg-[#2d2823] dark:text-stone-300"></textarea>
       <% } %>
 
       <div class="grid grid-cols-3 gap-2">
         <button
           type="button"
           x-on:click="openSearch()"
-          class="box-border flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 ring-0 outline-none">
+          class="box-border flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-100">
           <span
-            class="i-lucide-search h-5 w-5 text-stone-700"
+            class="i-lucide-search h-5 w-5 text-stone-700 dark:text-stone-300"
             aria-hidden="true"></span>
           검색
         </button>
         <button
           type="button"
           x-on:click="openToc()"
-          class="box-border flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 ring-0 outline-none">
+          class="box-border flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-100">
           <span
-            class="i-lucide-list-tree h-5 w-5 text-stone-700"
+            class="i-lucide-list-tree h-5 w-5 text-stone-700 dark:text-stone-300"
             aria-hidden="true"></span>
           목차
         </button>
         <button
           type="button"
           x-on:click="openBookmarks()"
-          class="box-border flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 ring-0 outline-none">
+          class="box-border flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-100">
           <span
-            class="i-lucide-bookmark h-5 w-5 text-stone-700"
+            class="i-lucide-bookmark h-5 w-5 text-stone-700 dark:text-stone-300"
             aria-hidden="true"></span>
           책갈피
         </button>
         <button
           type="button"
           x-on:click="openReadAloud()"
-          class="box-border flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 ring-0 outline-none">
+          class="box-border flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-100">
           <span
-            class="i-lucide-volume-2 h-5 w-5 text-stone-700"
+            class="i-lucide-volume-2 h-5 w-5 text-stone-700 dark:text-stone-300"
             aria-hidden="true"></span>
           책 듣기
         </button>
         <button
           type="button"
           x-on:click="openHighlights()"
-          class="box-border flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 ring-0 outline-none">
+          class="box-border flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-100">
           <span
-            class="i-lucide-quote h-5 w-5 text-stone-700"
+            class="i-lucide-quote h-5 w-5 text-stone-700 dark:text-stone-300"
             aria-hidden="true"></span>
           문구
         </button>
         <a
           href="/books/<%= bookId %>"
           x-on:click.prevent="goToBookDetail()"
-          class="box-border flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-700 no-underline ring-0 outline-none">
+          class="box-border flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-700 no-underline ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-300">
           <span
-            class="i-lucide-book-open h-5 w-5 text-stone-700"
+            class="i-lucide-book-open h-5 w-5 text-stone-700 dark:text-stone-300"
             aria-hidden="true"></span>
           책 상세
         </a>
       </div>
 
-      <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+      <div
+        class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
         <div class="mb-1.5 flex items-center justify-between gap-2">
-          <div class="text-[11px] font-semibold tracking-[0.16em] text-stone-500">글자 크기</div>
+          <div class="text-[11px] font-semibold tracking-[0.16em] text-stone-500 dark:text-stone-400">글자 크기</div>
           <button
             type="button"
             x-on:click="openReadingSettings()"
-            class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-none bg-white/80 p-0 text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none"
+            class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-none bg-white/80 p-0 text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:bg-white/10 dark:text-stone-300 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
             aria-label="상세 읽기 설정">
             <span
               class="i-lucide-sliders-horizontal h-3.5 w-3.5"
@@ -730,7 +731,7 @@
             type="button"
             x-on:click="decreaseReaderFontSize()"
             x-bind:disabled="readerFontSizePercent === '90'"
-            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none disabled:opacity-40"
+            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none disabled:opacity-40 dark:bg-white/10 dark:text-stone-100 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
             aria-label="글자 크기 줄이기">
             가-
           </button>
@@ -738,25 +739,27 @@
             type="button"
             x-on:click="resetReaderFontSize()"
             x-bind:disabled="readerFontSizePercent === '100'"
-            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none disabled:opacity-55"
+            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none disabled:opacity-55 dark:bg-white/10 dark:text-stone-300 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
             aria-label="글자 크기 기본값으로 되돌리기"
             x-text="readerFontSizePercent + '%'"></button>
           <button
             type="button"
             x-on:click="increaseReaderFontSize()"
             x-bind:disabled="readerFontSizePercent === '130'"
-            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none disabled:opacity-40"
+            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none disabled:opacity-40 dark:bg-white/10 dark:text-stone-100 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
             aria-label="글자 크기 키우기">
             가+
           </button>
         </div>
       </div>
 
-      <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-        <div class="flex items-center justify-between gap-2 text-[11px] font-semibold tracking-[0.16em] text-stone-500">
+      <div
+        class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+        <div
+          class="flex items-center justify-between gap-2 text-[11px] font-semibold tracking-[0.16em] text-stone-500 dark:text-stone-400">
           <span>진행률 이동</span>
           <span
-            class="tracking-normal text-stone-600"
+            class="tracking-normal text-stone-600 dark:text-stone-300"
             x-text="
               progressLocationsStatus === 'pending'
                 ? '진행률 계산 중'
@@ -776,7 +779,7 @@
           min="0"
           max="100"
           step="1"
-          class="mt-2 block w-full accent-stone-900" />
+          class="mt-2 block w-full accent-stone-900 dark:accent-stone-200" />
         <div class="mt-2 flex items-center gap-2">
           <input
             x-model="progressJumpValue"
@@ -791,12 +794,12 @@
             inputmode="numeric"
             placeholder="0-100"
             aria-label="이동할 진행률"
-            class="box-border min-w-0 flex-1 rounded-full border-0 bg-white/80 px-3 py-1.5 text-sm text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none placeholder:text-stone-400" />
+            class="box-border min-w-0 flex-1 rounded-full border-0 bg-white/80 px-3 py-1.5 text-sm text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none placeholder:text-stone-400 dark:bg-white/10 dark:text-stone-100 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] dark:placeholder:text-stone-500" />
           <button
             type="button"
             x-on:click="goToProgress()"
             x-bind:disabled="progressLocationsStatus !== 'ready' || jumpingProgress || loading || !progressJumpChanged()"
-            class="inline-flex shrink-0 items-center justify-center rounded-full border-none bg-stone-950 px-3 py-1.5 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60">
+            class="inline-flex shrink-0 items-center justify-center rounded-full border-none bg-stone-950 px-3 py-1.5 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60 dark:bg-stone-100 dark:text-stone-950">
             <span
               x-show="!jumpingProgress"
               x-cloak>
@@ -822,18 +825,18 @@
       x-on:click.self="if (backdropPressed) closeReadingSettings()"
       class="box-border flex h-dvh items-start justify-center px-4 pt-[clamp(2rem,12dvh,6rem)] pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
       <div
-        class="box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white px-3 py-2.5 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
-        <div class="sticky top-0 z-10 mb-2.5 flex items-start justify-between gap-3 bg-white">
+        class="box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white px-3 py-2.5 shadow-[0_24px_60px_rgba(24,19,16,0.16)] dark:border-white/10 dark:bg-[#221e1a]">
+        <div class="sticky top-0 z-10 mb-2.5 flex items-start justify-between gap-3 bg-white dark:bg-[#221e1a]">
           <div>
-            <h2 class="text-[15px] font-semibold text-stone-950">읽기 설정</h2>
-            <p class="mt-0.5 text-[10px] leading-snug text-stone-500">
+            <h2 class="text-[15px] font-semibold text-stone-950 dark:text-stone-100">읽기 설정</h2>
+            <p class="mt-0.5 text-[10px] leading-snug text-stone-500 dark:text-stone-400">
               EPUB 형식에 따라 일부 설정은 다르게 보일 수 있어요.
             </p>
           </div>
           <button
             type="button"
             x-on:click="closeReadingSettings()"
-            class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none"
+            class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-300"
             aria-label="읽기 설정 닫기">
             <span
               class="i-lucide-x h-4 w-4"
@@ -842,11 +845,14 @@
         </div>
 
         <div class="space-y-2">
-          <section class="rounded-[0.875rem] bg-[#f7f2e8] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+          <section
+            class="rounded-[0.875rem] bg-[#f7f2e8] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
             <div class="mb-1 flex items-center justify-between gap-2">
-              <span class="text-[11px] font-semibold tracking-[0.16em] text-stone-500">글자 크기</span>
+              <span class="text-[11px] font-semibold tracking-[0.16em] text-stone-500 dark:text-stone-400">
+                글자 크기
+              </span>
               <span
-                class="text-sm font-semibold text-stone-700"
+                class="text-sm font-semibold text-stone-700 dark:text-stone-300"
                 x-text="readerFontSizePercent + '%'"></span>
             </div>
             <div class="grid grid-cols-[1fr_1.25fr_1fr] gap-2">
@@ -854,7 +860,7 @@
                 type="button"
                 x-on:click="decreaseReaderFontSize()"
                 x-bind:disabled="readerFontSizePercent === '90'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-[13px] font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none disabled:opacity-40"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-[13px] font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none disabled:opacity-40 dark:bg-white/10 dark:text-stone-100 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
                 aria-label="글자 크기 줄이기">
                 가-
               </button>
@@ -862,7 +868,7 @@
                 type="button"
                 x-on:click="resetReaderFontSize()"
                 x-bind:disabled="readerFontSizePercent === '100'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-[13px] font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none disabled:opacity-55"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-[13px] font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none disabled:opacity-55 dark:bg-white/10 dark:text-stone-300 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
                 aria-label="글자 크기 기본값으로 되돌리기">
                 100%
               </button>
@@ -870,116 +876,124 @@
                 type="button"
                 x-on:click="increaseReaderFontSize()"
                 x-bind:disabled="readerFontSizePercent === '130'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-[13px] font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none disabled:opacity-40"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-[13px] font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none disabled:opacity-40 dark:bg-white/10 dark:text-stone-100 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
                 aria-label="글자 크기 키우기">
                 가+
               </button>
             </div>
           </section>
 
-          <section class="rounded-[0.875rem] bg-[#f7f2e8] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-            <div class="mb-1 text-[11px] font-semibold tracking-[0.16em] text-stone-500">화면 색</div>
+          <section
+            class="rounded-[0.875rem] bg-[#f7f2e8] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+            <div class="mb-1 text-[11px] font-semibold tracking-[0.16em] text-stone-500 dark:text-stone-400">
+              화면 색
+            </div>
             <div class="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 x-on:click="setReaderTheme('paper')"
-                x-bind:class="readerTheme === 'paper' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
+                x-bind:class="readerTheme === 'paper' ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-white/80 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 기본
               </button>
               <button
                 type="button"
                 x-on:click="setReaderTheme('sepia')"
-                x-bind:class="readerTheme === 'sepia' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
+                x-bind:class="readerTheme === 'sepia' ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-white/80 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 세피아
               </button>
               <button
                 type="button"
                 x-on:click="setReaderTheme('night')"
-                x-bind:class="readerTheme === 'night' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
+                x-bind:class="readerTheme === 'night' ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-white/80 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 밤
               </button>
             </div>
           </section>
 
-          <section class="rounded-[0.875rem] bg-[#f7f2e8] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-            <div class="mb-1 text-[11px] font-semibold tracking-[0.16em] text-stone-500">글꼴</div>
+          <section
+            class="rounded-[0.875rem] bg-[#f7f2e8] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+            <div class="mb-1 text-[11px] font-semibold tracking-[0.16em] text-stone-500 dark:text-stone-400">글꼴</div>
             <div class="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 x-on:click="setReaderFontFamily('original')"
-                x-bind:class="readerFontFamily === 'original' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
+                x-bind:class="readerFontFamily === 'original' ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-white/80 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 원본
               </button>
               <button
                 type="button"
                 x-on:click="setReaderFontFamily('sans')"
-                x-bind:class="readerFontFamily === 'sans' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
+                x-bind:class="readerFontFamily === 'sans' ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-white/80 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 고딕
               </button>
               <button
                 type="button"
                 x-on:click="setReaderFontFamily('serif')"
-                x-bind:class="readerFontFamily === 'serif' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
+                x-bind:class="readerFontFamily === 'serif' ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-white/80 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 명조
               </button>
             </div>
           </section>
 
-          <section class="rounded-[0.875rem] bg-[#f7f2e8] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-            <div class="mb-1 text-[11px] font-semibold tracking-[0.16em] text-stone-500">줄간격</div>
+          <section
+            class="rounded-[0.875rem] bg-[#f7f2e8] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+            <div class="mb-1 text-[11px] font-semibold tracking-[0.16em] text-stone-500 dark:text-stone-400">
+              줄간격
+            </div>
             <div class="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 x-on:click="setReaderLineHeight('normal')"
-                x-bind:class="readerLineHeight === 'normal' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
+                x-bind:class="readerLineHeight === 'normal' ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-white/80 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 기본
               </button>
               <button
                 type="button"
                 x-on:click="setReaderLineHeight('relaxed')"
-                x-bind:class="readerLineHeight === 'relaxed' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
+                x-bind:class="readerLineHeight === 'relaxed' ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-white/80 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 넓게
               </button>
               <button
                 type="button"
                 x-on:click="setReaderLineHeight('loose')"
-                x-bind:class="readerLineHeight === 'loose' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
+                x-bind:class="readerLineHeight === 'loose' ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-white/80 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 더 넓게
               </button>
             </div>
           </section>
 
-          <section class="rounded-[0.875rem] bg-[#f7f2e8] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-            <div class="mb-1 text-[11px] font-semibold tracking-[0.16em] text-stone-500">여백</div>
+          <section
+            class="rounded-[0.875rem] bg-[#f7f2e8] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+            <div class="mb-1 text-[11px] font-semibold tracking-[0.16em] text-stone-500 dark:text-stone-400">여백</div>
             <div class="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 x-on:click="setReaderPageMargin('narrow')"
-                x-bind:class="readerPageMargin === 'narrow' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
+                x-bind:class="readerPageMargin === 'narrow' ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-white/80 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 좁게
               </button>
               <button
                 type="button"
                 x-on:click="setReaderPageMargin('normal')"
-                x-bind:class="readerPageMargin === 'normal' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
+                x-bind:class="readerPageMargin === 'normal' ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-white/80 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 기본
               </button>
               <button
                 type="button"
                 x-on:click="setReaderPageMargin('wide')"
-                x-bind:class="readerPageMargin === 'wide' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
-                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
+                x-bind:class="readerPageMargin === 'wide' ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-white/80 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
+                class="inline-flex h-8 items-center justify-center rounded-full border-none px-3 text-[13px] font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 넓게
               </button>
             </div>
@@ -990,7 +1004,7 @@
           <button
             type="button"
             x-on:click="resetReaderSettings()"
-            class="inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded-full border-none bg-stone-100 px-4 py-1.5 text-[13px] font-semibold text-stone-700 ring-0 outline-none">
+            class="inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded-full border-none bg-stone-100 px-4 py-1.5 text-[13px] font-semibold text-stone-700 ring-0 outline-none dark:bg-white/10 dark:text-stone-300">
             <span
               class="i-lucide-rotate-ccw h-4 w-4"
               aria-hidden="true"></span>
@@ -999,7 +1013,7 @@
           <button
             type="button"
             x-on:click="closeReadingSettings()"
-            class="inline-flex min-h-9 flex-1 items-center justify-center rounded-full border-none bg-stone-950 px-4 py-1.5 text-[13px] font-semibold text-white ring-0 outline-none">
+            class="inline-flex min-h-9 flex-1 items-center justify-center rounded-full border-none bg-stone-950 px-4 py-1.5 text-[13px] font-semibold text-white ring-0 outline-none dark:bg-stone-100 dark:text-stone-950">
             완료
           </button>
         </div>
@@ -1016,19 +1030,19 @@
       x-on:click.self="if (backdropPressed) closeHighlights()"
       class="box-border flex h-dvh items-start justify-center px-4 pt-[clamp(2rem,12dvh,6rem)] pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
       <div
-        class="box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
-        <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white">
+        class="box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] dark:border-white/10 dark:bg-[#221e1a]">
+        <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white dark:bg-[#221e1a]">
           <div class="min-w-0 flex-1">
-            <h2 class="text-base font-semibold text-stone-950">문구</h2>
+            <h2 class="text-base font-semibold text-stone-950 dark:text-stone-100">문구</h2>
             <p
-              class="mt-1 truncate text-sm text-stone-500"
+              class="mt-1 truncate text-sm text-stone-500 dark:text-stone-400"
               x-bind:title="currentChapterLabel"
               x-text="currentChapterLabel ? '현재 위치: ' + currentChapterLabel : '현재 위치를 확인하는 중입니다.'"></p>
           </div>
           <button
             type="button"
             x-on:click="closeHighlights()"
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none"
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-300"
             aria-label="문구 닫기">
             <span
               class="i-lucide-x h-4 w-4"
@@ -1040,14 +1054,14 @@
           <button
             type="button"
             x-on:click="openHighlight()"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white ring-0 outline-none">
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white ring-0 outline-none dark:bg-stone-100 dark:text-stone-950">
             문구 추가
           </button>
           <button
             type="button"
             x-on:click="window.booklogReaderLogic.loadHighlights($data)"
             x-bind:disabled="highlightsLoading"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 ring-0 outline-none disabled:opacity-60">
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 ring-0 outline-none disabled:opacity-60 dark:bg-white/10 dark:text-stone-300">
             새로고침
           </button>
         </div>
@@ -1055,20 +1069,20 @@
         <p
           x-show="highlightsMessage"
           x-cloak
-          class="mb-3 text-sm text-stone-500"
+          class="mb-3 text-sm text-stone-500 dark:text-stone-400"
           x-text="highlightsMessage"></p>
 
         <div class="max-h-[60vh] overflow-y-auto">
           <template x-if="highlightsLoading">
             <p
-              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:text-stone-400 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
               문구를 불러오는 중입니다.
             </p>
           </template>
 
           <template x-if="!highlightsLoading && !highlights.length">
             <p
-              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:text-stone-400 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
               아직 저장한 문구가 없습니다.
             </p>
           </template>
@@ -1083,17 +1097,17 @@
               <button
                 type="button"
                 x-on:click="goToHighlight(highlight)"
-                class="block w-full rounded-[1.25rem] border-none bg-[#fbf7ef] px-4 py-3 text-left text-sm leading-6 text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] ring-0 transition outline-none hover:bg-[#f7f0e3]">
+                class="block w-full rounded-[1.25rem] border-none bg-[#fbf7ef] px-4 py-3 text-left text-sm leading-6 text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] ring-0 transition outline-none hover:bg-[#f7f0e3] dark:bg-[#2d2823] dark:text-stone-300 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] dark:hover:bg-white/15">
                 <span
-                  class="block leading-6 font-semibold text-stone-900"
+                  class="block leading-6 font-semibold text-stone-900 dark:text-stone-100"
                   x-text="highlight.quoteText || '저장한 문구'"></span>
                 <span
                   x-show="highlight.noteText"
                   x-cloak
-                  class="mt-1 block text-[12px] leading-5 text-stone-600"
+                  class="mt-1 block text-[12px] leading-5 text-stone-600 dark:text-stone-300"
                   x-text="highlight.noteText"></span>
                 <span
-                  class="mt-1.5 block text-[12px] text-stone-500"
+                  class="mt-1.5 block text-[12px] text-stone-500 dark:text-stone-400"
                   x-text="highlight.chapterLabel || highlight.href || '위치 정보 없음'"></span>
               </button>
             </template>
@@ -1112,12 +1126,12 @@
       x-on:click.self="if (backdropPressed) closeBookmarks()"
       class="box-border flex h-dvh items-start justify-center px-4 pt-[clamp(2rem,12dvh,6rem)] pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
       <div
-        class="box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
-        <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white">
+        class="box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] dark:border-white/10 dark:bg-[#221e1a]">
+        <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white dark:bg-[#221e1a]">
           <div class="min-w-0 flex-1">
-            <h2 class="text-base font-semibold text-stone-950">책갈피</h2>
+            <h2 class="text-base font-semibold text-stone-950 dark:text-stone-100">책갈피</h2>
             <p
-              class="mt-1 truncate text-sm text-stone-500"
+              class="mt-1 truncate text-sm text-stone-500 dark:text-stone-400"
               x-bind:title="currentChapterLabel"
               x-text="currentChapterLabel ? '현재 위치: ' + currentChapterLabel : '현재 위치를 확인하는 중입니다.'"></p>
           </div>
@@ -1125,7 +1139,7 @@
             type="button"
             x-on:click="closeBookmarks()"
             aria-label="책갈피 닫기"
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none">
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-300">
             <span
               class="i-lucide-x h-4 w-4"
               aria-hidden="true"></span>
@@ -1137,7 +1151,7 @@
             type="button"
             x-on:click="saveBookmark()"
             x-bind:disabled="bookmarksSaving || bookmarksLoading || loading"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60">
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60 dark:bg-stone-100 dark:text-stone-950">
             <span
               x-show="!bookmarksSaving"
               x-cloak>
@@ -1153,7 +1167,7 @@
             type="button"
             x-on:click="window.booklogReaderLogic.loadBookmarks($data)"
             x-bind:disabled="bookmarksLoading"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 ring-0 outline-none disabled:opacity-60">
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 ring-0 outline-none disabled:opacity-60 dark:bg-white/10 dark:text-stone-300">
             새로고침
           </button>
         </div>
@@ -1161,20 +1175,20 @@
         <p
           x-show="bookmarksMessage"
           x-cloak
-          class="mb-3 text-sm text-stone-500"
+          class="mb-3 text-sm text-stone-500 dark:text-stone-400"
           x-text="bookmarksMessage"></p>
 
         <div class="max-h-[60vh] overflow-y-auto">
           <template x-if="bookmarksLoading">
             <p
-              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:text-stone-400 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
               책갈피를 불러오는 중입니다.
             </p>
           </template>
 
           <template x-if="!bookmarksLoading && !bookmarks.length">
             <p
-              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:text-stone-400 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
               아직 저장한 책갈피가 없습니다.
             </p>
           </template>
@@ -1187,23 +1201,23 @@
               x-for="bookmark in bookmarks"
               :key="bookmark.id">
               <div
-                class="relative rounded-[1.25rem] bg-[#fbf7ef] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
+                class="relative rounded-[1.25rem] bg-[#fbf7ef] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3] dark:bg-[#2d2823] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] dark:hover:bg-white/15">
                 <button
                   type="button"
                   x-on:click="goToBookmark(bookmark)"
-                  class="block w-full rounded-[1.25rem] border-none bg-transparent px-4 py-3 pr-13 text-left text-sm leading-6 text-stone-700 ring-0 outline-none">
+                  class="block w-full rounded-[1.25rem] border-none bg-transparent px-4 py-3 pr-13 text-left text-sm leading-6 text-stone-700 ring-0 outline-none dark:text-stone-300">
                   <span
-                    class="block font-semibold text-stone-900"
+                    class="block font-semibold text-stone-900 dark:text-stone-100"
                     x-text="bookmark.label || bookmark.chapterLabel || '책갈피'"></span>
                   <span
-                    class="mt-1 block text-[12px] text-stone-500"
+                    class="mt-1 block text-[12px] text-stone-500 dark:text-stone-400"
                     x-text="bookmark.progressPercent ? bookmark.progressPercent + '%' : bookmark.href"></span>
                 </button>
                 <button
                   type="button"
                   x-on:click.stop="deleteBookmark(bookmark)"
                   x-bind:disabled="deletingBookmarkId === bookmark.id"
-                  class="absolute top-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#f1dfd7] p-0 text-[#9a4f3f] ring-0 transition outline-none hover:bg-[#ead2c8] disabled:opacity-50"
+                  class="absolute top-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#f1dfd7] p-0 text-[#9a4f3f] ring-0 transition outline-none hover:bg-[#ead2c8] disabled:opacity-50 dark:bg-[#4a2c24] dark:text-[#e59a85] dark:hover:bg-[#5a352b]"
                   aria-label="책갈피 삭제">
                   <span
                     class="i-lucide-trash-2 h-4 w-4"
@@ -1229,16 +1243,16 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="reader-note-title"
-      class="mx-auto flex max-h-[60dvh] w-full max-w-3xl flex-col rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.97)] shadow-[0_18px_44px_rgba(24,19,16,0.2)]">
+      class="mx-auto flex max-h-[60dvh] w-full max-w-3xl flex-col rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.97)] shadow-[0_18px_44px_rgba(24,19,16,0.2)] dark:border-white/10 dark:bg-[rgba(34,30,26,0.97)]">
       <div class="flex items-center justify-between gap-3 px-4 pt-3 pb-1">
         <p
           id="reader-note-title"
-          class="m-0 text-[11px] font-semibold tracking-[0.18em] text-stone-500"
+          class="m-0 text-[11px] font-semibold tracking-[0.18em] text-stone-500 dark:text-stone-400"
           x-text="'주석 ' + noteLabel"></p>
         <button
           type="button"
           x-on:click="closeNote()"
-          class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-stone-100 p-0 text-stone-600 ring-0 outline-none"
+          class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-stone-100 p-0 text-stone-600 ring-0 outline-none dark:bg-white/10 dark:text-stone-300"
           aria-label="주석 닫기">
           <span
             class="i-lucide-x h-4 w-4"
@@ -1247,7 +1261,7 @@
       </div>
       <p
         id="reader-note-text"
-        class="m-0 min-h-0 overflow-y-auto overscroll-contain px-4 pb-4 text-[15px] leading-7 whitespace-pre-line text-stone-900"
+        class="m-0 min-h-0 overflow-y-auto overscroll-contain px-4 pb-4 text-[15px] leading-7 whitespace-pre-line text-stone-900 dark:text-stone-100"
         x-text="noteText"></p>
     </div>
   </div>
@@ -1258,17 +1272,17 @@
     class="fixed inset-x-0 bottom-0 z-50 px-3"
     style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem)">
     <div
-      class="mx-auto max-w-3xl rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.96)] px-4 py-3 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md">
+      class="mx-auto max-w-3xl rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.96)] px-4 py-3 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md dark:border-white/10 dark:bg-[rgba(34,30,26,0.96)]">
       <div class="flex items-start gap-3">
         <div class="min-w-0 flex-1">
-          <p class="mb-1 text-[11px] font-semibold tracking-[0.18em] text-stone-500">선택한 문구</p>
+          <p class="mb-1 text-[11px] font-semibold tracking-[0.18em] text-stone-500 dark:text-stone-400">선택한 문구</p>
           <p
-            class="max-h-12 overflow-hidden text-sm leading-6 font-medium text-stone-900"
+            class="max-h-12 overflow-hidden text-sm leading-6 font-medium text-stone-900 dark:text-stone-100"
             x-text="selectedHighlightQuoteText"></p>
           <p
             x-show="selectedHighlightMessage"
             x-cloak
-            class="mt-1 text-[12px] leading-5 text-stone-500"
+            class="mt-1 text-[12px] leading-5 text-stone-500 dark:text-stone-400"
             x-text="selectedHighlightMessage"></p>
         </div>
         <div class="flex shrink-0 items-center gap-2">
@@ -1276,7 +1290,7 @@
             type="button"
             x-on:click="clearSelectedHighlight()"
             x-bind:disabled="selectedHighlightSaving"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-stone-100 p-0 text-stone-600 ring-0 outline-none disabled:opacity-50"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-stone-100 p-0 text-stone-600 ring-0 outline-none disabled:opacity-50 dark:bg-white/10 dark:text-stone-300"
             aria-label="선택 문구 닫기">
             <span
               class="i-lucide-x h-4 w-4"
@@ -1286,7 +1300,7 @@
             type="button"
             x-on:click="saveSelectedHighlight()"
             x-bind:disabled="selectedHighlightSaving"
-            class="inline-flex min-h-10 items-center justify-center rounded-full border-none bg-stone-950 px-4 py-2 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60">
+            class="inline-flex min-h-10 items-center justify-center rounded-full border-none bg-stone-950 px-4 py-2 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60 dark:bg-stone-100 dark:text-stone-950">
             <span
               x-show="!selectedHighlightSaving"
               x-cloak>
@@ -1309,33 +1323,33 @@
     class="fixed inset-x-0 bottom-0 z-50 px-3"
     style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem)">
     <div
-      class="mx-auto max-w-3xl rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.96)] px-4 py-4 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md">
+      class="mx-auto max-w-3xl rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.96)] px-4 py-4 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md dark:border-white/10 dark:bg-[rgba(34,30,26,0.96)]">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div class="min-w-0">
-          <p class="text-sm font-semibold text-stone-950">마지막까지 읽은 것 같아요.</p>
+          <p class="text-sm font-semibold text-stone-950 dark:text-stone-100">마지막까지 읽은 것 같아요.</p>
           <p
             x-show="!finishPromptMessage"
-            class="mt-1 text-[13px] leading-5 text-stone-500">
+            class="mt-1 text-[13px] leading-5 text-stone-500 dark:text-stone-400">
             이 책을 완독으로 표시할까요?
           </p>
           <p
             x-show="finishPromptMessage"
             x-text="finishPromptMessage"
-            class="mt-1 text-[13px] leading-5 text-stone-500"></p>
+            class="mt-1 text-[13px] leading-5 text-stone-500 dark:text-stone-400"></p>
         </div>
         <div class="flex shrink-0 gap-2">
           <button
             type="button"
             x-on:click="closeFinishPrompt()"
             x-bind:disabled="finishingBook"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-700 ring-0 outline-none disabled:opacity-60">
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-700 ring-0 outline-none disabled:opacity-60 dark:bg-white/10 dark:text-stone-300">
             나중에
           </button>
           <button
             type="button"
             x-on:click="markBookFinished()"
             x-bind:disabled="finishingBook"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60">
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60 dark:bg-stone-100 dark:text-stone-950">
             <span
               x-show="!finishingBook"
               x-cloak>
@@ -1358,25 +1372,25 @@
     class="fixed inset-x-0 bottom-0 z-50 px-3"
     style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem)">
     <div
-      class="mx-auto max-w-3xl rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.96)] px-4 py-4 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md">
+      class="mx-auto max-w-3xl rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.96)] px-4 py-4 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md dark:border-white/10 dark:bg-[rgba(34,30,26,0.96)]">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div class="min-w-0">
-          <p class="text-sm font-semibold text-stone-950">다른 기기에서 읽은 위치가 있어요.</p>
+          <p class="text-sm font-semibold text-stone-950 dark:text-stone-100">다른 기기에서 읽은 위치가 있어요.</p>
           <p
-            class="mt-1 text-[13px] leading-5 text-stone-500"
+            class="mt-1 text-[13px] leading-5 text-stone-500 dark:text-stone-400"
             x-text="positionConflictLabel ? positionConflictLabel + ' 위치로 이동할까요?' : '그 위치로 이동할까요?'"></p>
         </div>
         <div class="flex shrink-0 gap-2">
           <button
             type="button"
             x-on:click="keepLocalPosition()"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-700 ring-0 outline-none">
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-700 ring-0 outline-none dark:bg-white/10 dark:text-stone-300">
             여기서 계속 읽기
           </button>
           <button
             type="button"
             x-on:click="acceptServerPosition()"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white ring-0 outline-none">
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white ring-0 outline-none dark:bg-stone-100 dark:text-stone-950">
             그 위치로 이동
           </button>
         </div>
@@ -1393,13 +1407,13 @@
       x-on:click.self="if (backdropPressed) closeReadAloud()"
       class="box-border flex h-dvh items-start justify-center px-4 pt-[clamp(2rem,12dvh,6rem)] pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
       <div
-        class="booklog-scroll-sheet box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
-        <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white">
+        class="booklog-scroll-sheet box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] dark:border-white/10 dark:bg-[#221e1a]">
+        <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white dark:bg-[#221e1a]">
           <div class="min-w-0 flex-1">
-            <h2 class="text-base font-semibold text-stone-950">책 듣기</h2>
+            <h2 class="text-base font-semibold text-stone-950 dark:text-stone-100">책 듣기</h2>
             <p
               x-show="currentChapterLabel"
-              class="mt-1 truncate text-sm text-stone-500"
+              class="mt-1 truncate text-sm text-stone-500 dark:text-stone-400"
               x-bind:title="currentChapterLabel"
               x-text="'현재 챕터: ' + currentChapterLabel"></p>
           </div>
@@ -1409,14 +1423,14 @@
               <summary
                 title="오디오 진단"
                 aria-label="오디오 진단"
-                class="inline-flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full text-stone-400 hover:bg-stone-100">
+                class="inline-flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full text-stone-400 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-white/15">
                 <span
                   class="i-lucide-bug h-4 w-4"
                   aria-hidden="true"></span>
               </summary>
               <div
-                class="absolute top-full right-0 z-10 w-56 space-y-2 rounded-lg border border-solid border-stone-200 bg-white p-3 shadow-lg">
-                <p class="m-0 text-xs leading-5 text-stone-500">
+                class="absolute top-full right-0 z-10 w-56 space-y-2 rounded-lg border border-solid border-stone-200 bg-white p-3 shadow-lg dark:border-white/10 dark:bg-[#221e1a]">
+                <p class="m-0 text-xs leading-5 text-stone-500 dark:text-stone-400">
                   필요할 때만 기록을 켜세요. 리더를 새로고침하면 기록은 꺼집니다.
                 </p>
                 <div class="flex flex-wrap gap-2">
@@ -1425,20 +1439,20 @@
                     type="button"
                     aria-pressed="false"
                     x-on:click="window.booklogAudio.toggleDiagnostics()"
-                    class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700">
+                    class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700 dark:bg-white/10 dark:text-stone-300">
                     기록 시작
                   </button>
                   <button
                     id="reader-audio-diagnostics-copy"
                     type="button"
                     x-on:click="window.booklogAudio.copyDiagnostics($el)"
-                    class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700 disabled:opacity-50">
+                    class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700 disabled:opacity-50 dark:bg-white/10 dark:text-stone-300">
                     기록 복사
                   </button>
                   <button
                     type="button"
                     x-on:click="window.booklogAudio.clearDiagnostics()"
-                    class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700">
+                    class="rounded-md border-none bg-stone-100 px-2 py-1.5 text-xs text-stone-700 dark:bg-white/10 dark:text-stone-300">
                     기록 삭제
                   </button>
                 </div>
@@ -1449,7 +1463,7 @@
               type="button"
               x-on:click="closeReadAloud()"
               aria-label="책 듣기 닫기"
-              class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none">
+              class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-300">
               <span
                 class="i-lucide-x h-4 w-4"
                 aria-hidden="true"></span>
@@ -1462,23 +1476,23 @@
           id="reader-audio-diagnostics-status"
           role="status"
           hidden
-          class="mb-3 text-xs text-stone-500"></p>
+          class="mb-3 text-xs text-stone-500 dark:text-stone-400"></p>
         <textarea
           id="reader-audio-diagnostics-text"
           aria-label="직접 복사할 오디오 진단 기록"
           readonly
           hidden
           rows="5"
-          class="mb-3 box-border w-full rounded-lg border border-solid border-stone-200 bg-stone-50 p-2 font-mono text-xs text-stone-700"></textarea>
+          class="mb-3 box-border w-full rounded-lg border border-solid border-stone-200 bg-stone-50 p-2 font-mono text-xs text-stone-700 dark:border-white/10 dark:bg-[#2d2823] dark:text-stone-300"></textarea>
         <% } %>
 
         <div class="space-y-4">
           <label class="mb-4 block space-y-2">
-            <span class="text-sm font-medium text-stone-700">음성 선택</span>
+            <span class="text-sm font-medium text-stone-700 dark:text-stone-300">음성 선택</span>
             <select
               x-model="readAloudEngine"
               x-on:change="stopReadAloud()"
-              class="box-border block w-full rounded-[1.1rem] border-0 bg-[#fbf5ec] px-4 py-3 text-sm text-[#2f251c]">
+              class="box-border block w-full rounded-[1.1rem] border-0 bg-[#fbf5ec] px-4 py-3 text-sm text-[#2f251c] dark:bg-[#2d2823] dark:text-stone-100">
               <% if (aiAudioAvailable) { %>
               <option value="ai">AI 음성</option>
               <% } else { %>
@@ -1510,7 +1524,7 @@
                 aria-label="이어 듣기"
                 x-on:click="startCloudAudio()"
                 x-bind:disabled="cloudAudioBusy"
-                class="flex w-full items-center gap-3 rounded-[1.25rem] border-none bg-[#efe2d2] px-4 py-3 text-left text-[#5c3816] disabled:opacity-60">
+                class="flex w-full items-center gap-3 rounded-[1.25rem] border-none bg-[#efe2d2] px-4 py-3 text-left text-[#5c3816] disabled:opacity-60 dark:bg-[#3a2d20] dark:text-[#ecd3ad]">
                 <span
                   class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#8e5521] text-white">
                   <span
@@ -1519,7 +1533,7 @@
                 </span>
                 <span class="min-w-0">
                   <span class="block text-base font-semibold">이어 듣기</span>
-                  <span class="flex min-w-0 text-xs text-[#8e5521]">
+                  <span class="flex min-w-0 text-xs text-[#8e5521] dark:text-[#d8b16d]">
                     <span
                       x-show="cloudAudioResumeChapter"
                       class="min-w-0 truncate"
@@ -1540,9 +1554,9 @@
                 type="button"
                 x-on:click="startCloudAudioAtReadingPosition()"
                 x-bind:disabled="cloudAudioBusy"
-                class="flex w-full items-center gap-3 rounded-[1.25rem] border-none bg-stone-100 px-4 py-2.5 text-left text-stone-700 disabled:opacity-60">
+                class="flex w-full items-center gap-3 rounded-[1.25rem] border-none bg-stone-100 px-4 py-2.5 text-left text-stone-700 disabled:opacity-60 dark:bg-white/10 dark:text-stone-300">
                 <span
-                  class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#8e5521]">
+                  class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#8e5521] dark:bg-[#221e1a] dark:text-[#d8b16d]">
                   <span
                     class="i-lucide-book-open h-5 w-5"
                     aria-hidden="true"></span>
@@ -1551,7 +1565,7 @@
               </button>
               <details class="group">
                 <summary
-                  class="flex cursor-pointer list-none items-center gap-1 px-1 py-2 text-sm font-medium text-stone-600">
+                  class="flex cursor-pointer list-none items-center gap-1 px-1 py-2 text-sm font-medium text-stone-600 dark:text-stone-300">
                   다른 위치에서 시작
                   <span
                     class="i-lucide-chevron-down h-4 w-4 transition group-open:rotate-180"
@@ -1562,7 +1576,7 @@
                     type="button"
                     x-on:click="startCloudAudio(true)"
                     x-bind:disabled="cloudAudioBusy"
-                    class="rounded-full border-none bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-700 disabled:opacity-60">
+                    class="rounded-full border-none bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-700 disabled:opacity-60 dark:bg-white/10 dark:text-stone-300">
                     현재 챕터 처음부터
                   </button>
                 </div>
@@ -1573,20 +1587,21 @@
               class="space-y-3">
               <div class="space-y-1">
                 <div class="flex items-center justify-between gap-2">
-                  <p class="m-0 flex min-w-0 items-baseline gap-1.5 text-sm font-semibold text-stone-900">
+                  <p
+                    class="m-0 flex min-w-0 items-baseline gap-1.5 text-sm font-semibold text-stone-900 dark:text-stone-100">
                     <span
                       class="truncate"
                       x-text="cloudAudioBusy && !(cloudAudioDuration > 0) ? '불러오는 중' : cloudAudioChapter || 'AI 음성'"></span>
                     <span
                       x-show="cloudAudioChapterOrder"
                       x-text="cloudAudioChapterOrder"
-                      class="shrink-0 text-xs font-medium text-stone-500 tabular-nums"></span>
+                      class="shrink-0 text-xs font-medium text-stone-500 tabular-nums dark:text-stone-400"></span>
                   </p>
                   <button
                     type="button"
                     x-on:click="goToListeningPosition()"
                     x-bind:disabled="!(cloudAudioDuration > 0)"
-                    class="inline-flex shrink-0 items-center gap-1 rounded-full border-none bg-[#efe2d2] px-3 py-1.5 text-xs font-semibold text-[#8e5521] disabled:opacity-40">
+                    class="inline-flex shrink-0 items-center gap-1 rounded-full border-none bg-[#efe2d2] px-3 py-1.5 text-xs font-semibold text-[#8e5521] disabled:opacity-40 dark:bg-[#3a2d20] dark:text-[#d8b16d]">
                     <span
                       class="i-lucide-locate-fixed h-3.5 w-3.5"
                       aria-hidden="true"></span>
@@ -1604,7 +1619,7 @@
                   x-on:input="cloudAudioSeeking = true; cloudAudioPosition = Number($event.target.value)"
                   x-on:change="cloudAudioSeeking = false; seekCloudAudio(Number($event.target.value))"
                   class="block w-full accent-[#8e5521]" />
-                <div class="flex justify-between gap-2 text-xs text-stone-500 tabular-nums">
+                <div class="flex justify-between gap-2 text-xs text-stone-500 tabular-nums dark:text-stone-400">
                   <span x-text="formatAudioTime(cloudAudioPosition)"></span>
                   <% if (showAudioDetail) { %>
                   <span
@@ -1620,7 +1635,7 @@
                   aria-label="이전 챕터"
                   x-on:click="moveCloudAudioChapter(-1)"
                   x-bind:disabled="cloudAudioBusy || !cloudAudioHasPrevious"
-                  class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-transparent p-0 text-stone-700 disabled:opacity-30">
+                  class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-transparent p-0 text-stone-700 disabled:opacity-30 dark:text-stone-300">
                   <span
                     class="i-lucide-skip-back h-5 w-5"
                     aria-hidden="true"></span>
@@ -1630,7 +1645,7 @@
                   aria-label="15초 뒤로"
                   x-on:click="seekCloudAudioBy(-15)"
                   x-bind:disabled="cloudAudioBusy || !(cloudAudioDuration > 0)"
-                  class="inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-stone-100 p-0 text-stone-700 disabled:opacity-40">
+                  class="inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-stone-100 p-0 text-stone-700 disabled:opacity-40 dark:bg-white/10 dark:text-stone-300">
                   <span
                     class="i-lucide-rotate-ccw h-5 w-5"
                     aria-hidden="true"></span>
@@ -1655,7 +1670,7 @@
                   aria-label="15초 앞으로"
                   x-on:click="seekCloudAudioBy(15)"
                   x-bind:disabled="cloudAudioBusy || !(cloudAudioDuration > 0)"
-                  class="inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-stone-100 p-0 text-stone-700 disabled:opacity-40">
+                  class="inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-stone-100 p-0 text-stone-700 disabled:opacity-40 dark:bg-white/10 dark:text-stone-300">
                   <span
                     class="i-lucide-rotate-cw h-5 w-5"
                     aria-hidden="true"></span>
@@ -1665,7 +1680,7 @@
                   aria-label="다음 챕터"
                   x-on:click="moveCloudAudioChapter(1)"
                   x-bind:disabled="cloudAudioBusy || !cloudAudioHasNext"
-                  class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-transparent p-0 text-stone-700 disabled:opacity-30">
+                  class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-transparent p-0 text-stone-700 disabled:opacity-30 dark:text-stone-300">
                   <span
                     class="i-lucide-skip-forward h-5 w-5"
                     aria-hidden="true"></span>
@@ -1678,12 +1693,12 @@
                     aria-label="재생 속도"
                     x-on:click="cycleCloudAudioRate()"
                     x-text="Number(readAloudRate || 1).toFixed(1) + 'x'"
-                    class="rounded-full border-none bg-stone-100 px-3 py-2 text-sm font-semibold text-stone-700 tabular-nums"></button>
+                    class="rounded-full border-none bg-stone-100 px-3 py-2 text-sm font-semibold text-stone-700 tabular-nums dark:bg-white/10 dark:text-stone-300"></button>
                   <button
                     type="button"
                     x-bind:aria-label="cloudAudioSleep ? '잠자기 타이머 ' + cloudAudioSleepLabel + ', 눌러서 바꾸기' : '잠자기 타이머 꺼짐, 눌러서 켜기'"
                     x-on:click="cycleCloudAudioSleep()"
-                    x-bind:class="cloudAudioSleep ? 'bg-[#efe2d2] text-[#8e5521]' : 'bg-stone-100 text-stone-700'"
+                    x-bind:class="cloudAudioSleep ? 'bg-[#efe2d2] text-[#8e5521] dark:bg-[#3a2d20] dark:text-[#d8b16d]' : 'bg-stone-100 text-stone-700 dark:bg-white/10 dark:text-stone-300'"
                     class="inline-flex items-center gap-1 rounded-full border-none px-3 py-2 text-sm font-semibold tabular-nums">
                     <span
                       class="i-lucide-moon h-4 w-4"
@@ -1694,7 +1709,7 @@
                 <button
                   type="button"
                   x-on:click="stopReadAloud()"
-                  class="rounded-full border-none bg-transparent px-3 py-2 text-sm font-semibold text-stone-600">
+                  class="rounded-full border-none bg-transparent px-3 py-2 text-sm font-semibold text-stone-600 dark:text-stone-300">
                   정지
                 </button>
               </div>
@@ -1703,12 +1718,12 @@
               role="status"
               x-show="cloudAudioMessage"
               x-text="cloudAudioMessage"
-              class="m-0 rounded-[1rem] bg-[#fbf5ec] px-3 py-2 text-sm leading-6 text-stone-700"></p>
+              class="m-0 rounded-[1rem] bg-[#fbf5ec] px-3 py-2 text-sm leading-6 text-stone-700 dark:bg-[#2d2823] dark:text-stone-300"></p>
           </div>
           <% } %>
           <template x-if="readAloudEngine === 'local' && !readAloudSupported">
             <p
-              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:text-stone-400 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
               이 브라우저는 책 듣기 기능을 지원하지 않습니다.
             </p>
           </template>
@@ -1716,11 +1731,11 @@
           <template x-if="readAloudEngine === 'local' && readAloudSupported">
             <div class="space-y-4">
               <label class="block space-y-2">
-                <span class="text-sm font-medium text-stone-700">한국어 음성</span>
+                <span class="text-sm font-medium text-stone-700 dark:text-stone-300">한국어 음성</span>
                 <select
                   id="reader-read-aloud-voice"
                   x-model="readAloudVoiceName"
-                  class="box-border block w-full min-w-0 rounded-[1.1rem] border-0 bg-[#fbf5ec] px-4 py-3 text-sm text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none">
+                  class="box-border block w-full min-w-0 rounded-[1.1rem] border-0 bg-[#fbf5ec] px-4 py-3 text-sm text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none dark:bg-[#2d2823] dark:text-stone-100 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                   <template
                     x-for="voice in readAloudVoices"
                     :key="voice.name + '::' + voice.lang">
@@ -1733,9 +1748,9 @@
 
               <label class="block space-y-2">
                 <div class="flex items-center justify-between gap-3">
-                  <span class="text-sm font-medium text-stone-700">재생 속도</span>
+                  <span class="text-sm font-medium text-stone-700 dark:text-stone-300">재생 속도</span>
                   <span
-                    class="text-sm text-stone-500"
+                    class="text-sm text-stone-500 dark:text-stone-400"
                     x-text="Number(readAloudRate || 1).toFixed(1) + 'x'"></span>
                 </div>
                 <input
@@ -1744,11 +1759,11 @@
                   min="0.8"
                   max="1.6"
                   step="0.1"
-                  class="block w-full accent-stone-900" />
+                  class="block w-full accent-stone-900 dark:accent-stone-200" />
               </label>
 
               <div
-                class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+                class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:text-stone-400 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 현재 위치와 가장 가까운 문단부터 현재 챕터 끝까지 읽습니다.
               </div>
             </div>
@@ -1758,7 +1773,7 @@
         <p
           x-show="readAloudEngine === 'local' && readAloudMessage"
           x-cloak
-          class="mt-3 text-sm text-stone-500"
+          class="mt-3 text-sm text-stone-500 dark:text-stone-400"
           x-text="readAloudMessage"></p>
 
         <div
@@ -1768,7 +1783,7 @@
             type="button"
             x-on:click="startReadAloud()"
             x-bind:disabled="!readAloudSupported || readAloudBusy || readAloudPlaying"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60">
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60 dark:bg-stone-100 dark:text-stone-950">
             <span
               x-show="!readAloudBusy && !readAloudPlaying"
               x-cloak>
@@ -1789,7 +1804,7 @@
             type="button"
             x-on:click="stopReadAloud()"
             x-bind:disabled="!readAloudPlaying && !readAloudBusy"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 ring-0 outline-none disabled:opacity-60">
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 ring-0 outline-none disabled:opacity-60 dark:bg-white/10 dark:text-stone-300">
             정지
           </button>
         </div>
@@ -1806,14 +1821,14 @@
       x-on:click.self="if (backdropPressed) closeSearch()"
       class="box-border flex h-dvh items-start justify-center px-4 pt-[clamp(2rem,12dvh,6rem)] pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
       <div
-        class="box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
-        <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white">
-          <h2 class="text-base font-semibold text-stone-950">책 전체 검색</h2>
+        class="box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] dark:border-white/10 dark:bg-[#221e1a]">
+        <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white dark:bg-[#221e1a]">
+          <h2 class="text-base font-semibold text-stone-950 dark:text-stone-100">책 전체 검색</h2>
           <button
             type="button"
             x-on:click="closeSearch()"
             aria-label="검색 닫기"
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none">
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-300">
             <span
               class="i-lucide-x h-4 w-4"
               aria-hidden="true"></span>
@@ -1827,12 +1842,12 @@
             x-on:keydown.enter.prevent="performSearch()"
             type="text"
             placeholder="찾을 문장을 입력해 주세요"
-            class="box-border min-w-0 flex-1 rounded-full border-0 bg-[#fbf5ec] px-4 py-3 text-sm text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] transition outline-none placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.32)]" />
+            class="box-border min-w-0 flex-1 rounded-full border-0 bg-[#fbf5ec] px-4 py-3 text-sm text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] transition outline-none placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.32)] dark:bg-[#2d2823] dark:text-stone-100 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] dark:placeholder:text-stone-500 dark:focus:bg-white/10 dark:focus:shadow-[inset_0_0_0_1.5px_rgba(216,177,109,0.45)]" />
           <button
             type="button"
             x-on:click="performSearch()"
             x-bind:disabled="searching"
-            class="shrink-0 rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60">
+            class="shrink-0 rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60 dark:bg-stone-100 dark:text-stone-950">
             <span
               x-show="!searching"
               x-cloak>
@@ -1849,13 +1864,13 @@
         <p
           x-show="searchMessage"
           x-cloak
-          class="mb-3 text-sm text-stone-500"
+          class="mb-3 text-sm text-stone-500 dark:text-stone-400"
           x-text="searchMessage"></p>
 
         <div class="max-h-[60vh] overflow-y-auto">
           <template x-if="!searchResults.length && !searching && !searchMessage">
             <p
-              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:text-stone-400 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
               검색어를 입력하면 책 전체를 훑어서 결과를 보여줍니다.
             </p>
           </template>
@@ -1870,11 +1885,11 @@
               <button
                 type="button"
                 x-on:click="goToSearchResult(result)"
-                class="block w-full rounded-[1.25rem] border-none bg-[#fbf7ef] px-4 py-3 text-left text-sm text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] ring-0 transition outline-none hover:bg-[#f7f0e3]">
+                class="block w-full rounded-[1.25rem] border-none bg-[#fbf7ef] px-4 py-3 text-left text-sm text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] ring-0 transition outline-none hover:bg-[#f7f0e3] dark:bg-[#2d2823] dark:text-stone-300 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] dark:hover:bg-white/15">
                 <span
                   x-show="result.chapterLabel"
                   x-text="result.chapterLabel"
-                  class="mb-1 block text-xs leading-5 font-semibold text-[#956536]"></span>
+                  class="mb-1 block text-xs leading-5 font-semibold text-[#956536] dark:text-[#d8b16d]"></span>
                 <span
                   x-html="result.excerptHtml || result.excerpt"
                   class="block leading-6"></span>
@@ -1895,12 +1910,12 @@
       x-on:click.self="if (backdropPressed) closeToc()"
       class="box-border flex h-dvh items-start justify-center px-4 pt-[clamp(2rem,12dvh,6rem)] pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
       <div
-        class="box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
-        <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white">
+        class="box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] dark:border-white/10 dark:bg-[#221e1a]">
+        <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white dark:bg-[#221e1a]">
           <div class="min-w-0 flex-1">
-            <h2 class="text-base font-semibold text-stone-950">목차</h2>
+            <h2 class="text-base font-semibold text-stone-950 dark:text-stone-100">목차</h2>
             <p
-              class="mt-1 truncate text-sm text-stone-500"
+              class="mt-1 truncate text-sm text-stone-500 dark:text-stone-400"
               x-bind:title="currentChapterLabel"
               x-text="currentChapterLabel ? '현재 위치: ' + currentChapterLabel : '현재 위치를 확인하는 중입니다.'"></p>
           </div>
@@ -1908,7 +1923,7 @@
             type="button"
             x-on:click="closeToc()"
             aria-label="목차 닫기"
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none">
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-300">
             <span
               class="i-lucide-x h-4 w-4"
               aria-hidden="true"></span>
@@ -1920,7 +1935,7 @@
           class="max-h-[60vh] overflow-y-auto">
           <template x-if="!tocReady || !tocItems.length">
             <p
-              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]"
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] dark:bg-[#2d2823] dark:text-stone-400 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
               x-text="tocReady ? tocMessage : '목차를 불러오는 중입니다.'"></p>
           </template>
 
@@ -1935,12 +1950,12 @@
                     x-on:click="goToTocItem(item)"
                     x-bind:data-toc-key="item.key || ''"
                     x-bind:aria-current="isActiveTocItem(item) ? 'true' : null"
-                    x-bind:class="isActiveTocItem(item) ? 'bg-stone-950 text-white' : 'bg-[#fbf7ef] text-stone-700 hover:bg-[#f7f0e3]'"
-                    class="block w-full rounded-[1.1rem] border-none px-4 py-3 text-left text-sm leading-6 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] ring-0 transition outline-none">
+                    x-bind:class="isActiveTocItem(item) ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-[#fbf7ef] text-stone-700 hover:bg-[#f7f0e3] dark:bg-[#2d2823] dark:text-stone-300 dark:hover:bg-white/15'"
+                    class="block w-full rounded-[1.1rem] border-none px-4 py-3 text-left text-sm leading-6 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] ring-0 transition outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                     <span x-text="item.label || '제목 없음'"></span>
                   </button>
                   <template x-if="item.subitems && item.subitems.length">
-                    <div class="ml-4 border-l border-[rgba(118,87,52,0.12)] pl-3">
+                    <div class="ml-4 border-l border-[rgba(118,87,52,0.12)] pl-3 dark:border-white/10">
                       <template
                         x-for="child in item.subitems"
                         :key="child.key">
@@ -1949,8 +1964,8 @@
                           x-on:click="goToTocItem(child)"
                           x-bind:data-toc-key="child.key || ''"
                           x-bind:aria-current="isActiveTocItem(child) ? 'true' : null"
-                          x-bind:class="isActiveTocItem(child) ? 'bg-stone-950 text-white' : 'bg-[#fbf7ef] text-stone-700 hover:bg-[#f7f0e3]'"
-                          class="block w-full rounded-[1.1rem] border-none px-4 py-3 text-left text-sm leading-6 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] ring-0 transition outline-none">
+                          x-bind:class="isActiveTocItem(child) ? 'bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950' : 'bg-[#fbf7ef] text-stone-700 hover:bg-[#f7f0e3] dark:bg-[#2d2823] dark:text-stone-300 dark:hover:bg-white/15'"
+                          class="block w-full rounded-[1.1rem] border-none px-4 py-3 text-left text-sm leading-6 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] ring-0 transition outline-none dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                           <span x-text="child.label || '제목 없음'"></span>
                         </button>
                       </template>
@@ -1974,14 +1989,14 @@
       x-on:click.self="if (backdropPressed) closeHighlight()"
       class="box-border flex h-dvh items-start justify-center px-4 pt-[clamp(2rem,12dvh,6rem)] pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
       <div
-        class="box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
-        <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white">
+        class="box-border max-h-full w-full max-w-3xl shrink-0 overflow-y-auto overscroll-contain rounded-[1.75rem] border border-stone-200/80 bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] dark:border-white/10 dark:bg-[#221e1a]">
+        <div class="sticky top-0 z-10 mb-3 flex items-center justify-between gap-3 bg-white dark:bg-[#221e1a]">
           <div class="min-w-0 flex-1">
-            <h2 class="text-base font-semibold text-stone-950">인상 깊은 문구 추가</h2>
+            <h2 class="text-base font-semibold text-stone-950 dark:text-stone-100">인상 깊은 문구 추가</h2>
             <p
               x-show="currentChapterLabel"
               x-cloak
-              class="mt-1 truncate text-sm text-stone-500"
+              class="mt-1 truncate text-sm text-stone-500 dark:text-stone-400"
               x-bind:title="currentChapterLabel"
               x-text="currentChapterLabel"></p>
           </div>
@@ -1989,7 +2004,7 @@
             type="button"
             x-on:click="closeHighlight()"
             aria-label="문구 추가 닫기"
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none">
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none bg-[#f7f2e8] p-0 text-stone-700 ring-0 outline-none dark:bg-[#2d2823] dark:text-stone-300">
             <span
               class="i-lucide-x h-4 w-4"
               aria-hidden="true"></span>
@@ -1998,21 +2013,21 @@
 
         <div class="space-y-3">
           <label class="block space-y-2">
-            <span class="text-sm font-medium text-stone-700">문구</span>
+            <span class="text-sm font-medium text-stone-700 dark:text-stone-300">문구</span>
             <textarea
               id="reader-highlight-quote"
               x-model="highlightQuoteText"
               rows="5"
-              class="box-border block w-full min-w-0 rounded-[1.25rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] transition outline-none placeholder:text-[#b59f87]"
+              class="box-border block w-full min-w-0 rounded-[1.25rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] transition outline-none placeholder:text-[#b59f87] dark:bg-[#2d2823] dark:text-stone-100 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] dark:placeholder:text-stone-500"
               placeholder="복사한 문구를 붙여넣어 주세요."></textarea>
           </label>
 
           <label class="block space-y-2">
-            <span class="text-sm font-medium text-stone-700">메모</span>
+            <span class="text-sm font-medium text-stone-700 dark:text-stone-300">메모</span>
             <textarea
               x-model="highlightNoteText"
               rows="3"
-              class="box-border block w-full min-w-0 rounded-[1.25rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] transition outline-none placeholder:text-[#b59f87]"
+              class="box-border block w-full min-w-0 rounded-[1.25rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] transition outline-none placeholder:text-[#b59f87] dark:bg-[#2d2823] dark:text-stone-100 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] dark:placeholder:text-stone-500"
               placeholder="짧은 생각이 있으면 같이 남겨두세요."></textarea>
           </label>
         </div>
@@ -2020,7 +2035,7 @@
         <p
           x-show="highlightMessage"
           x-cloak
-          class="mt-3 text-sm text-stone-500"
+          class="mt-3 text-sm text-stone-500 dark:text-stone-400"
           x-text="highlightMessage"></p>
 
         <div class="mt-4 flex gap-2">
@@ -2028,7 +2043,7 @@
             type="button"
             x-on:click="saveHighlight()"
             x-bind:disabled="savingHighlight"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60">
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60 dark:bg-stone-100 dark:text-stone-950">
             <span
               x-show="!savingHighlight"
               x-cloak>
@@ -2044,7 +2059,7 @@
             type="button"
             x-on:click="closeHighlight()"
             x-bind:disabled="savingHighlight"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 ring-0 outline-none disabled:opacity-60">
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 ring-0 outline-none disabled:opacity-60 dark:bg-white/10 dark:text-stone-300">
             닫기
           </button>
         </div>
@@ -2073,7 +2088,7 @@
       class="pointer-events-none fixed top-5 left-1/2 z-40 max-w-[calc(100vw-6rem)] -translate-x-1/2 rounded-full bg-[rgba(24,19,16,0.82)] px-5 py-3 text-center text-sm font-medium text-white shadow-[0_18px_40px_rgba(24,19,16,0.28)] backdrop-blur-sm"
       x-text="savePositionMessage"></div>
 
-    <div class="min-h-0 flex-1 bg-white">
+    <div class="min-h-0 flex-1 bg-white dark:bg-[#161616]">
       <div
         id="epub-reader"
         class="ios-safe-screen-fill h-screen overflow-y-auto px-0 py-0 sm:px-0 sm:py-0"></div>

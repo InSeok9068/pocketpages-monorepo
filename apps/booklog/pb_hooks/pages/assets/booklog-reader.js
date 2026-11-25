@@ -4862,7 +4862,7 @@ window.booklogReaderLogic = (function () {
     text.replace(new RegExp(escapeRegExp(normalizedQuery), 'gi'), function (match, offset) {
       html +=
         escapeHtml(text.slice(last, offset))
-        + '<mark class="bg-transparent font-semibold text-stone-900 underline decoration-[#b68454] decoration-[2px] underline-offset-[0.22em]">'
+        + '<mark class="bg-transparent font-semibold text-stone-900 underline decoration-[#b68454] dark:text-stone-100 dark:decoration-[#d8b16d] decoration-[2px] underline-offset-[0.22em]">'
         + escapeHtml(match)
         + '</mark>'
       last = offset + match.length
