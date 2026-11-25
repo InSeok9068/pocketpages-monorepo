@@ -679,7 +679,7 @@ test('Listening follow pauses while the reader scrolls and resumes only near the
       }
       return null
     }, index)
-  const followTop = 700 / 5
+  const followTop = 700 / 10
   // Safari는 본문 iframe의 입력 이벤트를 리더에 넘기지 않아, 입력 없이 바깥 스크롤 영역만 움직여 그 상황을 재현합니다.
   const scrollReader = (delta) =>
     page.evaluate((value) => {
@@ -692,6 +692,7 @@ test('Listening follow pauses while the reader scrolls and resumes only near the
   await speak(0)
   await expect.poll(async () => (await spoken())?.index).toBe(0)
   await speak(30)
+  await expect.poll(async () => (await spoken())?.index).toBe(30)
   await expect
     .poll(async () => (await spoken())?.top, { message: 'a watching reader follows to the next paragraph' })
     .toBeGreaterThan(followTop - 40)
@@ -731,11 +732,14 @@ test('Listening follow pauses while the reader scrolls and resumes only near the
     .toBe(true)
   await speak(40)
   await expect
-    .poll(async () => Math.abs(((await spoken()) || { top: 9999 }).top - followTop), {
+    .poll(async () => {
+      const current = (await spoken()) || { index: -1, top: 9999 }
+      return current.index === 40 && Math.abs(current.top - followTop) < 40
+    }, {
       message: 'returning with the button follows again without waiting',
       timeout: 5000,
     })
-    .toBeLessThan(40)
+    .toBe(true)
   await speak(48)
   await expect
     .poll(async () => {
