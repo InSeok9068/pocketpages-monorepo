@@ -679,7 +679,7 @@ test('Listening follow pauses while the reader scrolls and resumes only near the
       }
       return null
     }, index)
-  const followTop = 700 / 10
+  const followTop = 700 * 0.12
   // Safari는 본문 iframe의 입력 이벤트를 리더에 넘기지 않아, 입력 없이 바깥 스크롤 영역만 움직여 그 상황을 재현합니다.
   const scrollReader = (delta) =>
     page.evaluate((value) => {
