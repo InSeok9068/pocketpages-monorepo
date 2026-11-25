@@ -222,7 +222,7 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   await expect(start).toContainText('부터')
   await expect.poll(lastWakeLock, 'stopping lets the screen sleep').toBe('release')
   await start.click()
-  await expect.poll(() => player.evaluate((audio) => audio.currentTime)).toBeGreaterThanOrEqual(4.9)
+  await expect.poll(() => player.evaluate((audio) => audio.currentTime), { timeout: 3_000 }).toBeGreaterThanOrEqual(4.9)
   expect(lookups.every((lookup) => lookup === 'GET:0:0')).toBe(true)
   expect(downloads).toBe(1)
   await page.getByRole('button', { name: '정지', exact: true }).click()
@@ -233,7 +233,7 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   await page.reload()
   await openReadAloudPanel(page)
   await page.getByRole('button', { name: '이어 듣기', exact: true }).click()
-  await expect.poll(() => player.evaluate((audio) => audio.currentTime)).toBeGreaterThanOrEqual(4.9)
+  await expect.poll(() => player.evaluate((audio) => audio.currentTime), { timeout: 3_000 }).toBeGreaterThanOrEqual(4.9)
   expect(downloads).toBe(2)
   expect(lookups.every((lookup) => lookup === 'GET:0:0')).toBe(true)
   // 정지하면 이어 들을 위치를 서버에서 다시 받아 표시하므로, 그 값이 반영된 뒤에 긴 챕터명을 넣어야 덮이지 않습니다.
