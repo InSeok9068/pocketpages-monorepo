@@ -642,7 +642,7 @@ run_knip() {
 
   (
     cd "$ROOT_DIR"
-    npx --yes knip@6.32.1 --no-progress --no-config-hints "$@"
+    npx --yes knip@6.48.0 --no-progress --no-config-hints "$@"
   )
 }
 
