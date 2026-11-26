@@ -1222,6 +1222,17 @@ test('Copyright pages are skipped by file name, EPUB semantics, or ISBN with pub
   assert.match(sections[0].chunks[0], /ISBN이라는 단어/)
 })
 
+test('Explicit copyright blocks are skipped without dropping body text in the same XHTML', () => {
+  const sections = audioSectionsForFiles({
+    'chapter.xhtml':
+      '<html xmlns:epub="http://www.idpf.org/2007/ops"><body><p>첫 문단입니다.</p>'
+      + '<section epub:type="frontmatter copyright-page"><div><p>All rights reserved.</p></div></section>'
+      + '<aside epub:type="colophon"><p>발행 정보</p></aside><div epub:type="imprint"><p>인쇄 정보</p></div>'
+      + '<section epub:type="custom:copyright-page"><p>마지막 문단입니다.</p></section></body></html>',
+  })
+  assert.deepEqual(sections, [{ sectionIndex: 0, chunks: ['첫 문단입니다.\n\n마지막 문단입니다.'] }])
+})
+
 test('Cover links, tables of contents, notes, references, and English rights pages are not narrated', () => {
   const skipped = {
     'cover.xhtml': '<html><body><p><a href="#">처음으로</a></p></body></html>',

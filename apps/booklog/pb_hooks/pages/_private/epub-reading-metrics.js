@@ -54,6 +54,9 @@ const epubAudioHtmlToText = compileHtmlToText({
     { selector: 'nav', format: 'skip' },
     { selector: '[hidden]', format: 'skip' },
     { selector: '[aria-hidden="true"]', format: 'skip' },
+    { selector: '[epub\\:type~="copyright-page"]', format: 'skip' },
+    { selector: '[epub\\:type~="colophon"]', format: 'skip' },
+    { selector: '[epub\\:type~="imprint"]', format: 'skip' },
     { selector: 'hr', format: 'block' },
     { selector: 'blockquote', format: 'block' },
     { selector: 'ul', format: 'block' },
@@ -561,7 +564,6 @@ function isNonNarrativeSection(entryPath, html, text) {
     .replace(/\d+$/, '')
     .toLowerCase()
   if (skippedEntryNames.indexOf(entryName) >= 0) return true
-  if (/epub:type\s*=\s*["'][^"']*\b(copyright-page|colophon|imprint)\b/i.test(html)) return true
   if (/<body[^>]*epub:type\s*=\s*["'][^"']*\b(footnotes|endnotes|rearnotes|bibliography|index|toc)\b/i.test(html)) {
     return true
   }
