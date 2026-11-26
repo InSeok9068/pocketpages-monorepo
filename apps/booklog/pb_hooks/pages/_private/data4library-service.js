@@ -132,7 +132,7 @@ function normalizeDetailBook(detail) {
 /**
  * 검색 조건으로 도서 목록을 조회한다.
  * @param {{ apiKey: string, baseUrl?: string, timeout?: number }} config 호출 설정
- * @param {{ keyword?: string, title?: string, author?: string, publisher?: string, pageNo?: number, pageSize?: number, sort?: string, direction?: string, exactMatch?: boolean }} input 검색 조건
+ * @param {{ keyword?: string, title?: string, author?: string, publisher?: string, pageNo?: number, pageSize?: number, sort?: string, order?: string, exactMatch?: boolean }} input 검색 조건
  * @returns {{ request: any, numFound: number, docs: Array<any>, raw: any }} 검색 결과
  */
 function searchBooks(config, input) {
@@ -152,8 +152,8 @@ function searchBooks(config, input) {
     publisher: publisher,
     pageNo: input && input.pageNo ? input.pageNo : 1,
     pageSize: input && input.pageSize ? input.pageSize : 10,
-    sort: input && input.sort ? input.sort : 'loan_count',
-    direction: input && input.direction ? input.direction : 'desc',
+    sort: input && input.sort ? input.sort : 'loan',
+    order: input && input.order ? input.order : 'desc',
     exactMatch: input && input.exactMatch ? 'true' : 'false',
   })
   const response = payload.response

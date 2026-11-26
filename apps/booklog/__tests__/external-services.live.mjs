@@ -75,7 +75,7 @@ function data4library(path, query) {
 }
 
 test('data4library: 도서 검색과 상세 조회가 앱이 읽는 필드를 돌려준다', async () => {
-  const search = await data4library('/srchBooks', { title: '어린 왕자', pageNo: 1, pageSize: 1, sort: 'loan_count', direction: 'desc' })
+  const search = await data4library('/srchBooks', { title: '어린 왕자', pageNo: 1, pageSize: 1, sort: 'loan', order: 'desc' })
   const doc = search.docs && search.docs[0] && search.docs[0].doc
   assert.ok(doc, '검색 결과 docs[0].doc가 없습니다.')
   for (const field of ['bookname', 'authors', 'publisher', 'isbn13', 'bookImageURL']) {
