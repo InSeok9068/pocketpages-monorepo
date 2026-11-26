@@ -24,5 +24,5 @@ test('GET / returns the homepocket home page', async () => {
   const $ = load(body)
 
   assert.equal(response.status, 200)
-  assert.equal($('h1').first().text().trim(), 'homepocket')
+  assert.equal($('h1').first().text().trim(), '할 일')
 })

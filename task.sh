@@ -61,7 +61,7 @@ Commands:
   diag      Run PocketPages editor diagnostics for one file, one service, or all services when omitted
             `--profile` prints slow-file timings, `--no-daemon` disables the warm background cache
   verify    Run lint, tsc, and diag together for one service or all services
-  preflight Run format, css, verify, staged Gitleaks, and Knip as a final local check
+  preflight Run format, css, verify, staged Gitleaks, Knip, and npm audit as a final local check
   knip      Run Knip unused files/dependencies check for the whole repository
   gitleaks  Run Gitleaks secret scan; defaults to staged changes
   index     Query AI-friendly PocketPages project index JSON for one service
@@ -887,7 +887,7 @@ run_gitleaks() {
 
   (
     cd "$ROOT_DIR"
-    "$gitleaks_bin" "${gitleaks_args[@]}" "${extra_args[@]}"
+    GIT_ATTR_NOSYSTEM=1 "$gitleaks_bin" "${gitleaks_args[@]}" "${extra_args[@]}"
   )
 }
 

@@ -25,6 +25,8 @@ tools
 apps/*/.docs
 apps/*/__tests__
 apps/*/test-results
+apps/*/tests
+apps/*/playwright.config.mjs
 apps/*/node_modules
 apps/*/pb_data
 apps/*/Dockerfile

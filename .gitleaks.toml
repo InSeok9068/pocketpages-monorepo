@@ -12,19 +12,17 @@ paths = ['''^\.docs/pocketbase/pocketbase_docs_js\.md$''']
 description = "PocketBase JSVM SDK patch files contain generated code that matches generic-api-key."
 targetRules = ["generic-api-key"]
 paths = [
-  '''^apps/[^/]+/patches/pocketbase-js-sdk-jsvm\+0\.25\.10004\.patch$''',
-  '''^scripts/patches/pocketbase-js-sdk-jsvm\+0\.28\.10001\.patch$''',
-  '''^\.backup/patches/pocketbase-js-sdk-jsvm\+0\.28\.10001\.patch$''',
+  '''^apps/[^/]+/patches/pocketbase-js-sdk-jsvm\+\d+\.\d+\.\d+\.patch$''',
+  '''^scripts/patches/pocketbase-js-sdk-jsvm\+\d+\.\d+\.\d+\.patch$''',
+  '''^\.backup/patches/pocketbase-js-sdk-jsvm\+\d+\.\d+\.\d+\.patch$''',
 ]
 
 [[allowlists]]
 description = "Official PocketBase browser SDK bundles contain generated code that matches generic-api-key."
 targetRules = ["generic-api-key"]
 paths = [
-  '''^scripts/vendor/pocketbase-0\.27\.0\.umd\.js$''',
-  '''^apps/todo/pb_hooks/pages/assets/vendor/pocketbase-0\.27\.0\.umd\.js$''',
-  '''^scripts/vendor/pocketbase-0\.29\.0\.umd\.js$''',
-  '''^apps/todo/pb_hooks/pages/assets/vendor/pocketbase-0\.29\.0\.umd\.js$''',
+  '''^scripts/vendor/pocketbase-0\.\d+\.\d+\.umd\.js$''',
+  '''^apps/todo/pb_hooks/pages/assets/vendor/pocketbase-0\.\d+\.\d+\.umd\.js$''',
 ]
 
 [[allowlists]]

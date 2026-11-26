@@ -1119,6 +1119,7 @@ window.booklogOfflineReader = (function () {
         'html{background:#161616 !important;}',
         'body{background:#161616 !important;color:#e8e1d6 !important;}',
         'a{color:#d8b16d !important;}',
+        'html body .booklog-read-aloud-active,html body .booklog-listen-active{background:rgba(216,177,109,0.2) !important;box-shadow:0 0 0 0.18rem rgba(216,177,109,0.1) !important;}',
       ]
     }
 

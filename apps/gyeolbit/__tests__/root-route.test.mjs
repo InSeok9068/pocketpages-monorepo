@@ -24,5 +24,5 @@ test('GET / returns the gyeolbit home page', async () => {
   const $ = load(body)
 
   assert.equal(response.status, 200)
-  assert.equal($('h1').first().text().trim(), 'gyeolbit')
+  assert.equal($('h1').first().text().replace(/\s+/g, ' ').trim(), '풀이 전에, 정확한 원국 부터 준비해요.')
 })
