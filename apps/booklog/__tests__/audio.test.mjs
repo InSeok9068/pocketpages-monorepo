@@ -516,6 +516,36 @@ test('Audio much shorter than its text is regenerated twice and then saved with 
   assert.equal(shortText.fields.status, 'ready', 'very short text is not checked')
 })
 
+test('Audio much longer than its text is regenerated twice and then saved with a review note', () => {
+  const audioFor = (seconds) => ({
+    ok: true,
+    audio: {
+      data: mp3Bytes({
+        frames: Math.round((seconds * 44100) / 1152),
+        header: [0xff, 0xfb, 0x90, 0x00],
+        frameLength: 417,
+        id3: false,
+        trailer: false,
+      }).toString('base64'),
+      mimeType: 'audio/mp3',
+    },
+  })
+  const text = '가'.repeat(1300)
+  const repeated = generateWithProviderResult(audioFor(460), { input_text: text })
+  assert.equal(repeated.result.ok, false)
+  assert.equal(repeated.fields.status, 'failed')
+  assert.equal(repeated.fields.attempt_count, 1)
+  assert.match(repeated.fields.error_message, /길게 생성되어\(초당 2\.\d자\) 다시 만듭니다/)
+  const kept = generateWithProviderResult(audioFor(460), { input_text: text, attempt_count: 2 })
+  assert.equal(kept.result.ok, true)
+  assert.equal(kept.fields.status, 'ready')
+  assert.match(kept.fields.error_message, /길게 생성됐습니다.*반복했는지.*재생성해 주세요/)
+  const slow = generateWithProviderResult(audioFor(340), { input_text: text })
+  assert.deepEqual([slow.fields.status, slow.fields.error_message], ['ready', ''], 'slow but normal narration passes')
+  const pausedTitle = generateWithProviderResult(audioFor(120), { input_text: '가'.repeat(200) })
+  assert.equal(pausedTitle.fields.status, 'ready', 'very short text is not checked')
+})
+
 test('Reclaiming a chunk interrupted by a restart counts an attempt and stops after the limit', () => {
   const service = loadGenerationService()
   const chunkWith = (fields) => ({ fields, get: (name) => fields[name], set: (name, value) => (fields[name] = value) })
