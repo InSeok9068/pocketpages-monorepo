@@ -7,7 +7,8 @@ const MIN_REGENERATE_SPLIT_CHARS = 80
 const RATE_CHECK_MIN_CHARS = 250
 const MAX_CHARS_PER_SECOND = 6.5
 const MIN_CHARS_PER_SECOND = 3.5
-const RATE_RETRY_LIMIT = 2
+const RATE_RETRY_LIMIT = 1
+const RATE_REVIEW_PREFIX = /^음성이 원문보다 (짧게|길게) 생성됐습니다/
 const BLOCKED_MAX_ATTEMPTS = 2
 const BLOCKED_EXHAUSTED_MESSAGE = 'Gemini 정책 필터에 반복 차단되어 이 부분은 기기 음성으로 읽습니다.'
 
@@ -107,7 +108,7 @@ function claimLostResult() {
   return { ok: false, statusCode: 409, blocked: false, split: false, error: 'claim expired', detail: '' }
 }
 
-function splitChunk(txApp, parent, parts) {
+function splitChunk(txApp, parent, parts, message) {
   const collection = txApp.findCollectionByNameOrId('book_audio_chunks')
   const copied = [
     'file_id',
@@ -132,8 +133,14 @@ function splitChunk(txApp, parent, parts) {
     txApp.save(child)
   })
   parent.set('status', 'split')
-  parent.set('error_message', '정책 차단이 반복되어 조각 2개로 나눠 다시 만듭니다.')
+  parent.set('error_message', message || '정책 차단이 반복되어 조각 2개로 나눠 다시 만듭니다.')
   parent.set('next_retry_at', '')
+  if (parent.get('audio_file')) {
+    parent.set('audio_file', '')
+    parent.set('duration_seconds', 0)
+    parent.set('audio_kbps', 0)
+    parent.set('generated_at', '')
+  }
 }
 
 /**
@@ -235,6 +242,26 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
         blocked: false,
         split: false,
         error: 'audio ' + (short ? 'shorter' : 'longer') + ' than text (' + rate.toFixed(2) + ' chars/s)',
+        detail: '',
+      }
+    }
+    // 같은 본문은 다시 보내도 같은 곳을 건너뛰거나 되풀이해, 반으로 나눠 문맥을 바꿔 다시 만듭니다.
+    const rateParts = short || long ? splitInHalf(inputText) : null
+    if (rateParts) {
+      const message =
+        '음성이 원문보다 ' + (short ? '짧게' : '길게') + ' 생성되어(' + rateLabel + ') 조각 2개로 나눠 다시 만듭니다.'
+      const splitSaved = updateClaimed(app, chunkId, claimedAt, function (current, txApp) {
+        current.set('attempt_count', Number(current.get('attempt_count') || 0) + 1)
+        splitChunk(txApp, current, rateParts, message)
+      })
+      if (!splitSaved) return claimLostResult()
+      return {
+        ok: false,
+        statusCode: 502,
+        blocked: false,
+        split: true,
+        error:
+          'audio ' + (short ? 'shorter' : 'longer') + ' than text after retry, split (' + rate.toFixed(2) + ' chars/s)',
         detail: '',
       }
     }
@@ -385,16 +412,23 @@ function isBlockedExhausted(chunk) {
 }
 
 /**
- * 반복 차단으로 끝난 구간을 재생성 요청 시 더 작은 조각 2개로 나눕니다.
+ * 반복 차단으로 끝났거나 음성 길이가 원문과 맞지 않게 남은 구간을 재생성 요청 시 더 작은 조각 2개로 나눕니다.
  * @param {types.BooklogApp} txApp 트랜잭션 앱
  * @param {core.Record} chunk 재생성을 요청한 구간
- * @returns {boolean} 나눴는지 여부, 차단 구간이 아니거나 너무 짧으면 false
+ * @returns {boolean} 나눴는지 여부, 대상 구간이 아니거나 너무 짧으면 false
  */
 function splitBlockedChunk(txApp, chunk) {
-  if (!isBlockedExhausted(chunk)) return false
-  const parts = splitInHalf(String(chunk.get('input_text')), MIN_REGENERATE_SPLIT_CHARS)
+  const text = String(chunk.get('input_text'))
+  if (isBlockedExhausted(chunk)) {
+    const parts = splitInHalf(text, MIN_REGENERATE_SPLIT_CHARS)
+    if (!parts) return false
+    splitChunk(txApp, chunk, parts)
+    return true
+  }
+  if (chunk.get('status') !== 'ready' || !RATE_REVIEW_PREFIX.test(String(chunk.get('error_message')))) return false
+  const parts = splitInHalf(text)
   if (!parts) return false
-  splitChunk(txApp, chunk, parts)
+  splitChunk(txApp, chunk, parts, '재생성 요청으로 음성 길이가 원문과 맞지 않던 구간을 조각 2개로 나눠 다시 만듭니다.')
   return true
 }
 

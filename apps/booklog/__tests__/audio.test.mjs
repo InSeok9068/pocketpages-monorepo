@@ -449,6 +449,19 @@ test('Regenerating a repeatedly blocked part splits it down to 80 chars, while o
     }),
     tiny: chunk('tiny', { status: 'failed', attempt_count: 5, error_message: exhausted, input_text: longNarration(3) }),
     ready: chunk('ready', { status: 'ready', audio_file: 'a.mp3', input_text: longNarration(4) }),
+    reviewed: chunk('reviewed', {
+      status: 'ready',
+      audio_file: 'b.mp3',
+      duration_seconds: 280,
+      error_message: '음성이 원문보다 짧게 생성됐습니다(초당 7.1자). 내용이 빠졌는지 들어 보고 필요하면 재생성해 주세요.',
+      input_text: longNarration(20),
+    }),
+    shortReviewed: chunk('shortReviewed', {
+      status: 'ready',
+      audio_file: 'c.mp3',
+      error_message: '음성이 원문보다 길게 생성됐습니다(초당 3.4자). 같은 부분을 반복했는지 들어 보고 필요하면 재생성해 주세요.',
+      input_text: longNarration(12),
+    }),
   }
   const job = record({ file_id: 'file', config_hash: 'hash', status: 'running', total_chunks: 3 })
   const app = {
@@ -461,11 +474,11 @@ test('Regenerating a repeatedly blocked part splits it down to 80 chars, while o
     save() {},
     delete() {},
   }
-  assert.equal(service.applyRegenerateRequests(app, Date.now()), 3)
+  assert.equal(service.applyRegenerateRequests(app, Date.now()), 5)
   assert.equal(chunks.blocked.fields.status, 'split')
   assert.equal(chunks.blocked.fields.regenerate_requested, false)
   assert.deepEqual(
-    created.map((part) => [
+    created.slice(0, 2).map((part) => [
       part.fields.split_path,
       part.fields.status,
       part.fields.section_index,
@@ -476,14 +489,33 @@ test('Regenerating a repeatedly blocked part splits it down to 80 chars, while o
       ['11', 'queued', 2, 5],
     ]
   )
-  assert.equal(created.map((part) => part.fields.input_text).join(' '), longNarration(4))
+  assert.equal(
+    created
+      .slice(0, 2)
+      .map((part) => part.fields.input_text)
+      .join(' '),
+    longNarration(4)
+  )
+  assert.equal(chunks.reviewed.fields.status, 'split', 'audio left with a length note is remade as two parts')
+  assert.equal(chunks.reviewed.fields.audio_file, '')
+  assert.equal(chunks.reviewed.fields.duration_seconds, 0)
+  assert.equal(chunks.reviewed.fields.regenerate_requested, false)
+  assert.equal(
+    created
+      .slice(2)
+      .map((part) => part.fields.input_text)
+      .join(' '),
+    longNarration(20)
+  )
+  assert.equal(chunks.shortReviewed.fields.status, 'queued', 'a noted part under 300 chars is remade as is')
+  assert.equal(chunks.shortReviewed.fields.audio_file, '')
   assert.equal(chunks.tiny.fields.status, 'queued', 'a part under 80 chars is sent again as is')
   assert.equal(chunks.tiny.fields.attempt_count, 0)
   assert.equal(chunks.ready.fields.status, 'queued', 'a part that was not blocked is remade without splitting')
   assert.equal(chunks.ready.fields.audio_file, '')
 })
 
-test('Audio much shorter than its text is regenerated twice and then saved with a review note', () => {
+test('Audio much shorter than its text is regenerated once and then split into two parts', () => {
   // MPEG-1 44.1kHz 프레임 하나는 1152/44100초입니다.
   const audioFor = (seconds) => ({
     ok: true,
@@ -498,25 +530,44 @@ test('Audio much shorter than its text is regenerated twice and then saved with 
       mimeType: 'audio/mp3',
     },
   })
-  const text = '가'.repeat(1300)
-  const skipped = generateWithProviderResult(audioFor(150), { input_text: text })
+  const text = longNarration(60)
+  const letters = text.replace(/\s+/g, '').length
+  const skipped = generateWithProviderResult(audioFor(letters / 8), { input_text: text })
   assert.equal(skipped.result.ok, false)
   assert.equal(skipped.fields.status, 'failed')
   assert.equal(skipped.fields.attempt_count, 1)
   assert.match(skipped.fields.error_message, /짧게 생성되어\(초당 8\.\d자\) 다시 만듭니다/)
-  const kept = generateWithProviderResult(audioFor(150), { input_text: text, attempt_count: 2 })
+  const split = generateWithProviderResult(audioFor(letters / 8), { input_text: text, attempt_count: 1 })
+  assert.equal(split.result.ok, false)
+  assert.equal(split.result.split, true)
+  assert.equal(split.fields.status, 'split')
+  assert.equal(split.fields.attempt_count, 2)
+  assert.match(split.fields.error_message, /짧게 생성되어\(초당 8\.\d자\) 조각 2개로 나눠 다시 만듭니다/)
+  assert.deepEqual(
+    split.created.map((part) => [part.split_path, part.status, part.section_index, part.chunk_index]),
+    [
+      ['0', 'queued', 3, 2],
+      ['1', 'queued', 3, 2],
+    ]
+  )
+  assert.equal(split.created.map((part) => part.input_text).join(' '), text)
+  const unsplittable = longNarration(12)
+  const kept = generateWithProviderResult(audioFor(unsplittable.replace(/\s+/g, '').length / 8), {
+    input_text: unsplittable,
+    attempt_count: 1,
+  })
+  assert.ok(unsplittable.length >= 250 && unsplittable.length < 300)
   assert.equal(kept.result.ok, true)
   assert.equal(kept.fields.status, 'ready')
   assert.match(kept.fields.error_message, /짧게 생성됐습니다.*재생성해 주세요/)
-  const normal = generateWithProviderResult(audioFor(240), { input_text: text })
+  assert.equal(kept.created.length, 0, 'a part under 300 chars is saved with a note instead of split again')
+  const normal = generateWithProviderResult(audioFor(letters / 5), { input_text: text })
   assert.deepEqual([normal.fields.status, normal.fields.error_message], ['ready', ''])
-  const skippedPart = generateWithProviderResult(audioFor(34), { input_text: '가'.repeat(398) })
-  assert.equal(skippedPart.fields.status, 'failed', 'a split part missing a third of its text is regenerated')
   const shortText = generateWithProviderResult(audioFor(20), { input_text: '가'.repeat(200) })
   assert.equal(shortText.fields.status, 'ready', 'very short text is not checked')
 })
 
-test('Audio much longer than its text is regenerated twice and then saved with a review note', () => {
+test('Audio much longer than its text is regenerated once and then split into two parts', () => {
   const audioFor = (seconds) => ({
     ok: true,
     audio: {
@@ -530,17 +581,26 @@ test('Audio much longer than its text is regenerated twice and then saved with a
       mimeType: 'audio/mp3',
     },
   })
-  const text = '가'.repeat(1300)
-  const repeated = generateWithProviderResult(audioFor(460), { input_text: text })
+  const text = longNarration(60)
+  const letters = text.replace(/\s+/g, '').length
+  const repeated = generateWithProviderResult(audioFor(letters / 2.8), { input_text: text })
   assert.equal(repeated.result.ok, false)
   assert.equal(repeated.fields.status, 'failed')
   assert.equal(repeated.fields.attempt_count, 1)
   assert.match(repeated.fields.error_message, /길게 생성되어\(초당 2\.\d자\) 다시 만듭니다/)
-  const kept = generateWithProviderResult(audioFor(460), { input_text: text, attempt_count: 2 })
-  assert.equal(kept.result.ok, true)
+  const split = generateWithProviderResult(audioFor(letters / 2.8), { input_text: text, attempt_count: 1 })
+  assert.equal(split.result.split, true)
+  assert.equal(split.fields.status, 'split')
+  assert.match(split.fields.error_message, /길게 생성되어\(초당 2\.\d자\) 조각 2개로 나눠 다시 만듭니다/)
+  assert.equal(split.created.length, 2)
+  const unsplittable = longNarration(12)
+  const kept = generateWithProviderResult(audioFor(unsplittable.replace(/\s+/g, '').length / 2.8), {
+    input_text: unsplittable,
+    attempt_count: 1,
+  })
   assert.equal(kept.fields.status, 'ready')
   assert.match(kept.fields.error_message, /길게 생성됐습니다.*반복했는지.*재생성해 주세요/)
-  const slow = generateWithProviderResult(audioFor(340), { input_text: text })
+  const slow = generateWithProviderResult(audioFor(letters / 3.8), { input_text: text })
   assert.deepEqual([slow.fields.status, slow.fields.error_message], ['ready', ''], 'slow but normal narration passes')
   const pausedTitle = generateWithProviderResult(audioFor(120), { input_text: '가'.repeat(200) })
   assert.equal(pausedTitle.fields.status, 'ready', 'very short text is not checked')
