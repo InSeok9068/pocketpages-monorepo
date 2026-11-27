@@ -2,6 +2,7 @@
   const isProduction = String(env('APP_ENV') || 'development').trim() === 'production'
   const canUseBooklog = request.auth && request.auth.get('booklog_enabled') === true
   const epubSourceUrl = String(env('BOOKLOG_EPUB_SOURCE_URL') || '').trim()
+  const ogImageUrl = meta('image') || 'https://booklog.development-support.o-r.kr/assets/og/booklog-home.png'
 %>
 <!DOCTYPE html>
 <html lang="ko">
@@ -22,7 +23,7 @@
       content="<%= meta('description') %>" />
     <meta
       property="og:image"
-      content="<%= meta('image') || '/android-chrome-512x512.png' %>" />
+      content="<%= ogImageUrl %>" />
     <meta
       property="og:url"
       content="<%= meta('path') ? meta('path') : meta('url') || request.url %>" />
@@ -37,7 +38,7 @@
       content="<%= meta('description') %>" />
     <meta
       name="twitter:image"
-      content="<%= meta('image') || '/android-chrome-512x512.png' %>" />
+      content="<%= ogImageUrl %>" />
     <link
       rel="icon"
       type="image/svg+xml"
