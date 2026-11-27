@@ -103,7 +103,7 @@ declare namespace types {
     statusCode: number
     /** Gemini 정책 필터 차단 여부. 이 구간만 미루고 작업은 계속합니다. */
     blocked: boolean
-    /** 반복 차단으로 구간을 조각 2개로 나눴는지 여부 */
+    /** 반복 차단이나 원문과 맞지 않는 음성 길이로 구간을 조각 2개로 나눴는지 여부 */
     split: boolean
     error: string
     /** 실패 시 Gemini 오류 응답 본문(JSON, 최대 4,000자) */
