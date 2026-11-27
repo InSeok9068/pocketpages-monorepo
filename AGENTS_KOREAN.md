@@ -130,6 +130,7 @@
 - Promise 기반 흐름은 사용하지 않는다
 - `apps/<service>/pb_data/types.d.ts` = JSVM runtime API 기준
 - `apps/<service>/pb_schema.json` = schema 기준
+- MUST: `pb_schema.json`이나 collection/field를 변경하기 전에 `DBSCHEMA.md`를 따른다
 - `apps/<service>/types.d.ts` = shared JSDoc shape 기준
 - `record.field` 대신 `record.get('field')`를 사용한다
 - DEFAULT: app/domain collection API rule은 `null`로 잠그고 record는 PocketPages route를 통해 접근한다; direct Record API나 realtime이 명확히 필요한 기능만 예외로 연다
@@ -181,6 +182,7 @@
 
 - 프로젝트 정책과 코드 스타일: `AGENTS.md`
 - 컬렉션과 필드 정의: `apps/<service>/pb_schema.json`
+- PocketBase 스키마 동작과 `pb_schema.json` 작성 규칙: `DBSCHEMA.md`
 - PocketBase JSVM runtime API: `apps/<service>/pb_data/types.d.ts`
 - 서비스 공용 타입: `apps/<service>/types.d.ts`
 - PocketPages framework 동작: `.docs/pocketpages/*`

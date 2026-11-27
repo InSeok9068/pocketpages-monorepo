@@ -130,6 +130,7 @@
 - no Promise-based flow
 - `apps/<service>/pb_data/types.d.ts` = JSVM runtime API
 - `apps/<service>/pb_schema.json` = schema truth
+- MUST: Before changing `pb_schema.json` or any collection/field, follow `DBSCHEMA.md`
 - `apps/<service>/types.d.ts` = shared JSDoc shapes
 - use `record.get('field')`, not `record.field`
 - DEFAULT: Keep app/domain collection API rules locked (`null`) and access records through PocketPages routes; open rules only for features that explicitly require direct Record API or realtime access
@@ -181,6 +182,7 @@ Use index sections when relevant:
 
 - Project policy and code style: `AGENTS.md`
 - Collection and field definitions: `apps/<service>/pb_schema.json`
+- PocketBase schema behavior and `pb_schema.json` authoring rules: `DBSCHEMA.md`
 - PocketBase JSVM runtime API: `apps/<service>/pb_data/types.d.ts`
 - Shared service types: `apps/<service>/types.d.ts`
 - PocketPages framework behavior: `.docs/pocketpages/*`
